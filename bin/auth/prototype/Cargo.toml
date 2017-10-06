@@ -1,5 +1,5 @@
 [package]
-name = "fuchsia-auth"
+name = "fuchsia_auth"
 version = "0.0.0"
 authors = ["Jason Schein <jschein@google.com>"]
 description = "Binaries for third party oauth services in fuchsia."

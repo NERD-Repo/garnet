@@ -1,4 +1,4 @@
 [root]
-name = "fuchsia-auth"
+name = "fuchsia_auth"
 version = "0.0.0"
 

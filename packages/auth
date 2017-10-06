@@ -1,12 +1,14 @@
 {
     "languages": [
-        "cpp"
+        "cpp",
+        "rust"
     ],
     "imports": [
         "garnet/packages/fxl"
     ],
     "packages": {
         "auth": "//garnet/bin/auth",
-        "auth_tests": "//garnet/bin/auth:tests"
+        "auth_tests": "//garnet/bin/auth:tests",
+        "auth_rust_prototype": "//garnet/bin/auth:auth_rust_prototype"
     }
 }

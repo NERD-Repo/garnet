@@ -13,6 +13,16 @@ package("auth") {
   ]
 }
 
+package("auth_rust_prototype") {
+  app = true
+
+  deps = [
+    "//garnet/public/lib/auth/fidl",
+    "//garnet/bin/auth/prototype:fuchsia_auth",
+  ]
+}
+
+
 package("tests") {
   testonly = true
 
