@@ -6,7 +6,7 @@ use libc::PATH_MAX;
 
 use std::sync::Arc;
 use tokio_core;
-use zircon;
+use zx;
 use tokio_fuchsia;
 use futures;
 use futures::Future;
@@ -14,6 +14,34 @@ use std;
 use std::io;
 use std::os::unix::ffi::OsStrExt;
 use fdio;
+use libc;
+
+// validate open flags that are not vnode specific
+fn prevalidate_flags(flags: i32) -> Result<(), zx::Status> {
+    let f = flags & libc::O_ACCMODE;
+    if f == libc::O_PATH {
+        return Ok(());
+    }
+    if f & libc::O_RDONLY != 0 {
+        if flags & libc::O_TRUNC != 0 {
+            return Err(zx::Status::INVALID_ARGS)
+        }
+        return Ok(());
+    }
+    if f == libc::O_WRONLY || f == libc::O_RDWR {
+        return Ok(());
+    }
+    Err(zx::Status::INVALID_ARGS)
+}
+
+#[test]
+fn test_prevalidate_flags() {
+    assert!(prevalidate_flags(libc::O_PATH).is_ok());
+    assert!(prevalidate_flags(libc::O_RDONLY).is_ok());
+    assert!(prevalidate_flags(libc::O_WRONLY).is_ok());
+    assert!(prevalidate_flags(libc::O_RDWR).is_ok());
+
+}
 
 /// Vfs contains filesystem global state and outlives all Vnodes that it
 /// services. It fundamentally handles filesystem global concerns such as path
@@ -23,11 +51,13 @@ pub trait Vfs {
         &self,
         _vn: &Arc<Vnode>,
         _path: std::path::PathBuf,
-        _flags: i32,
+        _flags: u32,
         _mode: u32,
-    ) -> Result<(Arc<Vnode>, std::path::PathBuf), zircon::Status> {
-        // TODO(raggi): ...
-        Err(zircon::Status::NOT_SUPPORTED)
+    ) -> Result<(Arc<Vnode>, std::path::PathBuf), zx::Status> {
+        // TODO(raggi): locking
+
+
+        Err(zx::Status::NOT_SUPPORTED)
     }
 
     fn register_connection(&self, c: Connection, handle: &tokio_core::reactor::Handle) {
@@ -41,15 +71,16 @@ pub trait Vfs {
 /// addressable via more than one path). It may have file, directory, mount or
 /// device semantics.
 pub trait Vnode {
-    fn close(&self) -> zircon::Status {
-        zircon::Status::OK
+    fn close(&self) -> zx::Status {
+        zx::Status::OK
     }
 
-    fn serve(&self, _vfs: Arc<Vfs>, _chan: tokio_fuchsia::Channel, _flags: i32) {
-        // TODO(raggi): ...
-        // TODO(raggi): ...
-        // TODO(raggi): ...
-        // TODO(raggi): ...
+    /// If the Vnode should be served as a regular FDIO connection, consume the
+    /// flags as required and return the channel. A Connection will be
+    /// constructed and FDIO messages dispatched to this Vnode. Otherwise,
+    /// consume the channel and return None.
+    fn should_serve(&self, chan: tokio_fuchsia::Channel, _flags: u32, _handle: &tokio_core::reactor::Handle) -> Option<tokio_fuchsia::Channel> {
+        Some(chan)
     }
 }
 
@@ -67,9 +98,9 @@ impl Connection {
     pub fn new(
         vfs: Arc<Vfs>,
         vn: Arc<Vnode>,
-        chan: zircon::Channel,
+        chan: zx::Channel,
         handle: &tokio_core::reactor::Handle,
-    ) -> Result<Connection, io::Error> {
+    ) -> Result<Connection, zx::Status> {
         let c = Connection {
             vfs: vfs,
             vn: vn,
@@ -80,20 +111,25 @@ impl Connection {
         Ok(c)
     }
 
-    fn dispatch(&mut self, msg: &mut fdio::rio::Message) -> Result<(), std::io::Error> {
-        // TODO(raggi): in the case of protocol errors for non-pipelined opens,
-        // we sometimes will fail to send an appropriate object description back
-        // to the serving channel. This needs to be addressed.
-        msg.validate().map_err(|_| {
-            std::io::Error::from(std::io::ErrorKind::InvalidInput)
-        })?;
+    fn dispatch(&mut self, msg: &mut fdio::rio::Message) -> Result<(), zx::Status> {
+        let pipelined = msg.arg() & fdio::fdio_sys::O_PIPELINE != 0;
+
+        if let Err(e) = msg.validate() {
+            println!("{:?} <- {:?} (INVALID {:?})", self.chan, msg, e);
+            // if the request is pipelined, just drop the reply channel and all is well
+            if !pipelined {
+                self.reply_status(&self.chan, zx::Status::INVALID_ARGS)?;
+                // TODO(raggi): return ok here? need to define what dispatch errors really mean
+                return Err(zx::Status::INVALID_ARGS.into());
+            }
+        }
 
         println!("{:?} <- {:?}", self.chan, msg);
 
         match msg.op() {
             fdio::fdio_sys::ZXRIO_OPEN => {
                 let chan = tokio_fuchsia::Channel::from_channel(
-                    zircon::Channel::from(
+                    zx::Channel::from(
                         msg.take_handle(0).expect("vfs: handle disappeared"),
                     ),
                     &self.handle,
@@ -101,26 +137,27 @@ impl Connection {
 
                 // TODO(raggi): enforce O_ADMIN
                 if msg.datalen() < 1 || msg.datalen() > PATH_MAX as u32 {
-                    self.reply_status(&chan, zircon::Status::INVALID_ARGS)?;
-                    return Err(zircon::Status::INVALID_ARGS.into());
+                    if !pipelined {
+                        self.reply_status(&self.chan, zx::Status::INVALID_ARGS)?;
+                    }
+                    // TODO(raggi): return ok here? need to define what dispatch errors really mean
+                    return Err(zx::Status::INVALID_ARGS.into());
                 }
 
                 let path = std::path::PathBuf::from(std::ffi::OsStr::from_bytes(msg.data()));
 
                 // TODO(raggi): verify if the protocol mistreatment of args signage is intentionally unchecked here:
-                self.open(chan, path, msg.arg(), msg.mode())?;
+                self.open(chan, path, msg.arg(), msg.mode())
             }
             // ZXRIO_STAT => self.stat(msg, chan, handle),
             // ZXRIO_CLOSE => self.close(msg, chan, handle),
             _ => {
                 self.reply_status(
                     &self.chan,
-                    zircon::Status::NOT_SUPPORTED,
-                )?
+                    zx::Status::NOT_SUPPORTED,
+                )
             }
         }
-
-        Ok(())
     }
 
     fn open(
@@ -129,13 +166,13 @@ impl Connection {
         path: std::path::PathBuf,
         flags: i32,
         mode: u32,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<(), zx::Status> {
         let pipeline = flags & fdio::fdio_sys::O_PIPELINE != 0;
-        let open_flags = flags & !fdio::fdio_sys::O_PIPELINE;
+        let open_flags: u32 = (flags & !fdio::fdio_sys::O_PIPELINE) as u32;
 
-        let mut status = zircon::Status::OK;
+        let mut status = zx::Status::OK;
         let mut proto = fdio::fdio_sys::FDIO_PROTOCOL_REMOTE;
-        let mut handles: Vec<zircon::Handle> = vec![];
+        let mut handles: Vec<zx::Handle> = vec![];
 
         match self.vfs.open(&self.vn, path, open_flags, mode) {
             Ok((vn, _path)) => {
@@ -147,40 +184,52 @@ impl Connection {
                     return Err(std::io::ErrorKind::InvalidInput.into());
                 }
 
-                if status != zircon::Status::OK {
+                if status != zx::Status::OK {
                     return Err(std::io::ErrorKind::InvalidInput.into());
                 }
 
-                if !pipeline {
-                    fdio::rio::write_object(&chan, status, proto, &[], &mut handles).ok();
+                if let Some(chan) = vn.should_serve(chan, open_flags, &self.handle) {
+
+                    if !pipeline {
+                        self.reply_object(&chan, status, proto, &[], &mut handles)?;
+                    }
+
+                    self.vfs.register_connection(Connection{vfs: self.vfs.clone(), vn, chan, handle: self.handle.clone()}, &self.handle)
                 }
-
-                // TODO(raggi): construct connection...
-                vn.serve(Arc::clone(&self.vfs), chan, open_flags);
-
-                return Ok(());
+                // if should_serve consumed the channel, it must also handle the reply
+                return Ok(())
             }
             Err(e) => {
                 proto = 0;
                 status = e;
                 eprintln!("vfs: open error: {:?}", e);
+
+                if !pipeline {
+                    self.reply_object(&chan, status, proto, &[], &mut handles)?;
+                }
+                return Ok(())
             }
         }
+    }
 
-        if !pipeline {
-            return fdio::rio::write_object(&chan, status, proto, &[], &mut handles)
-                .map_err(Into::into);
-        }
-        Ok(())
+    fn reply_object(
+        &self,
+        chan: &tokio_fuchsia::Channel,
+        status: zx::Status,
+        type_: u32,
+        extra: &[u8],
+        handles: &mut Vec<zx::Handle>,
+    ) -> Result<(), zx::Status> {
+        println!("{:?} -> {:?}", &chan, status);
+        fdio::rio::write_object(chan, status, type_, extra, handles)
     }
 
     fn reply_status(
         &self,
         chan: &tokio_fuchsia::Channel,
-        status: zircon::Status,
-    ) -> Result<(), io::Error> {
-        println!("{:?} -> {:?}", &chan, status);
-        fdio::rio::write_object(chan, status, 0, &[], &mut vec![]).map_err(Into::into)
+        status: zx::Status,
+    ) -> Result<(), zx::Status> {
+        self.reply_object(chan, status, 0, &[], &mut vec![])
     }
 }
 
@@ -189,7 +238,7 @@ impl Future for Connection {
     type Error = io::Error;
 
     fn poll(&mut self) -> futures::Poll<Self::Item, Self::Error> {
-        let mut buf = zircon::MessageBuf::new();
+        let mut buf = zx::MessageBuf::new();
         buf.ensure_capacity_bytes(fdio::fdio_sys::ZXRIO_MSG_SZ);
         loop {
             try_nb!(self.chan.recv_from(&mut buf));
