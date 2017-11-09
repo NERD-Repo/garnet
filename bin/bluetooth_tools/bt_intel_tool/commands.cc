@@ -6,6 +6,7 @@
 
 #include <endian.h>
 
+#include <sys/mman.h>
 #include <cstring>
 #include <iostream>
 
@@ -20,6 +21,7 @@
 #include "lib/fxl/time/time_delta.h"
 
 #include "bt_intel.h"
+#include "intel_firmware_loader.h"
 
 using namespace bluetooth;
 
@@ -29,30 +31,45 @@ using std::placeholders::_2;
 namespace bt_intel {
 namespace {
 
-void StatusCallback(fxl::Closure complete_cb,
-                    bluetooth::hci::CommandChannel::TransactionId id,
-                    bluetooth::hci::Status status) {
-  std::cout << "  Command Status: " << fxl::StringPrintf("0x%02x", status)
-            << " (id=" << id << ")" << std::endl;
-  if (status != bluetooth::hci::Status::kSuccess)
-    complete_cb();
-}
+class MfgModeEnabler {
+ public:
+  MfgModeEnabler(CommandChannel* channel)
+      : channel_(channel), patch_reset_needed_(false) {
+    auto packet = MakeMfgModePacket(true);
+    channel_->SendCommand(packet->view());
+  }
 
-hci::CommandChannel::TransactionId SendCommand(
-    const CommandData* cmd_data,
-    std::unique_ptr<hci::CommandPacket> packet,
-    const hci::CommandChannel::CommandCompleteCallback& cb,
-    const fxl::Closure& complete_cb) {
-  return cmd_data->cmd_channel()->SendCommand(
-      std::move(packet), cmd_data->task_runner(), cb,
-      std::bind(&StatusCallback, complete_cb, _1, _2));
-}
+  ~MfgModeEnabler() {
+    MfgDisableMode disable_mode = MfgDisableMode::kNoPatches;
+    if (patch_reset_needed_)
+      disable_mode = MfgDisableMode::kPatchesEnabled;
 
-void LogCommandComplete(hci::Status status,
-                        hci::CommandChannel::TransactionId id) {
+    auto packet = MakeMfgModePacket(false, disable_mode);
+    channel_->SendCommand(packet->view());
+  }
+
+  void set_patch_reset(bool patch) { patch_reset_needed_ = patch; }
+
+ private:
+  CommandChannel* channel_;
+  bool patch_reset_needed_;
+
+  std::unique_ptr<hci::CommandPacket> MakeMfgModePacket(
+      bool enable,
+      MfgDisableMode disable_mode = MfgDisableMode::kNoPatches) {
+    auto packet = hci::CommandPacket::New(
+        kMfgModeChange, sizeof(IntelMfgModeChangeCommandParams));
+    auto params = packet->mutable_view()
+                      ->mutable_payload<IntelMfgModeChangeCommandParams>();
+    params->enable = enable ? 1 : 0;
+    params->disable_mode = disable_mode;
+    return packet;
+  }
+};
+
+void LogCommandComplete(hci::Status status) {
   std::cout << "  Command Complete - status: "
-            << fxl::StringPrintf("0x%02x", status) << " (id=" << id << ")"
-            << std::endl;
+            << fxl::StringPrintf("0x%02x", status) << std::endl;
 }
 
 // Prints a byte in decimal and hex forms
@@ -84,10 +101,9 @@ bool HandleReadVersion(const CommandData* cmd_data,
     return false;
   }
 
-  auto cb = [cmd_line, complete_cb](hci::CommandChannel::TransactionId id,
-                                    const hci::EventPacket& event) {
+  auto cb = [cmd_line, complete_cb](const hci::EventPacket& event) {
     auto params = event.return_params<IntelVersionReturnParams>();
-    LogCommandComplete(params->status, id);
+    LogCommandComplete(params->status);
 
     std::cout << fxl::StringPrintf(
         "  Firmware Summary: variant=%s - revision %u.%u build no: %u (week "
@@ -119,15 +135,15 @@ bool HandleReadVersion(const CommandData* cmd_data,
       std::cout << "    Firmware Patch No: " << PrintByte(params->fw_patch_num)
                 << std::endl;
     }
-
-    complete_cb();
   };
 
-  auto packet = hci::CommandPacket::New(kReadVersion);
-  auto id = SendCommand(cmd_data, std::move(packet), cb, complete_cb);
-  std::cout << "  Sent HCI Vendor (Intel) Read Version (id=" << id << ")"
-            << std::endl;
+  //cmd_data->cmd_channel()->SetEventCallback(cb);
 
+  auto packet = hci::CommandPacket::New(kReadVersion);
+  std::cout << "  Sending HCI Vendor (Intel) Read Version" << std::endl;
+  cmd_data->cmd_channel()->SendCommandSync(packet->view(), cb);
+
+  complete_cb();
   return true;
 }
 
@@ -139,10 +155,9 @@ bool HandleReadBootParams(const CommandData* cmd_data,
     return false;
   }
 
-  auto cb = [cmd_line, complete_cb](hci::CommandChannel::TransactionId id,
-                                    const hci::EventPacket& event) {
+  auto cb = [cmd_line, complete_cb, cmd_data](const hci::EventPacket& event) {
     auto params = event.return_params<IntelReadBootParamsReturnParams>();
-    LogCommandComplete(params->status, id);
+    LogCommandComplete(params->status);
 
     std::cout << "  Intel Boot Parameters:" << std::endl;
     std::cout << "    Device Revision:  " << le16toh(params->dev_revid)
@@ -166,13 +181,14 @@ bool HandleReadBootParams(const CommandData* cmd_data,
                                    2000 + params->min_fw_build_year)
               << std::endl;
 
+    cmd_data->cmd_channel()->SetEventCallback(nullptr);
     complete_cb();
   };
 
   auto packet = hci::CommandPacket::New(kReadBootParams);
-  auto id = SendCommand(cmd_data, std::move(packet), cb, complete_cb);
-  std::cout << "  Sent HCI Vendor (Intel) Read Boot Params (id=" << id << ")"
-            << std::endl;
+  cmd_data->cmd_channel()->SetEventCallback(cb);
+  cmd_data->cmd_channel()->SendCommand(packet->view());
+  std::cout << "  Sent HCI Vendor (Intel) Read Boot Params" << std::endl;
 
   return true;
 }
@@ -184,9 +200,6 @@ bool HandleReset(const CommandData* cmd_data,
     std::cout << "  Usage: reset" << std::endl;
     return false;
   }
-
-  auto cb = [](hci::CommandChannel::TransactionId id,
-               const hci::EventPacket& event) {};
 
   auto packet =
       hci::CommandPacket::New(kReset, sizeof(IntelResetCommandParams));
@@ -201,18 +214,57 @@ bool HandleReset(const CommandData* cmd_data,
   params->data[6] = 0x04;
   params->data[7] = 0x00;
 
-  auto id = SendCommand(cmd_data, std::move(packet), cb, complete_cb);
-  std::cout << "  Sent HCI Vendor (Intel) Reset (id=" << id << ")" << std::endl;
+  cmd_data->cmd_channel()->SendCommand(packet->view());
+  std::cout << "  Sent HCI Vendor (Intel) Rese" << std::endl;
 
   // Once the reset command is sent, the hardware will shut down and we won't be
   // able to get a response back. Just exit the tool.
-  // TODO(armansito): This needs to be implemented properly in the driver as
-  // part of the controller boot sequence. We cannot reboot the controller from
-  // userland since the hardware disappears so we'll never receive the
-  // vendor-specific HCI event.
-  cmd_data->task_runner()->PostDelayedTask(
-      complete_cb, fxl::TimeDelta::FromMilliseconds(250));
 
+  complete_cb();
+  return true;
+}
+
+bool HandleLoadBseq(const CommandData* cmd_data,
+                    const fxl::CommandLine& cmd_line,
+                    const fxl::Closure& complete_cb) {
+  if (cmd_line.positional_args().size() != 1) {
+    std::cout << "  Usage: load-bseq [--verbose] <filename>" << std::endl;
+    return false;
+  }
+
+  std::string firmware_fn = cmd_line.positional_args().front();
+
+  {
+    MfgModeEnabler enable(cmd_data->cmd_channel());
+
+    IntelFirmwareLoader loader(cmd_data->cmd_channel());
+
+    IntelFirmwareLoader::LoadStatus patched = loader.LoadBseq(firmware_fn);
+
+    if (patched == IntelFirmwareLoader::LoadStatus::kPatched) {
+      enable.set_patch_reset(true);
+    }
+  }
+
+  complete_cb();
+  return true;
+}
+
+bool HandleLoadSecure(const CommandData* cmd_data,
+                      const fxl::CommandLine& cmd_line,
+                      const fxl::Closure& complete_cb) {
+  if (cmd_line.positional_args().size() != 1) {
+    std::cout << "  Usage: load-sfi [--verbose] <filename>" << std::endl;
+    return false;
+  }
+
+  std::string firmware_fn = cmd_line.positional_args().front();
+
+  IntelFirmwareLoader loader(cmd_data->cmd_channel());
+
+  loader.LoadSfi(firmware_fn);
+
+  complete_cb();
   return true;
 }
 
@@ -229,6 +281,11 @@ void RegisterCommands(const CommandData* data,
   dispatcher->RegisterHandler("read-boot-params",
                               "Read hardware boot parameters",
                               BIND(HandleReadBootParams));
+  dispatcher->RegisterHandler("load-bseq", "Load bseq file onto device",
+                              BIND(HandleLoadBseq));
+  dispatcher->RegisterHandler("load-sfi", "Load Secure Firmware onto device",
+                              BIND(HandleLoadSecure));
+
   dispatcher->RegisterHandler("reset", "Reset firmware", BIND(HandleReset));
 
 #undef BIND
