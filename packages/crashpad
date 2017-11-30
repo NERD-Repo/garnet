@@ -1,0 +1,23 @@
+{
+    "languages": [
+        "cpp"
+    ],
+    "labels": [
+        "//third_party/crashpad/crashpad/minidump:minidump_test"
+    ],
+    "packages": {
+        "minidump": "//third_party/crashpad/crashpad/minidump",
+        "minidump_test": "//third_party/crashpad/crashpad/minidump:minidump_test"
+    },
+    "__ignored_packages": {
+        "client": "//third_party/crashpad/crashpad/client",
+        "compat": "//third_party/crashpad/crashpad/compat",
+        "crashpad_apple_cctools": "//third_party/crashpad/crashpad/third_party/apple_cctools",
+        "crashpad_getopt": "//third_party/crashpad/crashpad/third_party/getopt",
+        "crashpad_zlib": "//third_party/crashpad/crashpad/third_party/zlib",
+        "handler": "//third_party/crashpad/crashpad/handler",
+        "snapshot": "//third_party/crashpad/crashpad/snapshot",
+        "tools": "//third_party/crashpad/crashpad/tools",
+        "util": "//third_party/crashpad/crashpad/util"
+    }
+}
