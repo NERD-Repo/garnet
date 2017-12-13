@@ -7,6 +7,7 @@ import("//build/package.gni")
 group("ui") {
   public_deps = [
     "hello_scene_manager",
+    "video_display",
     "shadertoy/client",
     "shadertoy/service",
     "shapes",
@@ -25,6 +26,20 @@ package("hello_scene_manager") {
 
   binaries = [ {
         name = "hello_scene_manager"
+      } ]
+}
+
+package("video_display") {
+
+  deps = [
+    "video_display",
+  ]
+
+  binary = "video_display"
+
+  meta = [ {
+        path = rebase_path("video_display/meta/sandbox")
+        dest = "sandbox"
       } ]
 }
 
