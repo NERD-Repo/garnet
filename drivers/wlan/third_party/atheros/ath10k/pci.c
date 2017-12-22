@@ -716,11 +716,9 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k *ar, uint32_t address,
         }
 
 done:
-#if 0
         if (data_buf) {
 		io_buffer_release(&ce_buf_handle);
 	}
-#endif
 
         pthread_spin_unlock(&ar_pci->ce_lock);
 
@@ -844,11 +842,9 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k *ar, uint32_t address,
         }
 
 done:
-#if 0
         if (data_buf) {
 		io_buffer_release(&ce_buf_handle);
         }
-#endif
 
         if (ret != ZX_OK) {
                 ath10k_warn("failed to write diag value at 0x%x: %s\n",
@@ -1109,7 +1105,9 @@ err_req:
 		memcpy(resp, resp_vaddr, xfer.resp_len);
 	}
 	io_buffer_release(&treq);
-	io_buffer_release(&tresp);
+	if (resp_vaddr != NULL) {
+		io_buffer_release(&tresp);
+	}
 
 	return ret;
 }
