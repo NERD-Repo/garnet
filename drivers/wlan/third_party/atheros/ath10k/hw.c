@@ -17,6 +17,7 @@
 #include "core.h"
 #include "hw.h"
 #include "linuxisms.h"
+#include "bmi.h"
 
 const struct ath10k_hw_regs qca988x_regs = {
 	.rtc_soc_base_address		= 0x00004000,
@@ -399,15 +400,15 @@ static void ath10k_hw_qca988x_set_coverage_class(struct ath10k *ar,
 {
 ZX_ASSERT(0);
 #if 0
-	u32 slottime_reg;
-	u32 slottime;
-	u32 timeout_reg;
-	u32 ack_timeout;
-	u32 cts_timeout;
-	u32 phyclk_reg;
-	u32 phyclk;
+	uint32_t slottime_reg;
+	uint32_t slottime;
+	uint32_t timeout_reg;
+	uint32_t ack_timeout;
+	uint32_t cts_timeout;
+	uint32_t phyclk_reg;
+	uint32_t phyclk;
 	u64 fw_dbglog_mask;
-	u32 fw_dbglog_level;
+	uint32_t fw_dbglog_level;
 
 	mutex_lock(&ar->conf_mutex);
 
@@ -474,20 +475,20 @@ ZX_ASSERT(0);
 
 	slottime = MS(slottime_reg, WAVE1_PCU_GBL_IFS_SLOT);
 	slottime += value * 3 * phyclk;
-	slottime = min_t(u32, slottime, WAVE1_PCU_GBL_IFS_SLOT_MAX);
+	slottime = min_t(uint32_t, slottime, WAVE1_PCU_GBL_IFS_SLOT_MAX);
 	slottime = SM(slottime, WAVE1_PCU_GBL_IFS_SLOT);
 	slottime_reg = (slottime_reg & ~WAVE1_PCU_GBL_IFS_SLOT_MASK) | slottime;
 
 	/* Update ack timeout (lower halfword). */
 	ack_timeout = MS(timeout_reg, WAVE1_PCU_ACK_CTS_TIMEOUT_ACK);
 	ack_timeout += 3 * value * phyclk;
-	ack_timeout = min_t(u32, ack_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
+	ack_timeout = min_t(uint32_t, ack_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
 	ack_timeout = SM(ack_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_ACK);
 
 	/* Update cts timeout (upper halfword). */
 	cts_timeout = MS(timeout_reg, WAVE1_PCU_ACK_CTS_TIMEOUT_CTS);
 	cts_timeout += 3 * value * phyclk;
-	cts_timeout = min_t(u32, cts_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
+	cts_timeout = min_t(uint32_t, cts_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
 	cts_timeout = SM(cts_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_CTS);
 
 	timeout_reg = ack_timeout | cts_timeout;
@@ -541,14 +542,12 @@ unlock:
  *
  * Return: 0 if successfully enable the pll, otherwise EINVAL
  */
-static int ath10k_hw_qca6174_enable_pll_clock(struct ath10k *ar)
+static zx_status_t ath10k_hw_qca6174_enable_pll_clock(struct ath10k *ar)
 {
-	ZX_ASSERT(0);
-	return 0;
-#if 0
-	int ret, wait_limit;
-	u32 clk_div_addr, pll_init_addr, speed_addr;
-	u32 addr, reg_val, mem_val;
+	zx_status_t ret;
+	int wait_limit;
+	uint32_t clk_div_addr, pll_init_addr, speed_addr;
+	uint32_t addr, reg_val, mem_val;
 	struct ath10k_hw_params *hw;
 	const struct ath10k_hw_clk_params *hw_clk;
 
@@ -556,8 +555,9 @@ static int ath10k_hw_qca6174_enable_pll_clock(struct ath10k *ar)
 
 	if (ar->regs->core_clk_div_address == 0 ||
 	    ar->regs->cpu_pll_init_address == 0 ||
-	    ar->regs->cpu_speed_address == 0)
-		return -EINVAL;
+	    ar->regs->cpu_speed_address == 0) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	clk_div_addr = ar->regs->core_clk_div_address;
 	pll_init_addr = ar->regs->cpu_pll_init_address;
@@ -566,160 +566,182 @@ static int ath10k_hw_qca6174_enable_pll_clock(struct ath10k *ar)
 	/* Read efuse register to find out the right hw clock configuration */
 	addr = (RTC_SOC_BASE_ADDRESS | EFUSE_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* sanitize if the hw refclk index is out of the boundary */
-	if (MS(reg_val, EFUSE_XTAL_SEL) > ATH10K_HW_REFCLK_COUNT)
-		return -EINVAL;
+	if (MS(reg_val, EFUSE_XTAL_SEL) > ATH10K_HW_REFCLK_COUNT) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	hw_clk = &hw->hw_clk[MS(reg_val, EFUSE_XTAL_SEL)];
 
 	/* Set the rnfrac and outdiv params to bb_pll register */
 	addr = (RTC_SOC_BASE_ADDRESS | BB_PLL_CONFIG_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val &= ~(BB_PLL_CONFIG_FRAC_MASK | BB_PLL_CONFIG_OUTDIV_MASK);
 	reg_val |= (SM(hw_clk->rnfrac, BB_PLL_CONFIG_FRAC) |
 		    SM(hw_clk->outdiv, BB_PLL_CONFIG_OUTDIV));
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* Set the correct settle time value to pll_settle register */
 	addr = (RTC_WMAC_BASE_ADDRESS | WLAN_PLL_SETTLE_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val &= ~WLAN_PLL_SETTLE_TIME_MASK;
 	reg_val |= SM(hw_clk->settle_time, WLAN_PLL_SETTLE_TIME);
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* Set the clock_ctrl div to core_clk_ctrl register */
 	addr = (RTC_SOC_BASE_ADDRESS | SOC_CORE_CLK_CTRL_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val &= ~SOC_CORE_CLK_CTRL_DIV_MASK;
 	reg_val |= SM(1, SOC_CORE_CLK_CTRL_DIV);
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* Set the clock_div register */
 	mem_val = 1;
 	ret = ath10k_bmi_write_memory(ar, clk_div_addr, &mem_val,
 				      sizeof(mem_val));
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* Configure the pll_control register */
 	addr = (RTC_WMAC_BASE_ADDRESS | WLAN_PLL_CONTROL_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val |= (SM(hw_clk->refdiv, WLAN_PLL_CONTROL_REFDIV) |
 		    SM(hw_clk->div, WLAN_PLL_CONTROL_DIV) |
 		    SM(1, WLAN_PLL_CONTROL_NOPWD));
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* busy wait (max 1s) the rtc_sync status register indicate ready */
 	wait_limit = 100000;
 	addr = (RTC_WMAC_BASE_ADDRESS | RTC_SYNC_STATUS_OFFSET);
 	do {
 		ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-		if (ret)
-			return -EINVAL;
+		if (ret != ZX_OK) {
+			return ZX_ERR_INVALID_ARGS;
+		}
 
 		if (!MS(reg_val, RTC_SYNC_STATUS_PLL_CHANGING))
 			break;
 
 		wait_limit--;
-		udelay(10);
+		zx_nanosleep(zx_deadline_after(ZX_USEC(10)));
 
 	} while (wait_limit > 0);
 
-	if (MS(reg_val, RTC_SYNC_STATUS_PLL_CHANGING))
-		return -EINVAL;
+	if (MS(reg_val, RTC_SYNC_STATUS_PLL_CHANGING)) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* Unset the pll_bypass in pll_control register */
 	addr = (RTC_WMAC_BASE_ADDRESS | WLAN_PLL_CONTROL_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val &= ~WLAN_PLL_CONTROL_BYPASS_MASK;
 	reg_val |= SM(0, WLAN_PLL_CONTROL_BYPASS);
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* busy wait (max 1s) the rtc_sync status register indicate ready */
 	wait_limit = 100000;
 	addr = (RTC_WMAC_BASE_ADDRESS | RTC_SYNC_STATUS_OFFSET);
 	do {
 		ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-		if (ret)
-			return -EINVAL;
+		if (ret != ZX_OK) {
+			return ZX_ERR_INVALID_ARGS;
+		}
 
 		if (!MS(reg_val, RTC_SYNC_STATUS_PLL_CHANGING))
 			break;
 
 		wait_limit--;
-		udelay(10);
+		zx_nanosleep(zx_deadline_after(ZX_USEC(10)));
 
 	} while (wait_limit > 0);
 
-	if (MS(reg_val, RTC_SYNC_STATUS_PLL_CHANGING))
-		return -EINVAL;
+	if (MS(reg_val, RTC_SYNC_STATUS_PLL_CHANGING)) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* Enable the hardware cpu clock register */
 	addr = (RTC_SOC_BASE_ADDRESS | SOC_CPU_CLOCK_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val &= ~SOC_CPU_CLOCK_STANDARD_MASK;
 	reg_val |= SM(1, SOC_CPU_CLOCK_STANDARD);
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* unset the nopwd from pll_control register */
 	addr = (RTC_WMAC_BASE_ADDRESS | WLAN_PLL_CONTROL_OFFSET);
 	ret = ath10k_bmi_read_soc_reg(ar, addr, &reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	reg_val &= ~WLAN_PLL_CONTROL_NOPWD_MASK;
 	ret = ath10k_bmi_write_soc_reg(ar, addr, reg_val);
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* enable the pll_init register */
 	mem_val = 1;
 	ret = ath10k_bmi_write_memory(ar, pll_init_addr, &mem_val,
 				      sizeof(mem_val));
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
 	/* set the target clock frequency to speed register */
 	ret = ath10k_bmi_write_memory(ar, speed_addr, &hw->target_cpu_freq,
 				      sizeof(hw->target_cpu_freq));
-	if (ret)
-		return -EINVAL;
+	if (ret != ZX_OK) {
+		return ZX_ERR_INVALID_ARGS;
+	}
 
-	return 0;
-#endif
+	return ZX_OK;
 }
 
 const struct ath10k_hw_ops qca988x_ops = {

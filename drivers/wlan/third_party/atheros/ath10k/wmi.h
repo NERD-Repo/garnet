@@ -57,6 +57,10 @@
  *
  */
 
+/* 73 */
+#define HTC_PROTOCOL_VERSION    0x0002
+#define WMI_PROTOCOL_VERSION    0x0002
+
 /* 95 */
 enum wmi_service {
 	WMI_SERVICE_BEACON_OFFLOAD = 0,

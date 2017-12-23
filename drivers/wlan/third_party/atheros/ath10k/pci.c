@@ -1811,11 +1811,161 @@ void ath10k_pci_hif_power_down(struct ath10k *ar)
          */
 }
 
+/* 2611 */
+static bool ath10k_pci_validate_cal(void *data, size_t size)
+{
+        uint16_t *cal_words = data;
+        uint16_t checksum = 0;
+        size_t i;
+
+        if (size % 2 != 0) {
+                return false;
+	}
+
+        for (i = 0; i < size / 2; i++) {
+                checksum ^= cal_words[i];
+	}
+
+        return checksum == 0xffff;
+}
+
+/* 2626 */
+static void ath10k_pci_enable_eeprom(struct ath10k *ar)
+{
+        /* Enable SI clock */
+        ath10k_pci_soc_write32(ar, CLOCK_CONTROL_OFFSET, 0x0);
+
+        /* Configure GPIOs for I2C operation */
+        ath10k_pci_write32(ar,
+                           GPIO_BASE_ADDRESS + GPIO_PIN0_OFFSET +
+                           4 * QCA9887_1_0_I2C_SDA_GPIO_PIN,
+                           SM(QCA9887_1_0_I2C_SDA_PIN_CONFIG,
+                              GPIO_PIN0_CONFIG) |
+                           SM(1, GPIO_PIN0_PAD_PULL));
+
+        ath10k_pci_write32(ar,
+                           GPIO_BASE_ADDRESS + GPIO_PIN0_OFFSET +
+                           4 * QCA9887_1_0_SI_CLK_GPIO_PIN,
+                           SM(QCA9887_1_0_SI_CLK_PIN_CONFIG, GPIO_PIN0_CONFIG) |
+                           SM(1, GPIO_PIN0_PAD_PULL));
+
+        ath10k_pci_write32(ar,
+                           GPIO_BASE_ADDRESS +
+                           QCA9887_1_0_GPIO_ENABLE_W1TS_LOW_ADDRESS,
+                           1u << QCA9887_1_0_SI_CLK_GPIO_PIN);
+
+        /* In Swift ASIC - EEPROM clock will be (110MHz/512) = 214KHz */
+        ath10k_pci_write32(ar,
+                           SI_BASE_ADDRESS + SI_CONFIG_OFFSET,
+                           SM(1, SI_CONFIG_ERR_INT) |
+                           SM(1, SI_CONFIG_BIDIR_OD_DATA) |
+                           SM(1, SI_CONFIG_I2C) |
+                           SM(1, SI_CONFIG_POS_SAMPLE) |
+                           SM(1, SI_CONFIG_INACTIVE_DATA) |
+                           SM(1, SI_CONFIG_INACTIVE_CLK) |
+                           SM(8, SI_CONFIG_DIVIDER));
+}
+
+/* 2662 */
+static zx_status_t ath10k_pci_read_eeprom(struct ath10k *ar, uint16_t addr, uint8_t *out)
+{
+        uint32_t reg;
+        int wait_limit;
+
+        /* set device select byte and for the read operation */
+        reg = QCA9887_EEPROM_SELECT_READ |
+              SM(addr, QCA9887_EEPROM_ADDR_LO) |
+              SM(addr >> 8, QCA9887_EEPROM_ADDR_HI);
+        ath10k_pci_write32(ar, SI_BASE_ADDRESS + SI_TX_DATA0_OFFSET, reg);
+
+        /* write transmit data, transfer length, and START bit */
+        ath10k_pci_write32(ar, SI_BASE_ADDRESS + SI_CS_OFFSET,
+                           SM(1, SI_CS_START) | SM(1, SI_CS_RX_CNT) |
+                           SM(4, SI_CS_TX_CNT));
+
+        /* wait max 1 sec */
+        wait_limit = 100000;
+
+        /* wait for SI_CS_DONE_INT */
+        do {
+                reg = ath10k_pci_read32(ar, SI_BASE_ADDRESS + SI_CS_OFFSET);
+                if (MS(reg, SI_CS_DONE_INT))
+                        break;
+
+                wait_limit--;
+		zx_nanosleep(zx_deadline_after(ZX_USEC(10)));
+        } while (wait_limit > 0);
+
+        if (!MS(reg, SI_CS_DONE_INT)) {
+                ath10k_err("timeout while reading device EEPROM at %04x\n",
+                           addr);
+                return ZX_ERR_TIMED_OUT;
+        }
+
+        /* clear SI_CS_DONE_INT */
+        ath10k_pci_write32(ar, SI_BASE_ADDRESS + SI_CS_OFFSET, reg);
+
+        if (MS(reg, SI_CS_DONE_ERR)) {
+                ath10k_err("failed to read device EEPROM at %04x\n", addr);
+                return ZX_ERR_IO;
+        }
+
+        /* extract receive data */
+        reg = ath10k_pci_read32(ar, SI_BASE_ADDRESS + SI_RX_DATA0_OFFSET);
+        *out = reg;
+
+        return ZX_OK;
+}
+
+/* 2712 */
+static zx_status_t ath10k_pci_hif_fetch_cal_eeprom(struct ath10k *ar, void **data,
+	                                           size_t *data_len)
+{
+        uint8_t *caldata = NULL;
+        size_t calsize, i;
+        zx_status_t ret;
+
+        if (!QCA_REV_9887(ar)) {
+                return ZX_ERR_NOT_SUPPORTED;
+	}
+
+        calsize = ar->hw_params.cal_data_len;
+        caldata = malloc(calsize);
+        if (!caldata) {
+                return ZX_ERR_NO_MEMORY;
+	}
+
+        ath10k_pci_enable_eeprom(ar);
+
+        for (i = 0; i < calsize; i++) {
+                ret = ath10k_pci_read_eeprom(ar, i, &caldata[i]);
+                if (ret != ZX_OK) {
+                        goto err_free;
+		}
+        }
+
+        if (!ath10k_pci_validate_cal(caldata, calsize))
+                goto err_free;
+
+        *data = caldata;
+        *data_len = calsize;
+
+        return ZX_OK;
+
+err_free:
+        free(caldata);
+
+        return ZX_ERR_INVALID_ARGS;
+}
+
 /* 2749 */
 static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
         .exchange_bmi_msg       = ath10k_pci_hif_exchange_bmi_msg,
         .power_up               = ath10k_pci_hif_power_up,
         .power_down             = ath10k_pci_hif_power_down,
+
+	/* 2768 */
+	.fetch_cal_eeprom	= ath10k_pci_hif_fetch_cal_eeprom,
 };
 
 /* 2874 */

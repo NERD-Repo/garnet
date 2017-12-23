@@ -17,7 +17,7 @@
 #define SPINLOCK_ASSERT_HELD(lock) 								\
 	do {											\
 		int res = pthread_spin_trylock(lock);						\
-		ZX_DEBUG_ASSERT(res != 0);							\
+		ZX_ASSERT(res != 0);								\
 		if (res == 0) {									\
 			printf("ath10k: spinlock not held at %s:%d\n", __FILE__, __LINE__);	\
 			pthread_spin_unlock(lock);						\
@@ -51,6 +51,9 @@
 	} while (0)
 
 #define ioread32(addr) (*(volatile uint32_t*)(uintptr_t)(addr))
+
+#define lockdep_assert_held(mtx)	\
+	ZX_ASSERT(mtx_trylock(mtx) != thrd_success)
 
 #define mdelay(msecs) 										\
 	do {											\

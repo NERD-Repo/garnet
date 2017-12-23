@@ -553,7 +553,7 @@ struct ath10k;
 struct ath10k_hw_ops {
 	int (*rx_desc_get_l3_pad_bytes)(struct htt_rx_desc *rxd);
 	void (*set_coverage_class)(struct ath10k *ar, int16_t value);
-	int (*enable_pll_clk)(struct ath10k *ar);
+	zx_status_t (*enable_pll_clk)(struct ath10k *ar);
 };
 
 extern const struct ath10k_hw_ops qca988x_ops;

@@ -196,6 +196,9 @@ struct bmi_target_info {
 #define BMI_CE_NUM_TO_TARG 0
 #define BMI_CE_NUM_TO_HOST 1
 
+/* 199 */
+void ath10k_bmi_start(struct ath10k *ar);
+
 /* 201 */
 zx_status_t ath10k_bmi_get_target_info(struct ath10k *ar,
                                        struct bmi_target_info *target_info);
@@ -239,4 +242,6 @@ zx_status_t ath10k_bmi_lz_stream_start(struct ath10k *ar, uint32_t address);
 zx_status_t ath10k_bmi_lz_data(struct ath10k *ar, const void *buffer, uint32_t length);
 zx_status_t ath10k_bmi_fast_download(struct ath10k *ar, uint32_t address,
 	                             const void *buffer, uint32_t length);
+zx_status_t ath10k_bmi_read_soc_reg(struct ath10k *ar, uint32_t address, uint32_t *reg_val);
+zx_status_t ath10k_bmi_write_soc_reg(struct ath10k *ar, uint32_t address, uint32_t reg_val);
 #endif /* _BMI_H_ */

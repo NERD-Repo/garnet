@@ -23,6 +23,22 @@
 #include "htc.h"
 #include "hw.h"
 
+/* 24 */
+void ath10k_bmi_start(struct ath10k *ar)
+{
+        int ret;
+
+        ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi start\n");
+
+        ar->bmi.done_sent = false;
+
+        /* Enable hardware clock to speed up firmware download */
+        if (ar->hw_params.hw_ops->enable_pll_clk) {
+                ret = ar->hw_params.hw_ops->enable_pll_clk(ar);
+                ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi enable pll ret %d\n", ret);
+        }
+}
+
 /* 64 */
 zx_status_t ath10k_bmi_get_target_info(struct ath10k *ar,
 				       struct bmi_target_info *target_info)
@@ -61,6 +77,7 @@ zx_status_t ath10k_bmi_get_target_info(struct ath10k *ar,
         return ZX_OK;
 }
 
+/* 171 */
 zx_status_t ath10k_bmi_read_memory(struct ath10k *ar, uint32_t address,
 		 		   void *buffer, uint32_t length)
 {
@@ -102,6 +119,72 @@ zx_status_t ath10k_bmi_read_memory(struct ath10k *ar, uint32_t address,
         return ZX_OK;
 }
 
+/* 212 */
+zx_status_t ath10k_bmi_write_soc_reg(struct ath10k *ar, uint32_t address, uint32_t reg_val)
+{
+        struct bmi_cmd cmd;
+        uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.write_soc_reg);
+        zx_status_t ret;
+
+        ath10k_dbg(ar, ATH10K_DBG_BMI,
+                   "bmi write soc register 0x%08x val 0x%08x\n",
+                   address, reg_val);
+
+        if (ar->bmi.done_sent) {
+                ath10k_warn("bmi write soc register command in progress\n");
+                return ZX_ERR_BAD_STATE;
+        }
+
+        cmd.id = BMI_WRITE_SOC_REGISTER;
+        cmd.write_soc_reg.addr = address;
+        cmd.write_soc_reg.value = reg_val;
+
+        ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
+        if (ret != ZX_OK) {
+                ath10k_warn("Unable to write soc register to device: %s\n",
+                            zx_status_get_string(ret));
+                return ret;
+        }
+
+        return ZX_OK;
+}
+
+/* 241 */
+int ath10k_bmi_read_soc_reg(struct ath10k *ar, uint32_t address, uint32_t *reg_val)
+{
+        struct bmi_cmd cmd;
+        union bmi_resp resp;
+        uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.read_soc_reg);
+        uint32_t resplen = sizeof(resp.read_soc_reg);
+        zx_status_t ret;
+
+        ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi read soc register 0x%08x\n",
+                   address);
+
+        if (ar->bmi.done_sent) {
+                ath10k_warn("bmi read soc register command in progress\n");
+                return ZX_ERR_BAD_STATE;
+        }
+
+        cmd.id = BMI_READ_SOC_REGISTER;
+        cmd.read_soc_reg.addr = address;
+
+        ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
+        if (ret) {
+                ath10k_warn("Unable to read soc register from device: %s\n",
+                            zx_status_get_string(ret));
+                return ret;
+        }
+
+        *reg_val = resp.read_soc_reg.value;
+
+        ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi read soc register value 0x%08x\n",
+                   *reg_val);
+
+        return ZX_OK;
+}
+
+/* 275 */
 zx_status_t ath10k_bmi_write_memory(struct ath10k *ar, uint32_t address,
 				    const void *buffer, uint32_t length)
 {

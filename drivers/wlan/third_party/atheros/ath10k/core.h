@@ -369,6 +369,11 @@ struct ath10k {
         /* contains the firmware images used with ATH10K_FIRMWARE_MODE_NORMAL */
         struct ath10k_fw_components normal_mode_fw;
 
+        /* READ-ONLY images of the running firmware, which can be either
+         * normal or UTF. Do not modify, release etc!
+         */
+        const struct ath10k_fw_components *running_fw;
+
 	/* 814 */
 	struct ath10k_firmware pre_cal_file;
 	struct ath10k_firmware cal_file;

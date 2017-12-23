@@ -1146,7 +1146,7 @@ void ath10k_ce_free_pipe(struct ath10k *ar, int ce_id)
 				   CE_DESC_RING_ALIGN),
 				  ce_state->src_ring->base_addr_owner_space,
 				  ce_state->src_ring->base_addr_ce_space);
-		kfree(ce_state->src_ring);
+		free(ce_state->src_ring);
 	}
 
 	if (ce_state->dest_ring) {
@@ -1156,7 +1156,7 @@ void ath10k_ce_free_pipe(struct ath10k *ar, int ce_id)
 				   CE_DESC_RING_ALIGN),
 				  ce_state->dest_ring->base_addr_owner_space,
 				  ce_state->dest_ring->base_addr_ce_space);
-		kfree(ce_state->dest_ring);
+		free(ce_state->dest_ring);
 	}
 #endif
 

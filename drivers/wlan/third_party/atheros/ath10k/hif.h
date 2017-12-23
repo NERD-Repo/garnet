@@ -41,6 +41,10 @@ struct ath10k_hif_ops {
          * before this if start() was called earlier
          */
         void (*power_down)(struct ath10k *ar);
+
+	/* 93 */
+        zx_status_t (*fetch_cal_eeprom)(struct ath10k *ar, void **data,
+	                                size_t *data_len);
 };
 
 /* 120 */
@@ -62,6 +66,17 @@ static inline zx_status_t ath10k_hif_power_up(struct ath10k *ar)
 static inline void ath10k_hif_power_down(struct ath10k *ar)
 {
         ar->hif.ops->power_down(ar);
+}
+
+/* 211 */
+static inline zx_status_t ath10k_hif_fetch_cal_eeprom(struct ath10k *ar,
+	                                              void **data,
+	                                              size_t *data_len)
+{
+        if (!ar->hif.ops->fetch_cal_eeprom)
+                return ZX_ERR_NOT_SUPPORTED;
+
+        return ar->hif.ops->fetch_cal_eeprom(ar, data, data_len);
 }
 
 #endif /* _HIF_H_ */
