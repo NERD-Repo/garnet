@@ -153,7 +153,7 @@ struct bmi_cmd {
                 } nvram_process;
                 uint8_t payload[BMI_MAX_CMDBUF_SIZE];
         };
-} __attribute__((packed));
+} __packed;
 
 union bmi_resp {
         struct {
@@ -183,7 +183,7 @@ union bmi_resp {
                 uint32_t result;
         } nvram_process;
         uint8_t payload[BMI_MAX_CMDBUF_SIZE];
-} __attribute__((packed));
+} __packed;
 
 struct bmi_target_info {
         uint32_t version;

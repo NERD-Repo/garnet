@@ -20,7 +20,6 @@
 
 #include "htc.h"
 #include "hw.h"
-#include "hw.h"
 
 /* 1586 */
 struct ath10k_htt {

@@ -45,6 +45,9 @@
 		cond;						\
 	})
 
+#define ilog2(val)	\
+	(((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
+
 #define iowrite32(value, addr) 							\
 	do {									\
 		(*(volatile uint32_t*)(uintptr_t)(addr)) = (value);		\

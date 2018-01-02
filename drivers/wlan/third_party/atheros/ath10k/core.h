@@ -23,15 +23,18 @@
 #include <threads.h>
 #include <pthread.h>
 
+#include <sync/completion.h>
 #include <ddk/device.h>
 
 #include "linuxisms.h"
 #include "htt.h"
+#include "htc.h"
 #include "hw.h"
 #include "targaddrs.h"
 #include "wmi.h"
 #include "../ath.h"
 #include "wow.h"
+#include "swap.h"
 
 /* 41 */
 #define MS(_v, _f) (((_v) & _f##_MASK) >> _f##_LSB)
@@ -355,12 +358,16 @@ struct ath10k {
                 const struct ath10k_hif_ops *ops;
         } hif;
 
+	/* 794 */
+	completion_t target_suspend;
+
 	/* 796 */
         const struct ath10k_hw_regs *regs;
         const struct ath10k_hw_ce_regs *hw_ce_regs;
         const struct ath10k_hw_values *hw_values;
 	struct ath10k_bmi bmi;
 	struct ath10k_wmi wmi;
+	struct ath10k_htc htc;
 	struct ath10k_htt htt;
 
 	/* 804 */

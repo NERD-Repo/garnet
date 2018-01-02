@@ -34,6 +34,7 @@
 
 /* 37 */
 static unsigned int ath10k_cryptmode_param;
+static bool uart_print;
 static bool skip_otp;
 static bool rawmode;
 
@@ -345,6 +346,30 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.vht160_mcs_tx_highest = 0,
 	},
 };
+
+/* 417 */
+static void ath10k_send_suspend_complete(struct ath10k *ar)
+{
+        ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot suspend complete\n");
+
+        completion_signal(&ar->target_suspend);
+}
+
+/* 424 */
+static void ath10k_init_sdio(struct ath10k *ar)
+{
+        uint32_t param = 0;
+
+        ath10k_bmi_write32(ar, hi_mbox_io_block_sz, 256);
+        ath10k_bmi_write32(ar, hi_mbox_isr_yield_limit, 99);
+        ath10k_bmi_read32(ar, hi_acs_flags, &param);
+
+        param |= (HI_ACS_FLAGS_SDIO_SWAP_MAILBOX_SET |
+                  HI_ACS_FLAGS_SDIO_REDUCE_TX_COMPL_SET |
+                  HI_ACS_FLAGS_ALT_DATA_CREDIT_SIZE);
+
+        ath10k_bmi_write32(ar, hi_acs_flags, param);
+}
 
 /* 439 */
 static zx_status_t ath10k_init_configure_target(struct ath10k *ar)
@@ -726,11 +751,44 @@ static zx_status_t ath10k_download_and_run_otp(struct ath10k *ar)
 	if (!(skip_otp || (ar->running_fw->fw_file.fw_features &
 			   (1ULL << ATH10K_FW_FEATURE_IGNORE_OTP_RESULT))) && 
 	    result != ZX_OK) {
-		ath10k_err("otp calibration failed: %d", result);
+		ath10k_err("otp calibration failed: %s", zx_status_get_string(result));
 		return ZX_ERR_INVALID_ARGS;
 	}
 
 	return ZX_OK;
+}
+
+/* 908 */
+static zx_status_t ath10k_download_fw(struct ath10k *ar)
+{
+        uint32_t address, data_len;
+        const void *data;
+        zx_status_t ret;
+
+        address = ar->hw_params.patch_load_addr;
+
+        data = ar->running_fw->fw_file.firmware_data;
+        data_len = ar->running_fw->fw_file.firmware_len;
+
+        ret = ath10k_swap_code_seg_configure(ar, &ar->running_fw->fw_file);
+        if (ret != ZX_OK) {
+                ath10k_err("failed to configure fw code swap: %s\n",
+                           zx_status_get_string(ret));
+                return ret;
+        }
+
+        ath10k_dbg(ar, ATH10K_DBG_BOOT,
+                   "boot uploading firmware image %pK len %d\n",
+                   data, data_len);
+
+        ret = ath10k_bmi_fast_download(ar, address, data, data_len);
+        if (ret != ZX_OK) {
+                ath10k_err("failed to download firmware: %s\n",
+                           zx_status_get_string(ret));
+                return ret;
+        }
+
+        return ret;
 }
 
 /* Fuchsia */
@@ -759,8 +817,7 @@ static void ath10k_core_free_firmware_files(struct ath10k *ar)
         ath10k_release_firmware(&ar->cal_file);
         ath10k_release_firmware(&ar->pre_cal_file);
 
-//	TODO
-//	ath10k_swap_code_seg_release(ar, &ar->normal_mode_fw.fw_file);
+	ath10k_swap_code_seg_release(ar, &ar->normal_mode_fw.fw_file);
 
         ar->normal_mode_fw.fw_file.otp_data = NULL;
         ar->normal_mode_fw.fw_file.otp_len = 0;
@@ -1151,7 +1208,7 @@ zx_status_t ath10k_core_fetch_firmware_api_n(struct ath10k *ar, const char *name
 					ath10k_dbg(ar, ATH10K_DBG_BOOT,
 						   "Enabling feature bit: %i\n",
 						   i);
-					fw_file->fw_features |= (1 << i);
+					fw_file->fw_features |= (1ULL << i);
 				}
 			}
 
@@ -1387,6 +1444,48 @@ done:
 	return ZX_OK;
 }
 
+/* 1617 */
+static zx_status_t ath10k_init_uart(struct ath10k *ar)
+{
+        zx_status_t ret;
+
+        /*
+         * Explicitly setting UART prints to zero as target turns it on
+         * based on scratch registers.
+         */
+        ret = ath10k_bmi_write32(ar, hi_serial_enable, 0);
+        if (ret != ZX_OK) {
+                ath10k_warn("could not disable UART prints (%s)\n", zx_status_get_string(ret));
+                return ret;
+        }
+
+        if (!uart_print) {
+                return ZX_OK;
+	}
+
+        ret = ath10k_bmi_write32(ar, hi_dbg_uart_txpin, ar->hw_params.uart_pin);
+        if (ret != ZX_OK) {
+                ath10k_warn("could not enable UART prints (%s)\n", zx_status_get_string(ret));
+                return ret;
+        }
+
+        ret = ath10k_bmi_write32(ar, hi_serial_enable, 1);
+        if (ret != ZX_OK) {
+                ath10k_warn("could not enable UART prints (%s)\n", zx_status_get_string(ret));
+                return ret;
+        }
+
+        /* Set the UART baud rate to 19200. */
+        ret = ath10k_bmi_write32(ar, hi_desired_baud_rate, 19200);
+        if (ret != ZX_OK) {
+                ath10k_warn("could not set the baud rate (%s)\n", zx_status_get_string(ret));
+                return ret;
+        }
+
+        ath10k_info("UART prints enabled\n");
+        return ZX_OK;
+}
+
 /* 1657 */
 static zx_status_t ath10k_init_hw_params(struct ath10k *ar)
 {
@@ -1603,19 +1702,18 @@ zx_status_t ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 		goto err;
 	}
 
-#if 0
 	/* Some of of qca988x solutions are having global reset issue
 	 * during target initialization. Bypassing PLL setting before
 	 * downloading firmware and letting the SoC run on REF_CLK is
 	 * fixing the problem. Corresponding firmware change is also needed
 	 * to set the clock source once the target is initialized.
 	 */
-	if (test_bit(ATH10K_FW_FEATURE_SUPPORTS_SKIP_CLOCK_INIT,
-		     ar->running_fw->fw_file.fw_features)) {
+	if (ar->running_fw->fw_file.fw_features &
+	    (1ULL << ATH10K_FW_FEATURE_SUPPORTS_SKIP_CLOCK_INIT)) {
 		status = ath10k_bmi_write32(ar, hi_skip_clock_init, 1);
 		if (status != ZX_OK) {
-			ath10k_err("could not write to skip_clock_init: %d\n",
-				   status);
+			ath10k_err("could not write to skip_clock_init: %s\n",
+				   zx_status_get_string(status));
 			goto err;
 		}
 	}
@@ -1636,6 +1734,7 @@ zx_status_t ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 	ar->htc.htc_ops.target_send_suspend_complete =
 		ath10k_send_suspend_complete;
 
+#if 0
 	status = ath10k_htc_init(ar);
 	if (status != ZX_OK) {
 		ath10k_err("could not init HTC (%d)\n", status);
@@ -1911,14 +2010,12 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k *ar)
                 goto err_free_firmware_files;
         }
 
-#if 0
         ret = ath10k_swap_code_seg_init(ar, &ar->normal_mode_fw.fw_file);
         if (ret != ZX_OK) {
                 ath10k_err("failed to initialize code swap segment: %d\n",
                            ret);
                 goto err_free_firmware_files;
         }
-#endif
 
         mtx_lock(&ar->conf_mutex);
 
@@ -1928,6 +2025,8 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k *ar)
                 ath10k_err("could not init core (%d)\n", ret);
                 goto err_unlock;
         }
+
+printf("***** Success!\n");
 
 //	TODO
 //      ath10k_debug_print_boot_info(ar);
@@ -2075,6 +2174,8 @@ zx_status_t ath10k_core_create(struct ath10k **ar_ptr, size_t priv_size,
 		ret = ZX_ERR_NOT_SUPPORTED;
 		goto err_free_mac;
 	}
+
+	ar->target_suspend = COMPLETION_INIT;
 
 	mtx_init(&ar->conf_mutex, mtx_plain);
 	pthread_spin_init(&ar->data_lock, PTHREAD_PROCESS_PRIVATE);

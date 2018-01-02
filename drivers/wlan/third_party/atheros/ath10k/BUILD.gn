@@ -26,6 +26,7 @@ driver_module("ath10k_driver") {
     "hw.c",
     "mac.c",
     "pci.c",
+    "swap.c",
   ]
 
   deps = [
