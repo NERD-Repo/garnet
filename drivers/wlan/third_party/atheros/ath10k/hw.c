@@ -399,7 +399,7 @@ static void ath10k_hw_qca988x_set_coverage_class(struct ath10k *ar,
 						 int16_t value)
 {
 ZX_ASSERT(0);
-#if 0
+#if 0 // TODO
 	uint32_t slottime_reg;
 	uint32_t slottime;
 	uint32_t timeout_reg;
@@ -527,7 +527,7 @@ store_regs:
 
 unlock:
 	mutex_unlock(&ar->conf_mutex);
-#endif
+#endif // TODO
 }
 
 /**
@@ -752,10 +752,10 @@ static int ath10k_qca99x0_rx_desc_get_l3_pad_bytes(struct htt_rx_desc *rxd)
 {
 	ZX_ASSERT(0);
 	return 0;
-#if 0
+#if 0 // TODO
 	return MS(rxd->msdu_end.qca99x0.info1,
 		  RX_MSDU_END_INFO1_L3_HDR_PAD);
-#endif
+#endif // TODO
 }
 
 const struct ath10k_hw_ops qca99x0_ops = {

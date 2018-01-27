@@ -32,13 +32,13 @@
 // #include "wmi-ops.h"
 #include "linuxisms.h"
 
-/* 37 */
+// Linux module parameters
+unsigned int ath10k_debug_mask;
 static unsigned int ath10k_cryptmode_param;
 static bool uart_print;
 static bool skip_otp;
 static bool rawmode;
 
-/* 54 */
 static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 	{
 		.id = QCA988X_HW_2_0_VERSION,
@@ -347,7 +347,63 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 	},
 };
 
-/* 417 */
+#if 0 // TODO
+static const char *const ath10k_core_fw_feature_str[] = {
+        [ATH10K_FW_FEATURE_EXT_WMI_MGMT_RX] = "wmi-mgmt-rx",
+        [ATH10K_FW_FEATURE_WMI_10X] = "wmi-10.x",
+        [ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX] = "has-wmi-mgmt-tx",
+        [ATH10K_FW_FEATURE_NO_P2P] = "no-p2p",
+        [ATH10K_FW_FEATURE_WMI_10_2] = "wmi-10.2",
+        [ATH10K_FW_FEATURE_MULTI_VIF_PS_SUPPORT] = "multi-vif-ps",
+        [ATH10K_FW_FEATURE_WOWLAN_SUPPORT] = "wowlan",
+        [ATH10K_FW_FEATURE_IGNORE_OTP_RESULT] = "ignore-otp",
+        [ATH10K_FW_FEATURE_NO_NWIFI_DECAP_4ADDR_PADDING] = "no-4addr-pad",
+        [ATH10K_FW_FEATURE_SUPPORTS_SKIP_CLOCK_INIT] = "skip-clock-init",
+        [ATH10K_FW_FEATURE_RAW_MODE_SUPPORT] = "raw-mode",
+        [ATH10K_FW_FEATURE_SUPPORTS_ADAPTIVE_CCA] = "adaptive-cca",
+        [ATH10K_FW_FEATURE_MFP_SUPPORT] = "mfp",
+        [ATH10K_FW_FEATURE_PEER_FLOW_CONTROL] = "peer-flow-ctrl",
+        [ATH10K_FW_FEATURE_BTCOEX_PARAM] = "btcoex-param",
+        [ATH10K_FW_FEATURE_SKIP_NULL_FUNC_WAR] = "skip-null-func-war",
+        [ATH10K_FW_FEATURE_ALLOWS_MESH_BCAST] = "allows-mesh-bcast",
+};
+
+static unsigned int ath10k_core_get_fw_feature_str(char *buf,
+                                                   size_t buf_len,
+                                                   enum ath10k_fw_features feat)
+{
+        /* make sure that ath10k_core_fw_feature_str[] gets updated */
+        BUILD_BUG_ON(ARRAY_SIZE(ath10k_core_fw_feature_str) !=
+                     ATH10K_FW_FEATURE_COUNT);
+
+        if (feat >= ARRAY_SIZE(ath10k_core_fw_feature_str) ||
+            WARN_ON(!ath10k_core_fw_feature_str[feat])) {
+                return scnprintf(buf, buf_len, "bit%d", feat);
+        }
+
+        return scnprintf(buf, buf_len, "%s", ath10k_core_fw_feature_str[feat]);
+}
+
+void ath10k_core_get_fw_features_str(struct ath10k *ar,
+                                     char *buf,
+                                     size_t buf_len)
+{
+        size_t len = 0;
+        int i;
+
+        for (i = 0; i < ATH10K_FW_FEATURE_COUNT; i++) {
+                if (test_bit(i, ar->normal_mode_fw.fw_file.fw_features)) {
+                        if (len > 0)
+                                len += scnprintf(buf + len, buf_len - len, ",");
+
+                        len += ath10k_core_get_fw_feature_str(buf + len,
+                                                              buf_len - len,
+                                                              i);
+                }
+        }
+}
+#endif // TODO
+
 static void ath10k_send_suspend_complete(struct ath10k *ar)
 {
         ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot suspend complete\n");
@@ -355,7 +411,6 @@ static void ath10k_send_suspend_complete(struct ath10k *ar)
         completion_signal(&ar->target_suspend);
 }
 
-/* 424 */
 static void ath10k_init_sdio(struct ath10k *ar)
 {
         uint32_t param = 0;
@@ -371,7 +426,6 @@ static void ath10k_init_sdio(struct ath10k *ar)
         ath10k_bmi_write32(ar, hi_acs_flags, param);
 }
 
-/* 439 */
 static zx_status_t ath10k_init_configure_target(struct ath10k *ar)
 {
 	uint32_t param_host;
@@ -440,7 +494,6 @@ static zx_status_t ath10k_init_configure_target(struct ath10k *ar)
 	return ZX_OK;
 }
 
-/* 507 */
 static zx_status_t ath10k_fetch_fw_file(struct ath10k *ar,
                                         const char *dir,
                                         const char *file,
@@ -493,7 +546,6 @@ close_vmo:
 	return ret;
 }
 
-/* 532 */
 static zx_status_t ath10k_push_board_ext_data(struct ath10k *ar, const void *data,
 	                                      size_t data_len)
 {
@@ -542,7 +594,6 @@ static zx_status_t ath10k_push_board_ext_data(struct ath10k *ar, const void *dat
         return ZX_OK;
 }
 
-/* 579 */
 static zx_status_t ath10k_download_board_data(struct ath10k *ar, const void *data,
 	                                      size_t data_len)
 {
@@ -584,7 +635,6 @@ exit:
         return ret;
 }
 
-/* 646 */
 static zx_status_t ath10k_download_cal_file(struct ath10k *ar,
 					    const struct ath10k_firmware *file)
 {
@@ -605,7 +655,63 @@ static zx_status_t ath10k_download_cal_file(struct ath10k *ar,
         return ZX_OK;
 }
 
-/* 693 */
+#if 0 // TODO
+static int ath10k_download_cal_dt(struct ath10k *ar, const char *dt_name)
+{
+        struct device_node *node;
+        int data_len;
+        void *data;
+        int ret;
+
+        node = ar->dev->of_node;
+        if (!node)
+                /* Device Tree is optional, don't print any warnings if
+                 * there's no node for ath10k.
+                 */
+                return -ENOENT;
+
+        if (!of_get_property(node, dt_name, &data_len)) {
+                /* The calibration data node is optional */
+                return -ENOENT;
+        }
+
+        if (data_len != ar->hw_params.cal_data_len) {
+                ath10k_warn(ar, "invalid calibration data length in DT: %d\n",
+                            data_len);
+                ret = -EMSGSIZE;
+                goto out;
+        }
+
+        data = kmalloc(data_len, GFP_KERNEL);
+        if (!data) {
+                ret = -ENOMEM;
+                goto out;
+        }
+
+        ret = of_property_read_u8_array(node, dt_name, data, data_len);
+        if (ret) {
+                ath10k_warn(ar, "failed to read calibration data from DT: %d\n",
+                            ret);
+                goto out_free;
+        }
+
+        ret = ath10k_download_board_data(ar, data, data_len);
+        if (ret) {
+                ath10k_warn(ar, "failed to download calibration data from Device Tree: %d\n",
+                            ret);
+                goto out_free;
+        }
+
+        ret = 0;
+
+out_free:
+        kfree(data);
+
+out:
+        return ret;
+}
+#endif // TODO
+
 static zx_status_t ath10k_download_cal_eeprom(struct ath10k *ar)
 {
         size_t data_len;
@@ -636,7 +742,6 @@ out_free:
         return ret;
 }
 
-/* 722 */
 static zx_status_t ath10k_core_get_board_id_from_otp(struct ath10k *ar)
 {
         uint32_t result, address;
@@ -698,7 +803,74 @@ static zx_status_t ath10k_core_get_board_id_from_otp(struct ath10k *ar)
         return ZX_OK;
 }
 
-/* 850 */
+#if 0 // TODO
+static void ath10k_core_check_bdfext(const struct dmi_header *hdr, void *data)
+{
+        struct ath10k *ar = data;
+        const char *bdf_ext;
+        const char *magic = ATH10K_SMBIOS_BDF_EXT_MAGIC;
+        u8 bdf_enabled;
+        int i;
+
+        if (hdr->type != ATH10K_SMBIOS_BDF_EXT_TYPE)
+                return;
+
+        if (hdr->length != ATH10K_SMBIOS_BDF_EXT_LENGTH) {
+                ath10k_dbg(ar, ATH10K_DBG_BOOT,
+                           "wrong smbios bdf ext type length (%d).\n",
+                           hdr->length);
+                return;
+        }
+
+        bdf_enabled = *((u8 *)hdr + ATH10K_SMBIOS_BDF_EXT_OFFSET);
+        if (!bdf_enabled) {
+                ath10k_dbg(ar, ATH10K_DBG_BOOT, "bdf variant name not found.\n");
+                return;
+        }
+
+        /* Only one string exists (per spec) */
+        bdf_ext = (char *)hdr + hdr->length;
+
+        if (memcmp(bdf_ext, magic, strlen(magic)) != 0) {
+                ath10k_dbg(ar, ATH10K_DBG_BOOT,
+                           "bdf variant magic does not match.\n");
+                return;
+        }
+
+        for (i = 0; i < strlen(bdf_ext); i++) {
+                if (!isascii(bdf_ext[i]) || !isprint(bdf_ext[i])) {
+                        ath10k_dbg(ar, ATH10K_DBG_BOOT,
+                                   "bdf variant name contains non ascii chars.\n");
+                        return;
+                }
+        }
+
+        /* Copy extension name without magic suffix */
+        if (strscpy(ar->id.bdf_ext, bdf_ext + strlen(magic),
+                    sizeof(ar->id.bdf_ext)) < 0) {
+                ath10k_dbg(ar, ATH10K_DBG_BOOT,
+                           "bdf variant string is longer than the buffer can accommodate (variant: %s)\n",
+                            bdf_ext);
+                return;
+        }
+
+        ath10k_dbg(ar, ATH10K_DBG_BOOT,
+                   "found and validated bdf variant smbios_type 0x%x bdf %s\n",
+                   ATH10K_SMBIOS_BDF_EXT_TYPE, bdf_ext);
+}
+
+static int ath10k_core_check_smbios(struct ath10k *ar)
+{
+        ar->id.bdf_ext[0] = '\0';
+        dmi_walk(ath10k_core_check_bdfext, ar);
+
+        if (ar->id.bdf_ext[0] == '\0')
+                return -ENODATA;
+
+        return 0;
+}
+#endif // TODO
+
 static zx_status_t ath10k_download_and_run_otp(struct ath10k *ar)
 {
 	uint32_t result, address = ar->hw_params.patch_load_addr;
@@ -758,7 +930,6 @@ static zx_status_t ath10k_download_and_run_otp(struct ath10k *ar)
 	return ZX_OK;
 }
 
-/* 908 */
 static zx_status_t ath10k_download_fw(struct ath10k *ar)
 {
         uint32_t address, data_len;
@@ -791,7 +962,6 @@ static zx_status_t ath10k_download_fw(struct ath10k *ar)
         return ret;
 }
 
-/* Fuchsia */
 static void ath10k_release_firmware(struct ath10k_firmware *fw)
 {
 	if (fw->vmo != ZX_HANDLE_INVALID) {
@@ -802,7 +972,6 @@ static void ath10k_release_firmware(struct ath10k_firmware *fw)
 	}
 }
 
-/* 940 */
 static void ath10k_core_free_board_files(struct ath10k *ar)
 {
         ath10k_release_firmware(&ar->normal_mode_fw.board);
@@ -810,7 +979,6 @@ static void ath10k_core_free_board_files(struct ath10k *ar)
         ar->normal_mode_fw.board_len = 0;
 }
 
-/* 950 */
 static void ath10k_core_free_firmware_files(struct ath10k *ar)
 {
         ath10k_release_firmware(&ar->normal_mode_fw.fw_file.firmware);
@@ -823,7 +991,6 @@ static void ath10k_core_free_firmware_files(struct ath10k *ar)
         ar->normal_mode_fw.fw_file.otp_len = 0;
 }
 
-/* 974 */
 static zx_status_t ath10k_fetch_cal_file(struct ath10k *ar)
 {
         char filename[100];
@@ -855,7 +1022,6 @@ success:
         return ZX_OK;
 }
 
-/* 1001 */
 static zx_status_t ath10k_core_fetch_board_data_api_1(struct ath10k *ar)
 {
 	zx_status_t ret;
@@ -877,7 +1043,6 @@ static zx_status_t ath10k_core_fetch_board_data_api_1(struct ath10k *ar)
         return ZX_OK;
 }
 
-/* 1020 */
 static zx_status_t ath10k_core_parse_bd_ie_board(struct ath10k *ar,
 						 const void *buf, size_t buf_len,
 						 const char *boardname)
@@ -959,7 +1124,6 @@ out:
 	return ret;
 }
 
-/* 1100 */
 static zx_status_t ath10k_core_fetch_board_data_api_n(struct ath10k *ar,
 						      const char *boardname,
 						      const char *filename)
@@ -1057,7 +1221,6 @@ err:
 	return ret;
 }
 
-/* 1215 */
 static zx_status_t ath10k_core_create_board_name(struct ath10k *ar, char *name,
 						 size_t name_len)
 {
@@ -1081,7 +1244,6 @@ out:
         return ZX_OK;
 }
 
-/* 1245 */
 static zx_status_t ath10k_core_fetch_board_file(struct ath10k *ar)
 {
         char boardname[100];
@@ -1112,7 +1274,6 @@ success:
         return ZX_OK;
 }
 
-/* 1275 */
 zx_status_t ath10k_core_fetch_firmware_api_n(struct ath10k *ar, const char *name,
 					     struct ath10k_fw_file *fw_file)
 {
@@ -1289,7 +1450,6 @@ err:
 	return ret;
 }
 
-/* 1452 */
 static void ath10k_core_get_fw_name(struct ath10k *ar, char *fw_name,
                                     size_t fw_name_len, int fw_api)
 {
@@ -1307,7 +1467,6 @@ static void ath10k_core_get_fw_name(struct ath10k *ar, char *fw_name,
         }
 }
 
-/* 1469 */
 static zx_status_t ath10k_core_fetch_firmware_files(struct ath10k *ar)
 {
         zx_status_t ret;
@@ -1343,7 +1502,6 @@ success:
         return ZX_OK;
 }
 
-/* 1503 */
 static zx_status_t ath10k_core_pre_cal_download(struct ath10k *ar)
 {
         zx_status_t ret;
@@ -1366,7 +1524,6 @@ success:
         return ZX_OK;
 }
 
-/* 1532 */
 static zx_status_t ath10k_core_pre_cal_config(struct ath10k *ar)
 {
         zx_status_t ret;
@@ -1396,7 +1553,6 @@ static zx_status_t ath10k_core_pre_cal_config(struct ath10k *ar)
         return ZX_OK;
 }
 
-/* 1561 */
 static zx_status_t ath10k_download_cal_data(struct ath10k *ar)
 {
 	zx_status_t ret;
@@ -1444,7 +1600,6 @@ done:
 	return ZX_OK;
 }
 
-/* 1617 */
 static zx_status_t ath10k_init_uart(struct ath10k *ar)
 {
         zx_status_t ret;
@@ -1486,7 +1641,6 @@ static zx_status_t ath10k_init_uart(struct ath10k *ar)
         return ZX_OK;
 }
 
-/* 1657 */
 static zx_status_t ath10k_init_hw_params(struct ath10k *ar)
 {
         const struct ath10k_hw_params *hw_params;
@@ -1514,7 +1668,87 @@ static zx_status_t ath10k_init_hw_params(struct ath10k *ar)
         return ZX_OK;
 }
 
-/* 1763 */
+#if 0 // TODO
+static void ath10k_core_restart(struct work_struct *work)
+{
+        struct ath10k *ar = container_of(work, struct ath10k, restart_work);
+        int ret;
+
+        set_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+
+        /* Place a barrier to make sure the compiler doesn't reorder
+         * CRASH_FLUSH and calling other functions.
+         */
+        barrier();
+
+        ieee80211_stop_queues(ar->hw);
+        ath10k_drain_tx(ar);
+        complete(&ar->scan.started);
+        complete(&ar->scan.completed);
+        complete(&ar->scan.on_channel);
+        complete(&ar->offchan_tx_completed);
+        complete(&ar->install_key_done);
+        complete(&ar->vdev_setup_done);
+        complete(&ar->thermal.wmi_sync);
+        complete(&ar->bss_survey_done);
+        wake_up(&ar->htt.empty_tx_wq);
+        wake_up(&ar->wmi.tx_credits_wq);
+        wake_up(&ar->peer_mapping_wq);
+
+        /* TODO: We can have one instance of cancelling coverage_class_work by
+         * moving it to ath10k_halt(), so that both stop() and restart() would
+         * call that but it takes conf_mutex() and if we call cancel_work_sync()
+         * with conf_mutex it will deadlock.
+         */
+        cancel_work_sync(&ar->set_coverage_class_work);
+
+        mutex_lock(&ar->conf_mutex);
+
+        switch (ar->state) {
+        case ATH10K_STATE_ON:
+                ar->state = ATH10K_STATE_RESTARTING;
+                ath10k_halt(ar);
+                ath10k_scan_finish(ar);
+                ieee80211_restart_hw(ar->hw);
+                break;
+        case ATH10K_STATE_OFF:
+                /* this can happen if driver is being unloaded
+                 * or if the crash happens during FW probing
+                 */
+                ath10k_warn(ar, "cannot restart a device that hasn't been started\n");
+                break;
+        case ATH10K_STATE_RESTARTING:
+                /* hw restart might be requested from multiple places */
+                break;
+        case ATH10K_STATE_RESTARTED:
+                ar->state = ATH10K_STATE_WEDGED;
+                /* fall through */
+        case ATH10K_STATE_WEDGED:
+                ath10k_warn(ar, "device is wedged, will not restart\n");
+                break;
+        case ATH10K_STATE_UTF:
+                ath10k_warn(ar, "firmware restart in UTF mode not supported\n");
+                break;
+        }
+
+        mutex_unlock(&ar->conf_mutex);
+
+        ret = ath10k_debug_fw_devcoredump(ar);
+        if (ret)
+                ath10k_warn(ar, "failed to send firmware crash dump via devcoredump: %d",
+                            ret);
+}
+
+static void ath10k_core_set_coverage_class_work(struct work_struct *work)
+{
+        struct ath10k *ar = container_of(work, struct ath10k,
+                                         set_coverage_class_work);
+
+        if (ar->hw_params.hw_ops->set_coverage_class)
+                ar->hw_params.hw_ops->set_coverage_class(ar, -1);
+}
+#endif // TODO
+
 static zx_status_t ath10k_core_init_firmware_features(struct ath10k *ar)
 {
 	struct ath10k_fw_file *fw_file = &ar->normal_mode_fw.fw_file;
@@ -1677,7 +1911,57 @@ static zx_status_t ath10k_core_init_firmware_features(struct ath10k *ar)
 	return ZX_OK;
 }
 
-/* 1977 */
+#if 0 // TODO
+static int ath10k_core_reset_rx_filter(struct ath10k *ar)
+{
+        int ret;
+        int vdev_id;
+        int vdev_type;
+        int vdev_subtype;
+        const u8 *vdev_addr;
+
+        vdev_id = 0;
+        vdev_type = WMI_VDEV_TYPE_STA;
+        vdev_subtype = ath10k_wmi_get_vdev_subtype(ar, WMI_VDEV_SUBTYPE_NONE);
+        vdev_addr = ar->mac_addr;
+
+        ret = ath10k_wmi_vdev_create(ar, vdev_id, vdev_type, vdev_subtype,
+                                     vdev_addr);
+        if (ret) {
+                ath10k_err(ar, "failed to create dummy vdev: %d\n", ret);
+                return ret;
+        }
+
+        ret = ath10k_wmi_vdev_delete(ar, vdev_id);
+        if (ret) {
+                ath10k_err(ar, "failed to delete dummy vdev: %d\n", ret);
+                return ret;
+        }
+
+        /* WMI and HTT may use separate HIF pipes and are not guaranteed to be
+         * serialized properly implicitly.
+         *
+         * Moreover (most) WMI commands have no explicit acknowledges. It is
+         * possible to infer it implicitly by poking firmware with echo
+         * command - getting a reply means all preceding comments have been
+         * (mostly) processed.
+         *
+         * In case of vdev create/delete this is sufficient.
+         *
+         * Without this it's possible to end up with a race when HTT Rx ring is
+         * started before vdev create/delete hack is complete allowing a short
+         * window of opportunity to receive (and Tx ACK) a bunch of frames.
+         */
+        ret = ath10k_wmi_barrier(ar);
+        if (ret) {
+                ath10k_err(ar, "failed to ping firmware: %d\n", ret);
+                return ret;
+        }
+
+        return 0;
+}
+#endif // TODO
+
 zx_status_t ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 			      const struct ath10k_fw_components *fw)
 {
@@ -1734,7 +2018,7 @@ zx_status_t ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 	ar->htc.htc_ops.target_send_suspend_complete =
 		ath10k_send_suspend_complete;
 
-#if 0
+#if 0 // TODO
 	status = ath10k_htc_init(ar);
 	if (status != ZX_OK) {
 		ath10k_err("could not init HTC (%d)\n", status);
@@ -1907,11 +2191,11 @@ zx_status_t ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode,
 	if (status != ZX_OK) {
 		goto err_hif_stop;
 	}
-#endif
+#endif // TODO
 
 	return ZX_OK;
 
-#if 0
+#if 0 // TODO
 err_hif_stop:
 	ath10k_hif_stop(ar);
 err_htt_rx_detach:
@@ -1920,12 +2204,52 @@ err_htt_tx_detach:
 	ath10k_htt_tx_free(&ar->htt);
 err_wmi_detach:
 	ath10k_wmi_detach(ar);
-#endif
+#endif // TODO
 err:
 	return status;
 }
 
-/* 2257 */
+#if 0 // TODO
+int ath10k_wait_for_suspend(struct ath10k *ar, u32 suspend_opt)
+{
+        int ret;
+        unsigned long time_left;
+
+        reinit_completion(&ar->target_suspend);
+
+        ret = ath10k_wmi_pdev_suspend_target(ar, suspend_opt);
+        if (ret) {
+                ath10k_warn(ar, "could not suspend target (%d)\n", ret);
+                return ret;
+        }
+
+        time_left = wait_for_completion_timeout(&ar->target_suspend, 1 * HZ);
+
+        if (!time_left) {
+                ath10k_warn(ar, "suspend timed out - target pause event never came\n");
+                return -ETIMEDOUT;
+        }
+
+        return 0;
+}
+
+void ath10k_core_stop(struct ath10k *ar)
+{
+        lockdep_assert_held(&ar->conf_mutex);
+        ath10k_debug_stop(ar);
+
+        /* try to suspend target */
+        if (ar->state != ATH10K_STATE_RESTARTING &&
+            ar->state != ATH10K_STATE_UTF)
+                ath10k_wait_for_suspend(ar, WMI_PDEV_SUSPEND_AND_DISABLE_INTR);
+
+        ath10k_hif_stop(ar);
+        ath10k_htt_tx_stop(&ar->htt);
+        ath10k_htt_rx_free(&ar->htt);
+        ath10k_wmi_detach(ar);
+}
+#endif // TODO
+
 /* mac80211 manages fw/hw initialization through start/stop hooks. However in
  * order to know what hw capabilities should be advertised to mac80211 it is
  * necessary to load the firmware (and tear it down immediately since start
@@ -1968,8 +2292,9 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k *ar)
                 goto err_power_down;
         }
 
-//	TODO
-//	ath10k_debug_print_hwfw_info(ar);
+#if 0 // TODO
+	ath10k_debug_print_hwfw_info(ar);
+#endif // TODO
 
         ret = ath10k_core_pre_cal_download(ar);
         if (ret != ZX_OK) {
@@ -1987,12 +2312,12 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k *ar)
                 goto err_free_firmware_files;
         }
 
-#if 0
+#if 0 // TODO
         ret = ath10k_core_check_smbios(ar);
         if (ret != ZX_OK) {
                 ath10k_dbg(ar, ATH10K_DBG_BOOT, "bdf variant name not set.\n");
 	}
-#endif
+#endif // TODO
 
         ret = ath10k_core_fetch_board_file(ar);
         if (ret != ZX_OK) {
@@ -2000,8 +2325,9 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k *ar)
                 goto err_free_firmware_files;
         }
 
-//	TODO
-//      ath10k_debug_print_board_info(ar);
+#if 0 // TODO
+        ath10k_debug_print_board_info(ar);
+#endif // TODO
 
         ret = ath10k_core_init_firmware_features(ar);
         if (ret != ZX_OK) {
@@ -2028,10 +2354,11 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k *ar)
 
 printf("***** Success!\n");
 
-//	TODO
-//      ath10k_debug_print_boot_info(ar);
+#if 0 // TODO
+        ath10k_debug_print_boot_info(ar);
 
-//        ath10k_core_stop(ar);
+        ath10k_core_stop(ar);
+#endif // TODO
 
         mtx_unlock(&ar->conf_mutex);
 
@@ -2050,7 +2377,6 @@ err_power_down:
         return ret;
 }
 
-/* 2376 */
 static int ath10k_core_register_work(void *thrd_data) {
 	struct ath10k *ar = thrd_data;
         int status;
@@ -2064,7 +2390,7 @@ static int ath10k_core_register_work(void *thrd_data) {
                 goto err;
         }
 
-#if 0
+#if 0 // TODO
         status = ath10k_mac_register(ar);
         if (status) {
                 ath10k_err("could not register to mac80211 (%d)\n", status);
@@ -2101,7 +2427,7 @@ err_unregister_mac:
         ath10k_mac_unregister(ar);
 err_release_fw:
         ath10k_core_free_firmware_files(ar);
-#endif
+#endif // TODO
 err:
         /* TODO: It's probably a good idea to release device from the driver
          * but calling device_release_driver() here will cause a deadlock.
@@ -2109,7 +2435,6 @@ err:
 	return 1;
 }
 
-/* 2433 */
 zx_status_t ath10k_core_register(struct ath10k *ar, uint32_t chip_id)
 {
         ar->chip_id = chip_id;
@@ -2120,7 +2445,36 @@ zx_status_t ath10k_core_register(struct ath10k *ar, uint32_t chip_id)
         return 0;
 }
 
-/* 2481 */
+#if 0 // TODO
+void ath10k_core_unregister(struct ath10k *ar)
+{
+        cancel_work_sync(&ar->register_work);
+
+        if (!test_bit(ATH10K_FLAG_CORE_REGISTERED, &ar->dev_flags))
+                return;
+
+        ath10k_thermal_unregister(ar);
+        /* Stop spectral before unregistering from mac80211 to remove the
+         * relayfs debugfs file cleanly. Otherwise the parent debugfs tree
+         * would be already be free'd recursively, leading to a double free.
+         */
+        ath10k_spectral_destroy(ar);
+
+        /* We must unregister from mac80211 before we stop HTC and HIF.
+         * Otherwise we will fail to submit commands to FW and mac80211 will be
+         * unhappy about callback failures.
+         */
+        ath10k_mac_unregister(ar);
+
+        ath10k_testmode_destroy(ar);
+
+        ath10k_core_free_firmware_files(ar);
+        ath10k_core_free_board_files(ar);
+
+        ath10k_debug_unregister(ar);
+}
+#endif // TODO
+
 zx_status_t ath10k_core_create(struct ath10k **ar_ptr, size_t priv_size,
 				  zx_device_t *dev, enum ath10k_bus bus,
 				  enum ath10k_hw_rev hw_rev,
@@ -2197,10 +2551,9 @@ err_free_mac:
 	return ret;
 }
 
-/* 2589 */
 void ath10k_core_destroy(struct ath10k *ar)
 {
-#if 0
+#if 0 // TODO
         flush_workqueue(ar->workqueue);
         destroy_workqueue(ar->workqueue);
 
@@ -2210,7 +2563,6 @@ void ath10k_core_destroy(struct ath10k *ar)
         ath10k_debug_destroy(ar);
         ath10k_htt_tx_destroy(&ar->htt);
         ath10k_wmi_free_host_mem(ar);
-#endif
+#endif // TODO
         ath10k_mac_destroy(ar);
 }
-

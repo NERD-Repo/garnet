@@ -71,14 +71,14 @@ ath10k_set_ring_byte(unsigned int offset,
 	return ((offset << addr_map->lsb) & addr_map->mask);
 }
 
-#if 0
+#if 0 // TODO
 static inline unsigned int
 ath10k_get_ring_byte(unsigned int offset,
 		     struct ath10k_hw_ce_regs_addr_map *addr_map)
 {
 	return ((offset & addr_map->mask) >> (addr_map->lsb));
 }
-#endif
+#endif // TODO
 
 static inline void ath10k_ce_dest_ring_write_index_set(struct ath10k *ar,
 						       uint32_t ce_ctrl_addr,
@@ -274,7 +274,7 @@ static inline void ath10k_ce_watermark_intr_disable(struct ath10k *ar,
 			   host_ie_addr & ~(wm_regs->wm_mask));
 }
 
-#if 0
+#if 0 // TODO
 static inline void ath10k_ce_error_intr_enable(struct ath10k *ar,
 					       uint32_t ce_ctrl_addr)
 {
@@ -285,7 +285,7 @@ static inline void ath10k_ce_error_intr_enable(struct ath10k *ar,
 	ath10k_pci_write32(ar, ce_ctrl_addr + ar->hw_ce_regs->misc_ie_addr,
 			   misc_ie_addr | misc_regs->err_mask);
 }
-#endif
+#endif // TODO
 
 static inline void ath10k_ce_error_intr_disable(struct ath10k *ar,
 						uint32_t ce_ctrl_addr)
@@ -960,7 +960,10 @@ ath10k_ce_alloc_src_ring(struct ath10k *ar, unsigned int ce_id,
 	 */
 	zx_status_t ret = io_buffer_init_aligned(&src_ring->iobuf,
 						 nentries * sizeof(struct ce_desc),
-// FIXME -- zircon does not support		 roundup_log2(CE_DESC_RING_ALIGN),
+#if 0 // TODO
+						 // Fuchsia doesn't support a non-zero alignment
+						 roundup_log2(CE_DESC_RING_ALIGN),
+#endif // TODO
 						 0,
 						 IO_BUFFER_RW | IO_BUFFER_CONTIG);
 	if (ret != ZX_OK) {
@@ -1002,7 +1005,10 @@ ath10k_ce_alloc_dest_ring(struct ath10k *ar, unsigned int ce_id,
 	 */
 	zx_status_t ret = io_buffer_init_aligned(&dest_ring->iobuf,
 						 nentries * sizeof(struct ce_desc),
-// FIXME - zircon does not support		 roundup_log2(CE_DESC_RING_ALIGN),
+#if 0 // TODO
+						 // Fuchsia doesn't support a non-zero alignment
+						 roundup_log2(CE_DESC_RING_ALIGN),
+#endif // TODO
 						 0,
 						 IO_BUFFER_RW | IO_BUFFER_CONTIG);
 	if (ret != ZX_OK) {
@@ -1138,7 +1144,7 @@ void ath10k_ce_free_pipe(struct ath10k *ar, int ce_id)
 	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
 	struct ath10k_ce_pipe *ce_state = &ar_pci->ce_states[ce_id];
 
-#if 0
+#if 0 // TODO
 	if (ce_state->src_ring) {
 		dma_free_coherent(ar->dev,
 				  (ce_state->src_ring->nentries *
@@ -1158,7 +1164,7 @@ void ath10k_ce_free_pipe(struct ath10k *ar, int ce_id)
 				  ce_state->dest_ring->base_addr_ce_space);
 		free(ce_state->dest_ring);
 	}
-#endif
+#endif // TODO
 
 	ce_state->src_ring = NULL;
 	ce_state->dest_ring = NULL;

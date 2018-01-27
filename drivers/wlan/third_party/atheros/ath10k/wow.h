@@ -18,6 +18,27 @@
 
 struct ath10k_wow {
 	uint32_t max_num_patterns;
+#if 0 // TODO
+        struct completion wakeup_completed;
+        struct wiphy_wowlan_support wowlan_support;
+#endif // TODO
 };
 
+#ifdef CONFIG_PM
+
+int ath10k_wow_init(struct ath10k *ar);
+#if 0 // TODO
+int ath10k_wow_op_suspend(struct ieee80211_hw *hw,
+                          struct cfg80211_wowlan *wowlan);
+int ath10k_wow_op_resume(struct ieee80211_hw *hw);
+#endif // TODO
+
+#else
+
+static inline int ath10k_wow_init(struct ath10k *ar)
+{
+        return 0;
+}
+
+#endif /* CONFIG_PM */
 #endif /* _WOW_H_ */

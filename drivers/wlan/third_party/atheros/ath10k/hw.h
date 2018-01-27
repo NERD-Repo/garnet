@@ -22,7 +22,6 @@
 
 #include "targaddrs.h"
 
-/* Fuchsia */
 #define ATHEROS_VID    (0x168c)
 #define ETH_ALEN       6  // Bytes in an ethernet address
 
@@ -369,6 +368,11 @@ extern const struct ath10k_hw_values qca99x0_values;
 extern const struct ath10k_hw_values qca9888_values;
 extern const struct ath10k_hw_values qca4019_values;
 extern struct ath10k_hw_ce_regs qcax_ce_regs;
+
+#if 0 // TODO
+void ath10k_hw_fill_survey_time(struct ath10k *ar, struct survey_info *survey,
+                                u32 cc, u32 rcc, u32 cc_prev, u32 rcc_prev);
+#endif // TODO
 
 #define QCA_REV_988X(ar) ((ar)->hw_rev == ATH10K_HW_QCA988X)
 #define QCA_REV_9887(ar) ((ar)->hw_rev == ATH10K_HW_QCA9887)
