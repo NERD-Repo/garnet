@@ -1,0 +1,4 @@
+[root]
+name = "fuchsia_auth"
+version = "0.0.0"
+
