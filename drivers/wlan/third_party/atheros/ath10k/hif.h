@@ -23,25 +23,25 @@
 
 #if 0 // TODO
 struct ath10k_hif_sg_item {
-    u16 transfer_id;
+    uint16_t transfer_id;
     void* transfer_context; /* NULL = tx completion callback not called */
     void* vaddr; /* for debugging mostly */
-    u32 paddr;
-    u16 len;
+    uint32_t paddr;
+    uint16_t len;
 };
 #endif // TODO
 
 struct ath10k_hif_ops {
 #if 0 // TODO
     /* send a scatter-gather list to the target */
-    int (*tx_sg)(struct ath10k* ar, u8 pipe_id,
+    int (*tx_sg)(struct ath10k* ar, uint8_t pipe_id,
                  struct ath10k_hif_sg_item* items, int n_items);
 
     /* read firmware memory through the diagnose interface */
-    int (*diag_read)(struct ath10k* ar, u32 address, void* buf,
+    int (*diag_read)(struct ath10k* ar, uint32_t address, void* buf,
                      size_t buf_len);
 
-    int (*diag_write)(struct ath10k* ar, u32 address, const void* data,
+    int (*diag_write)(struct ath10k* ar, uint32_t address, const void* data,
                       int nbytes);
 #endif // TODO
     /*
@@ -62,10 +62,10 @@ struct ath10k_hif_ops {
      */
     void (*stop)(struct ath10k* ar);
 
-    int (*map_service_to_pipe)(struct ath10k* ar, u16 service_id,
-                               u8* ul_pipe, u8* dl_pipe);
+    int (*map_service_to_pipe)(struct ath10k* ar, uint16_t service_id,
+                               uint8_t* ul_pipe, uint8_t* dl_pipe);
 
-    void (*get_default_pipe)(struct ath10k* ar, u8* ul_pipe, u8* dl_pipe);
+    void (*get_default_pipe)(struct ath10k* ar, uint8_t* ul_pipe, uint8_t* dl_pipe);
 
     /*
      * Check if prior sends have completed.
@@ -75,13 +75,13 @@ struct ath10k_hif_ops {
      * This function is only relevant for HIF pipes that are configured
      * to be polled rather than interrupt-driven.
      */
-    void (*send_complete_check)(struct ath10k* ar, u8 pipe_id, int force);
+    void (*send_complete_check)(struct ath10k* ar, uint8_t pipe_id, int force);
 
-    u16 (*get_free_queue_number)(struct ath10k* ar, u8 pipe_id);
+    uint16_t (*get_free_queue_number)(struct ath10k* ar, uint8_t pipe_id);
 
-    u32 (*read32)(struct ath10k* ar, u32 address);
+    uint32_t (*read32)(struct ath10k* ar, uint32_t address);
 
-    void (*write32)(struct ath10k* ar, u32 address, u32 value);
+    void (*write32)(struct ath10k* ar, uint32_t address, uint32_t value);
 #endif // TODO
 
     /* Power up the device and enter BMI transfer mode for FW download */
@@ -102,18 +102,18 @@ struct ath10k_hif_ops {
 };
 
 #if 0 // TODO
-static inline int ath10k_hif_tx_sg(struct ath10k* ar, u8 pipe_id,
+static inline int ath10k_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
                                    struct ath10k_hif_sg_item* items,
                                    int n_items) {
     return ar->hif.ops->tx_sg(ar, pipe_id, items, n_items);
 }
 
-static inline int ath10k_hif_diag_read(struct ath10k* ar, u32 address, void* buf,
+static inline int ath10k_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
                                        size_t buf_len) {
     return ar->hif.ops->diag_read(ar, address, buf, buf_len);
 }
 
-static inline int ath10k_hif_diag_write(struct ath10k* ar, u32 address,
+static inline int ath10k_hif_diag_write(struct ath10k* ar, uint32_t address,
                                         const void* data, int nbytes) {
     if (!ar->hif.ops->diag_write) {
         return -EOPNOTSUPP;
@@ -140,24 +140,24 @@ static inline void ath10k_hif_stop(struct ath10k* ar) {
 }
 
 static inline int ath10k_hif_map_service_to_pipe(struct ath10k* ar,
-        u16 service_id,
-        u8* ul_pipe, u8* dl_pipe) {
+        uint16_t service_id,
+        uint8_t* ul_pipe, uint8_t* dl_pipe) {
     return ar->hif.ops->map_service_to_pipe(ar, service_id,
                                             ul_pipe, dl_pipe);
 }
 
 static inline void ath10k_hif_get_default_pipe(struct ath10k* ar,
-        u8* ul_pipe, u8* dl_pipe) {
+        uint8_t* ul_pipe, uint8_t* dl_pipe) {
     ar->hif.ops->get_default_pipe(ar, ul_pipe, dl_pipe);
 }
 
 static inline void ath10k_hif_send_complete_check(struct ath10k* ar,
-        u8 pipe_id, int force) {
+        uint8_t pipe_id, int force) {
     ar->hif.ops->send_complete_check(ar, pipe_id, force);
 }
 
-static inline u16 ath10k_hif_get_free_queue_number(struct ath10k* ar,
-        u8 pipe_id) {
+static inline uint16_t ath10k_hif_get_free_queue_number(struct ath10k* ar,
+        uint8_t pipe_id) {
     return ar->hif.ops->get_free_queue_number(ar, pipe_id);
 }
 #endif // TODO
@@ -187,7 +187,7 @@ static inline int ath10k_hif_resume(struct ath10k* ar) {
     return ar->hif.ops->resume(ar);
 }
 
-static inline u32 ath10k_hif_read32(struct ath10k* ar, u32 address) {
+static inline uint32_t ath10k_hif_read32(struct ath10k* ar, uint32_t address) {
     if (!ar->hif.ops->read32) {
         ath10k_warn(ar, "hif read32 not supported\n");
         return 0xdeaddead;
@@ -197,7 +197,7 @@ static inline u32 ath10k_hif_read32(struct ath10k* ar, u32 address) {
 }
 
 static inline void ath10k_hif_write32(struct ath10k* ar,
-                                      u32 address, u32 data) {
+                                      uint32_t address, uint32_t data) {
     if (!ar->hif.ops->write32) {
         ath10k_warn(ar, "hif write32 not supported\n");
         return;

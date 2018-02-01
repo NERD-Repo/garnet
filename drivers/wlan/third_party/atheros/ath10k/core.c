@@ -800,7 +800,7 @@ static void ath10k_core_check_bdfext(const struct dmi_header* hdr, void* data) {
     struct ath10k* ar = data;
     const char* bdf_ext;
     const char* magic = ATH10K_SMBIOS_BDF_EXT_MAGIC;
-    u8 bdf_enabled;
+    uint8_t bdf_enabled;
     int i;
 
     if (hdr->type != ATH10K_SMBIOS_BDF_EXT_TYPE) {
@@ -814,7 +814,7 @@ static void ath10k_core_check_bdfext(const struct dmi_header* hdr, void* data) {
         return;
     }
 
-    bdf_enabled = *((u8*)hdr + ATH10K_SMBIOS_BDF_EXT_OFFSET);
+    bdf_enabled = *((uint8_t*)hdr + ATH10K_SMBIOS_BDF_EXT_OFFSET);
     if (!bdf_enabled) {
         ath10k_dbg(ar, ATH10K_DBG_BOOT, "bdf variant name not found.\n");
         return;
@@ -1900,7 +1900,7 @@ static int ath10k_core_reset_rx_filter(struct ath10k* ar) {
     int vdev_id;
     int vdev_type;
     int vdev_subtype;
-    const u8* vdev_addr;
+    const uint8_t* vdev_addr;
 
     vdev_id = 0;
     vdev_type = WMI_VDEV_TYPE_STA;
@@ -2196,7 +2196,7 @@ err:
 }
 
 #if 0 // TODO
-int ath10k_wait_for_suspend(struct ath10k* ar, u32 suspend_opt) {
+int ath10k_wait_for_suspend(struct ath10k* ar, uint32_t suspend_opt) {
     int ret;
     unsigned long time_left;
 

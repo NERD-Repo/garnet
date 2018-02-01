@@ -376,7 +376,7 @@ extern struct ath10k_hw_ce_regs qcax_ce_regs;
 
 #if 0 // TODO
 void ath10k_hw_fill_survey_time(struct ath10k* ar, struct survey_info* survey,
-                                u32 cc, u32 rcc, u32 cc_prev, u32 rcc_prev);
+                                uint32_t cc, uint32_t rcc, uint32_t cc_prev, uint32_t rcc_prev);
 #endif // TODO
 
 #define QCA_REV_988X(ar) ((ar)->hw_rev == ATH10K_HW_QCA988X)

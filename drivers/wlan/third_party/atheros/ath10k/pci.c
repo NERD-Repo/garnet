@@ -427,7 +427,7 @@ static struct service_to_pipe target_service_to_ce_map_wlan[] = {
 #if 0 // TODO
 static bool ath10k_pci_is_awake(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    u32 val = ioread32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
+    uint32_t val = ioread32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
                        RTC_STATE_ADDRESS);
 
     return RTC_STATE_V_GET(val) == RTC_STATE_V_ON;
@@ -706,7 +706,7 @@ void ath10k_pci_reg_write32(struct ath10k* ar, uint32_t addr, uint32_t val) {
 
 #if 0 // TODO
 bool ath10k_pci_irq_pending(struct ath10k* ar) {
-    u32 cause;
+    uint32_t cause;
 
     /* Check if the shared legacy irq is for us */
     cause = ath10k_pci_read32(ar, SOC_CORE_BASE_ADDRESS +
@@ -999,8 +999,8 @@ static zx_status_t ath10k_pci_diag_read32(struct ath10k* ar, uint32_t address, u
 
 #if 0 // TODO
 static int __ath10k_pci_diag_read_hi(struct ath10k* ar, void* dest,
-                                     u32 src, u32 len) {
-    u32 host_addr, addr;
+                                     uint32_t src, uint32_t len) {
+    uint32_t host_addr, addr;
     int ret;
 
     host_addr = host_interest_item_address(src);
@@ -1346,7 +1346,7 @@ static void ath10k_pci_htt_rx_cb(struct ath10k_ce_pipe* ce_state) {
 }
 
 #if 0 // TODO
-int ath10k_pci_hif_tx_sg(struct ath10k* ar, u8 pipe_id,
+int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
                          struct ath10k_hif_sg_item* items, int n_items) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct ath10k_pci_pipe* pci_pipe = &ar_pci->pipe_info[pipe_id];
@@ -1417,12 +1417,12 @@ err:
     return err;
 }
 
-int ath10k_pci_hif_diag_read(struct ath10k* ar, u32 address, void* buf,
+int ath10k_pci_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
                              size_t buf_len) {
     return ath10k_pci_diag_read_mem(ar, address, buf, buf_len);
 }
 
-u16 ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, u8 pipe) {
+uint16_t ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, uint8_t pipe) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
     ath10k_dbg(ar, ATH10K_DBG_PCI, "pci hif get free queue number\n");
@@ -1495,7 +1495,7 @@ static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
 }
 
 #if 0 // TODO
-void ath10k_pci_hif_send_complete_check(struct ath10k* ar, u8 pipe,
+void ath10k_pci_hif_send_complete_check(struct ath10k* ar, uint8_t pipe,
                                         int force) {
     ath10k_dbg(ar, ATH10K_DBG_PCI, "pci hif send complete check\n");
 
@@ -1527,8 +1527,8 @@ static void ath10k_pci_rx_retry_sync(struct ath10k* ar) {
     del_timer_sync(&ar_pci->rx_post_retry);
 }
 
-int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, u16 service_id,
-                                       u8* ul_pipe, u8* dl_pipe) {
+int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
+                                       uint8_t* ul_pipe, uint8_t* dl_pipe) {
     const struct service_to_pipe* entry;
     bool ul_set = false, dl_set = false;
     int i;
@@ -1574,7 +1574,7 @@ int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, u16 service_id,
 }
 
 void ath10k_pci_hif_get_default_pipe(struct ath10k* ar,
-                                     u8* ul_pipe, u8* dl_pipe) {
+                                     uint8_t* ul_pipe, uint8_t* dl_pipe) {
     ath10k_dbg(ar, ATH10K_DBG_PCI, "pci hif get default pipe\n");
 
     (void)ath10k_pci_hif_map_service_to_pipe(ar,
@@ -1610,7 +1610,7 @@ void ath10k_pci_irq_msi_fw_mask(struct ath10k* ar) {
 
 #if 0 // TODO
 static void ath10k_pci_irq_msi_fw_unmask(struct ath10k* ar) {
-    u32 val;
+    uint32_t val;
 
     switch (ar->hw_rev) {
     case ATH10K_HW_QCA988X:
@@ -2239,7 +2239,7 @@ static void ath10k_pci_fw_crashed_clear(struct ath10k* ar) {
 
 #if 0 // TODO
 static bool ath10k_pci_has_device_gone(struct ath10k* ar) {
-    u32 val;
+    uint32_t val;
 
     val = ath10k_pci_read32(ar, FW_INDICATOR_ADDRESS);
     return (val == 0xffffffff);
@@ -2577,7 +2577,7 @@ static int ath10k_pci_hif_suspend(struct ath10k* ar) {
 static int ath10k_pci_hif_resume(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct pci_dev* pdev = ar_pci->pdev;
-    u32 val;
+    uint32_t val;
     int ret = 0;
 
     ret = ath10k_pci_force_wake(ar);

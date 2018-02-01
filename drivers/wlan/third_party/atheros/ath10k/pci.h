@@ -190,7 +190,7 @@ struct ath10k_pci {
      * bootup. To do that the original PCI-E Link Control is stored before
      * device bootup is executed and re-programmed later.
      */
-    u16 link_ctl;
+    uint16_t link_ctl;
 
     /* Protects ps_awake and ps_wake_refcount */
     spinlock_t ps_lock;
@@ -268,23 +268,23 @@ uint32_t ath10k_pci_soc_read32(struct ath10k* ar, uint32_t addr);
 uint32_t ath10k_pci_reg_read32(struct ath10k* ar, uint32_t addr);
 
 #if 0 // TODO
-int ath10k_pci_hif_tx_sg(struct ath10k* ar, u8 pipe_id,
+int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
                          struct ath10k_hif_sg_item* items, int n_items);
-int ath10k_pci_hif_diag_read(struct ath10k* ar, u32 address, void* buf,
+int ath10k_pci_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
                              size_t buf_len);
 #endif // TODO
 zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
                                       const void* data, int nbytes);
 #if 0 // TODO
-int ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar, void* req, u32 req_len,
-                                    void* resp, u32* resp_len);
-int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, u16 service_id,
-                                       u8* ul_pipe, u8* dl_pipe);
-void ath10k_pci_hif_get_default_pipe(struct ath10k* ar, u8* ul_pipe,
-                                     u8* dl_pipe);
-void ath10k_pci_hif_send_complete_check(struct ath10k* ar, u8 pipe,
+int ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar, void* req, uint32_t req_len,
+                                    void* resp, uint32_t* resp_len);
+int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
+                                       uint8_t* ul_pipe, uint8_t* dl_pipe);
+void ath10k_pci_hif_get_default_pipe(struct ath10k* ar, uint8_t* ul_pipe,
+                                     uint8_t* dl_pipe);
+void ath10k_pci_hif_send_complete_check(struct ath10k* ar, uint8_t pipe,
                                         int force);
-u16 ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, u8 pipe);
+uint16_t ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, uint8_t pipe);
 void ath10k_pci_hif_power_down(struct ath10k* ar);
 int ath10k_pci_alloc_pipes(struct ath10k* ar);
 #endif // TODO

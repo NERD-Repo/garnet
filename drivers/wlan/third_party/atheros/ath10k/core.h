@@ -371,7 +371,7 @@ struct ath10k_vif {
     uint8_t bssid[ETH_ALEN];
 
     struct ieee80211_key_conf* wep_keys[WMI_MAX_KEY_INDEX + 1];
-    s8 def_wep_key_idx;
+    int8_t def_wep_key_idx;
 
     uint16_t tx_seq_no;
 

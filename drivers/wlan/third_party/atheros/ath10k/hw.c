@@ -406,7 +406,7 @@ static void ath10k_hw_qca988x_set_coverage_class(struct ath10k* ar,
     uint32_t cts_timeout;
     uint32_t phyclk_reg;
     uint32_t phyclk;
-    u64 fw_dbglog_mask;
+    uint64_t fw_dbglog_mask;
     uint32_t fw_dbglog_level;
 
     mutex_lock(&ar->conf_mutex);

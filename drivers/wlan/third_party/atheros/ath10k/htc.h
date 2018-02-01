@@ -341,7 +341,7 @@ struct ath10k_htc_ep {
 };
 
 struct ath10k_htc_svc_tx_credits {
-    u16 service_id;
+    uint16_t service_id;
     uint8_t  credit_allocation;
 };
 #endif // TODO

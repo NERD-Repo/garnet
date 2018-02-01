@@ -40,7 +40,7 @@ void ath10k_bmi_start(struct ath10k* ar) {
 #if 0 // TODO
 int ath10k_bmi_done(struct ath10k* ar) {
     struct bmi_cmd cmd;
-    u32 cmdlen = sizeof(cmd.id) + sizeof(cmd.done);
+    uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.done);
     int ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi done\n");
@@ -106,8 +106,8 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
                                     struct bmi_target_info* target_info) {
     struct bmi_cmd cmd;
     union bmi_resp resp;
-    u32 cmdlen = sizeof(cmd.id) + sizeof(cmd.get_target_info);
-    u32 resplen, ver_len;
+    uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.get_target_info);
+    uint32_t resplen, ver_len;
     __le32 tmp;
     int ret;
 
@@ -124,7 +124,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
      * the special sentinal version word or the first word in the
      * version response.
      */
-    resplen = sizeof(u32);
+    resplen = sizeof(uint32_t);
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &tmp, &resplen);
     if (ret) {
         ath10k_warn(ar, "unable to read from device\n");
@@ -136,7 +136,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
      */
     if (__le32_to_cpu(tmp) == TARGET_VERSION_SENTINAL) {
         /* Step 1b: Read the version length */
-        resplen = sizeof(u32);
+        resplen = sizeof(uint32_t);
         ret = ath10k_hif_exchange_bmi_msg(ar, NULL, 0, &tmp,
                                           &resplen);
         if (ret) {
@@ -155,7 +155,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     }
 
     /* Step 3: Read the rest of the version response */
-    resplen = sizeof(resp.get_target_info) - sizeof(u32);
+    resplen = sizeof(resp.get_target_info) - sizeof(uint32_t);
     ret = ath10k_hif_exchange_bmi_msg(ar, NULL, 0,
                                       &resp.get_target_info.version,
                                       &resplen);
