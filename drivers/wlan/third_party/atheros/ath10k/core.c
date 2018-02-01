@@ -656,11 +656,10 @@ static int ath10k_download_cal_dt(struct ath10k* ar, const char* dt_name) {
     int ret;
 
     node = ar->dev->of_node;
-    if (!node)
+    if (!node) {
         /* Device Tree is optional, don't print any warnings if
          * there's no node for ath10k.
          */
-    {
         return -ENOENT;
     }
 
@@ -1078,9 +1077,8 @@ static zx_status_t ath10k_core_parse_bd_ie_board(struct ath10k* ar,
                        boardname);
             break;
         case ATH10K_BD_IE_BOARD_DATA:
-            if (!name_match_found)
+            if (!name_match_found) {
                 /* no match found */
-            {
                 break;
             }
 
@@ -1176,13 +1174,11 @@ static zx_status_t ath10k_core_fetch_board_data_api_n(struct ath10k* ar,
         case ATH10K_BD_IE_BOARD:
             ret = ath10k_core_parse_bd_ie_board(ar, data, ie_len,
                                                 boardname);
-            if (ret == ZX_ERR_NOT_FOUND)
+            if (ret == ZX_ERR_NOT_FOUND) {
                 /* no match found, continue */
-            {
                 break;
-            } else if (ret != ZX_OK)
+            } else if (ret != ZX_OK) {
                 /* there was an error, bail out */
-            {
                 goto err;
             }
 
@@ -2256,9 +2252,8 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k* ar) {
     }
 
     memset(&target_info, 0, sizeof(target_info));
-    if (ar->hif.bus == ATH10K_BUS_SDIO)
+    if (ar->hif.bus == ATH10K_BUS_SDIO) {
         // SDIO unsupported
-    {
         ZX_DEBUG_ASSERT(0);
     } else {
         ret = ath10k_bmi_get_target_info(ar, &target_info);

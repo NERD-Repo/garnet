@@ -5951,9 +5951,8 @@ static int ath10k_set_key(struct ieee80211_hw* hw, enum set_key_cmd cmd,
         peer->keys[key->keyidx] = key;
     } else if (peer && cmd == DISABLE_KEY) {
         peer->keys[key->keyidx] = NULL;
-    } else if (peer == NULL)
+    } else if (peer == NULL) {
         /* impossible unless FW goes crazy */
-    {
         ath10k_warn(ar, "Peer %pM disappeared!\n", peer_addr);
     }
     spin_unlock_bh(&ar->data_lock);

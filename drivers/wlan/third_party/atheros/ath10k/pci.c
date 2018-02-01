@@ -2959,9 +2959,8 @@ zx_status_t ath10k_pci_wait_for_target_init(struct ath10k* ar) {
             break;
         }
 
-        if (ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY)
+        if (ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY) {
             /* Fix potential race by repeating CORE_BASE writes */
-        {
             ath10k_pci_enable_legacy_irq(ar);
         }
 

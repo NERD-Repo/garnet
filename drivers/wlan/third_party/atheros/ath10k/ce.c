@@ -781,9 +781,8 @@ void ath10k_ce_per_engine_service_any(struct ath10k* ar) {
     for (ce_id = 0; intr_summary && (ce_id < CE_COUNT); ce_id++) {
         if (intr_summary & (1 << ce_id)) {
             intr_summary &= ~(1 << ce_id);
-        } else
+        } else {
             /* no intr pending on this CE */
-        {
             continue;
         }
 
