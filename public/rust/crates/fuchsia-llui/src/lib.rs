@@ -14,11 +14,11 @@ mod color;
 pub use color::Color;
 use failure::Error;
 use fdio::{ioctl, make_ioctl};
-use fdio::fdio_sys::{IOCTL_FAMILY_DISPLAY, IOCTL_KIND_DEFAULT, IOCTL_KIND_GET_HANDLE};
+use fdio::fdio_sys::{IOCTL_FAMILY_DISPLAY, IOCTL_KIND_DEFAULT, IOCTL_KIND_GET_HANDLE, fdio_ioctl};
 use fuchsia_zircon_sys::{ZX_VM_FLAG_PERM_READ, ZX_VM_FLAG_PERM_WRITE, zx_handle_t, zx_vmar_map,
                          zx_vmar_root_self};
 use std::fmt;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::mem;
 use std::os::unix::io::AsRawFd;
@@ -61,6 +61,7 @@ pub enum PixelFormat {
 
 fn get_info_for_device(fd: i32) -> Result<ioctl_display_get_fb_t, Error> {
     let ioctl_display_get_fb_value = make_ioctl(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DISPLAY, 1);
+    println!("ioctl_display_get_fb_value = {:x}", ioctl_display_get_fb_value);
 
     let mut framebuffer: ioctl_display_get_fb_t = ioctl_display_get_fb_t {
         vmo: 0,
@@ -77,7 +78,7 @@ fn get_info_for_device(fd: i32) -> Result<ioctl_display_get_fb_t, Error> {
         *mut std::os::raw::c_void;
 
     let status = unsafe {
-        ioctl(
+        fdio_ioctl(
             fd,
             ioctl_display_get_fb_value,
             ptr::null(),
@@ -121,7 +122,7 @@ impl FrameBuffer {
         let device_path = format!("/dev/class/framebuffer/{:03}", index);
         println!("device_path = {}", device_path);
         // driver.usb-audio.disable
-        let file = File::open(device_path)?;
+        let file = OpenOptions::new().read(true).write(true).open(device_path)?;
         let fd = file.as_raw_fd() as i32;
         println!("fd = {}", fd);
         let get_fb_data = get_info_for_device(fd)?;
