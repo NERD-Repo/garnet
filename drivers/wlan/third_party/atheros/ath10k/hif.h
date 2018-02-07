@@ -21,7 +21,6 @@
 #include "core.h"
 #include "debug.h"
 
-#if 0 // TODO
 struct ath10k_hif_sg_item {
     uint16_t transfer_id;
     void* transfer_context; /* NULL = tx completion callback not called */
@@ -29,14 +28,13 @@ struct ath10k_hif_sg_item {
     uint32_t paddr;
     uint16_t len;
 };
-#endif // TODO
 
 struct ath10k_hif_ops {
-#if 0 // TODO
     /* send a scatter-gather list to the target */
-    int (*tx_sg)(struct ath10k* ar, uint8_t pipe_id,
-                 struct ath10k_hif_sg_item* items, int n_items);
+    zx_status_t (*tx_sg)(struct ath10k* ar, uint8_t pipe_id,
+                         struct ath10k_hif_sg_item* items, int n_items);
 
+#if 0 // TODO
     /* read firmware memory through the diagnose interface */
     int (*diag_read)(struct ath10k* ar, uint32_t address, void* buf,
                      size_t buf_len);
@@ -103,13 +101,13 @@ struct ath10k_hif_ops {
                                     size_t* data_len);
 };
 
-#if 0 // TODO
 static inline int ath10k_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
                                    struct ath10k_hif_sg_item* items,
                                    int n_items) {
     return ar->hif.ops->tx_sg(ar, pipe_id, items, n_items);
 }
 
+#if 0 // TODO
 static inline int ath10k_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
                                        size_t buf_len) {
     return ar->hif.ops->diag_read(ar, address, buf, buf_len);

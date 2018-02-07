@@ -25,6 +25,8 @@
 
 #define BIT(pos) (1UL << (pos))
 
+#define DIV_ROUND_UP(n, m) (((n) + ((m) - 1)) / (m))
+
 #define ETHTOOL_FWVERS_LEN 32
 
 #define GENMASK1(val) ((1UL << (val)) - 1)

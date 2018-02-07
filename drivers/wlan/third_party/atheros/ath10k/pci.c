@@ -1156,25 +1156,23 @@ static int ath10k_pci_diag_write32(struct ath10k* ar, uint32_t address, uint32_t
 
 /* Called by lower (CE) layer when a send to Target completes. */
 static void ath10k_pci_htc_tx_cb(struct ath10k_ce_pipe* ce_state) {
-#if 0 // TODO
     struct ath10k* ar = ce_state->ar;
-    struct sk_buff_head list;
-    struct sk_buff* skb;
+    list_node_t list;
+    struct ath10k_htc_buf* msg_buf;
 
-    __skb_queue_head_init(&list);
-    while (ath10k_ce_completed_send_next(ce_state, (void**)&skb) == ZX_OK) {
+    list_initialize(&list);
+    while (ath10k_ce_completed_send_next(ce_state, (void**)&msg_buf) == ZX_OK) {
         /* no need to call tx completion for NULL pointers */
-        if (skb == NULL) {
+        if (msg_buf == NULL) {
             continue;
         }
 
-        __skb_queue_tail(&list, skb);
+        list_add_tail(&list, &msg_buf->listnode);
     }
 
-    while ((skb = __skb_dequeue(&list))) {
-        ath10k_htc_tx_completion_handler(ar, skb);
+    while ((msg_buf = list_remove_head_type(&list, struct ath10k_htc_buf, listnode)) != NULL) {
+        ath10k_htc_tx_completion_handler(ar, msg_buf);
     }
-#endif // TODO
 }
 
 #if 0 // TODO
@@ -1343,9 +1341,8 @@ static void ath10k_pci_htt_rx_cb(struct ath10k_ce_pipe* ce_state) {
 #endif // TODO
 }
 
-#if 0 // TODO
-int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
-                         struct ath10k_hif_sg_item* items, int n_items) {
+zx_status_t ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
+                                 struct ath10k_hif_sg_item* items, int n_items) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct ath10k_pci_pipe* pci_pipe = &ar_pci->pipe_info[pipe_id];
     struct ath10k_ce_pipe* ce_pipe = pci_pipe->ce_hdl;
@@ -1355,15 +1352,15 @@ int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
     unsigned int write_index;
     int err, i = 0;
 
-    spin_lock_bh(&ar_pci->ce_lock);
+    mtx_lock(&ar_pci->ce_lock);
 
     nentries_mask = src_ring->nentries_mask;
     sw_index = src_ring->sw_index;
     write_index = src_ring->write_index;
 
     if (unlikely(CE_RING_DELTA(nentries_mask,
-                               write_index, sw_index - 1) < n_items)) {
-        err = -ENOBUFS;
+                               write_index, sw_index - 1) < (unsigned)n_items)) {
+        err = ZX_ERR_NO_MEMORY;
         goto err;
     }
 
@@ -1403,18 +1400,19 @@ int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
         goto err;
     }
 
-    spin_unlock_bh(&ar_pci->ce_lock);
-    return 0;
+    mtx_unlock(&ar_pci->ce_lock);
+    return ZX_OK;
 
 err:
     for (; i > 0; i--) {
         __ath10k_ce_send_revert(ce_pipe);
     }
 
-    spin_unlock_bh(&ar_pci->ce_lock);
+    mtx_unlock(&ar_pci->ce_lock);
     return err;
 }
 
+#if 0
 int ath10k_pci_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
                              size_t buf_len) {
     return ath10k_pci_diag_read_mem(ar, address, buf, buf_len);
@@ -2741,8 +2739,8 @@ err_free:
 }
 
 static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
-#if 0 // TODO
     .tx_sg                  = ath10k_pci_hif_tx_sg,
+#if 0 // TODO
     .diag_read              = ath10k_pci_hif_diag_read,
     .diag_write             = ath10k_pci_diag_write_mem,
 #endif // TODO
