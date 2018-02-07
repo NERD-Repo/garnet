@@ -15,55 +15,45 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <ddk/binding.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#define _ALL_SOURCE
+#include <threads.h>
+
 #include <ddk/device.h>
 #include <ddk/driver.h>
+#include <ddk/protocol/ethernet.h>
+#include <ddk/protocol/pci.h>
+#include <ddk/protocol/wlan.h>
+#include <ddk/binding.h>
 #include <zircon/status.h>
+#include <zircon/syscalls.h>
+#include <zircon/types.h>
 
-#if 0 // NEEDS PORTING
+#include "linuxisms.h"
 #include "core.h"
 #include "debug.h"
-
 #include "targaddrs.h"
 #include "bmi.h"
-
 #include "hif.h"
 #include "htc.h"
-
 #include "ce.h"
-#endif // NEEDS PORTING
 #include "pci.h"
-#if 0 // NEEDS PORTING
 
 enum ath10k_pci_reset_mode {
     ATH10K_PCI_RESET_AUTO = 0,
     ATH10K_PCI_RESET_WARM_ONLY = 1,
 };
 
+// Linux module paramters
 static unsigned int ath10k_pci_irq_mode = ATH10K_PCI_IRQ_AUTO;
 static unsigned int ath10k_pci_reset_mode = ATH10K_PCI_RESET_AUTO;
-
-module_param_named(irq_mode, ath10k_pci_irq_mode, uint, 0644);
-MODULE_PARM_DESC(irq_mode, "0: auto, 1: legacy, 2: msi (default: 0)");
-
-module_param_named(reset_mode, ath10k_pci_reset_mode, uint, 0644);
-MODULE_PARM_DESC(reset_mode, "0: auto, 1: warm only (default: 0)");
 
 /* how long wait to wait for target to initialise, in ms */
 #define ATH10K_PCI_TARGET_WAIT 3000
 #define ATH10K_PCI_NUM_WARM_RESET_ATTEMPTS 3
-
-static const struct pci_device_id ath10k_pci_id_table[] = {
-    { PCI_VDEVICE(ATHEROS, QCA988X_2_0_DEVICE_ID) }, /* PCI-E QCA988X V2 */
-    { PCI_VDEVICE(ATHEROS, QCA6164_2_1_DEVICE_ID) }, /* PCI-E QCA6164 V2.1 */
-    { PCI_VDEVICE(ATHEROS, QCA6174_2_1_DEVICE_ID) }, /* PCI-E QCA6174 V2.1 */
-    { PCI_VDEVICE(ATHEROS, QCA99X0_2_0_DEVICE_ID) }, /* PCI-E QCA99X0 V2 */
-    { PCI_VDEVICE(ATHEROS, QCA9888_2_0_DEVICE_ID) }, /* PCI-E QCA9888 V2 */
-    { PCI_VDEVICE(ATHEROS, QCA9984_1_0_DEVICE_ID) }, /* PCI-E QCA9984 V1 */
-    { PCI_VDEVICE(ATHEROS, QCA9377_1_0_DEVICE_ID) }, /* PCI-E QCA9377 V1 */
-    { PCI_VDEVICE(ATHEROS, QCA9887_1_0_DEVICE_ID) }, /* PCI-E QCA9887 */
-    {0}
-};
 
 static const struct ath10k_pci_supp_chip ath10k_pci_supp_chips[] = {
     /* QCA988X pre 2.0 chips are not supported because they need some nasty
@@ -96,17 +86,21 @@ static const struct ath10k_pci_supp_chip ath10k_pci_supp_chips[] = {
     { QCA9887_1_0_DEVICE_ID, QCA9887_HW_1_0_CHIP_ID_REV },
 };
 
+#if 0 // TODO
 static void ath10k_pci_buffer_cleanup(struct ath10k* ar);
+#endif // TODO
 static int ath10k_pci_cold_reset(struct ath10k* ar);
+#if 0 // TODO
 static int ath10k_pci_safe_chip_reset(struct ath10k* ar);
-static int ath10k_pci_init_irq(struct ath10k* ar);
-static int ath10k_pci_deinit_irq(struct ath10k* ar);
-static int ath10k_pci_request_irq(struct ath10k* ar);
+#endif // TODO
+static zx_status_t ath10k_pci_init_irq(struct ath10k* ar);
+static void ath10k_pci_deinit_irq(struct ath10k* ar);
+static zx_status_t ath10k_pci_request_irq(struct ath10k* ar);
 static void ath10k_pci_free_irq(struct ath10k* ar);
-static int ath10k_pci_bmi_wait(struct ath10k* ar,
-                               struct ath10k_ce_pipe* tx_pipe,
-                               struct ath10k_ce_pipe* rx_pipe,
-                               struct bmi_xfer* xfer);
+static zx_status_t ath10k_pci_bmi_wait(struct ath10k* ar,
+                                       struct ath10k_ce_pipe* tx_pipe,
+                                       struct ath10k_ce_pipe* rx_pipe,
+                                       struct bmi_xfer* xfer);
 static int ath10k_pci_qca99x0_chip_reset(struct ath10k* ar);
 static void ath10k_pci_htc_tx_cb(struct ath10k_ce_pipe* ce_state);
 static void ath10k_pci_htc_rx_cb(struct ath10k_ce_pipe* ce_state);
@@ -337,84 +331,84 @@ static struct ce_pipe_config target_ce_config_wlan[] = {
 static struct service_to_pipe target_service_to_ce_map_wlan[] = {
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_VO,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         3,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_VO,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         2,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_BK,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         3,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_BK,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         2,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_BE,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         3,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_BE,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         2,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_VI,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         3,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_DATA_VI,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         2,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_CONTROL,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         3,
     },
     {
         ATH10K_HTC_SVC_ID_WMI_CONTROL,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         2,
     },
     {
         ATH10K_HTC_SVC_ID_RSVD_CTRL,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         0,
     },
     {
         ATH10K_HTC_SVC_ID_RSVD_CTRL,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         1,
     },
     {
         /* not used */
         ATH10K_HTC_SVC_ID_TEST_RAW_STREAMS,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         0,
     },
     {
         /* not used */
         ATH10K_HTC_SVC_ID_TEST_RAW_STREAMS,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         1,
     },
     {
         ATH10K_HTC_SVC_ID_HTT_DATA_MSG,
-        PIPEDIR_OUT, /* out = UL = host -> target */
+        PIPEDIR_OUT,     /* out = UL = host -> target */
         4,
     },
     {
         ATH10K_HTC_SVC_ID_HTT_DATA_MSG,
-        PIPEDIR_IN,  /* in = DL = target -> host */
+        PIPEDIR_IN,      /* in = DL = target -> host */
         5,
     },
 
@@ -428,6 +422,7 @@ static struct service_to_pipe target_service_to_ce_map_wlan[] = {
     },
 };
 
+#if 0 // TODO
 static bool ath10k_pci_is_awake(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     uint32_t val = ioread32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
@@ -435,8 +430,10 @@ static bool ath10k_pci_is_awake(struct ath10k* ar) {
 
     return RTC_STATE_V_GET(val) == RTC_STATE_V_ON;
 }
+#endif // TODO
 
-static void __ath10k_pci_wake(struct ath10k* ar) {
+static int ath10k_pci_wake(struct ath10k* ar) {
+#if 0 // TODO
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
     lockdep_assert_held(&ar_pci->ps_lock);
@@ -447,9 +444,12 @@ static void __ath10k_pci_wake(struct ath10k* ar) {
     iowrite32(PCIE_SOC_WAKE_V_MASK,
               ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
               PCIE_SOC_WAKE_ADDRESS);
+#endif // TODO
+    return 0;
 }
 
-static void __ath10k_pci_sleep(struct ath10k* ar) {
+static void ath10k_pci_sleep(struct ath10k* ar) {
+#if 0 // TODO
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
     lockdep_assert_held(&ar_pci->ps_lock);
@@ -461,8 +461,10 @@ static void __ath10k_pci_sleep(struct ath10k* ar) {
               ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
               PCIE_SOC_WAKE_ADDRESS);
     ar_pci->ps_awake = false;
+#endif // TODO
 }
 
+#if 0 // TODO
 static int ath10k_pci_wake_wait(struct ath10k* ar) {
     int tot_delay = 0;
     int curr_delay = 5;
@@ -470,12 +472,12 @@ static int ath10k_pci_wake_wait(struct ath10k* ar) {
     while (tot_delay < PCIE_WAKE_TIMEOUT) {
         if (ath10k_pci_is_awake(ar)) {
             if (tot_delay > PCIE_WAKE_LATE_US)
-                ath10k_warn(ar, "device wakeup took %d ms which is unusually long, otherwise it works normally.\n",
+                ath10k_info("device wakeup took %d ms which is unusually long, otherwise it works normally.\n",
                             tot_delay / 1000);
             return 0;
         }
 
-        udelay(curr_delay);
+        zx_nanosleep(zx_deadline_after(ZX_USEC(curr_delay)));
         tot_delay += curr_delay;
 
         if (curr_delay < 50) {
@@ -625,20 +627,21 @@ static void ath10k_pci_sleep_sync(struct ath10k* ar) {
     __ath10k_pci_sleep(ar);
     spin_unlock_irqrestore(&ar_pci->ps_lock, flags);
 }
+#endif // TODO
 
 static void ath10k_bus_pci_write32(struct ath10k* ar, uint32_t offset, uint32_t value) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     int ret;
 
     if (unlikely(offset + sizeof(value) > ar_pci->mem_len)) {
-        ath10k_warn(ar, "refusing to write mmio out of bounds at 0x%08x - 0x%08zx (max 0x%08zx)\n",
+        ath10k_info("refusing to write mmio out of bounds at 0x%08x - 0x%08zx (max 0x%08zx)\n",
                     offset, offset + sizeof(value), ar_pci->mem_len);
         return;
     }
 
     ret = ath10k_pci_wake(ar);
     if (ret) {
-        ath10k_warn(ar, "failed to wake target for write32 of 0x%08x at 0x%08x: %d\n",
+        ath10k_info("failed to wake target for write32 of 0x%08x at 0x%08x: %d\n",
                     value, offset, ret);
         return;
     }
@@ -653,14 +656,14 @@ static uint32_t ath10k_bus_pci_read32(struct ath10k* ar, uint32_t offset) {
     int ret;
 
     if (unlikely(offset + sizeof(val) > ar_pci->mem_len)) {
-        ath10k_warn(ar, "refusing to read mmio out of bounds at 0x%08x - 0x%08zx (max 0x%08zx)\n",
+        ath10k_info("refusing to read mmio out of bounds at 0x%08x - 0x%08zx (max 0x%08zx)\n",
                     offset, offset + sizeof(val), ar_pci->mem_len);
         return 0;
     }
 
     ret = ath10k_pci_wake(ar);
     if (ret) {
-        ath10k_warn(ar, "failed to wake target for read32 at 0x%08x: %d\n",
+        ath10k_info("failed to wake target for read32 at 0x%08x: %d\n",
                     offset, ret);
         return 0xffffffff;
     }
@@ -699,6 +702,7 @@ void ath10k_pci_reg_write32(struct ath10k* ar, uint32_t addr, uint32_t val) {
     ath10k_pci_write32(ar, PCIE_LOCAL_BASE_ADDRESS + addr, val);
 }
 
+#if 0 // TODO
 bool ath10k_pci_irq_pending(struct ath10k* ar) {
     uint32_t cause;
 
@@ -711,6 +715,7 @@ bool ath10k_pci_irq_pending(struct ath10k* ar) {
 
     return false;
 }
+#endif // TODO
 
 void ath10k_pci_disable_and_clear_legacy_irq(struct ath10k* ar) {
     /* IMPORTANT: INTR_CLR register has to be set after
@@ -751,6 +756,7 @@ static inline const char* ath10k_pci_get_irq_method(struct ath10k* ar) {
     return "legacy";
 }
 
+#if 0 // TODO
 static int __ath10k_pci_rx_post_buf(struct ath10k_pci_pipe* pipe) {
     struct ath10k* ar = pipe->hif_ce_state;
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
@@ -770,7 +776,7 @@ static int __ath10k_pci_rx_post_buf(struct ath10k_pci_pipe* pipe) {
                            skb->len + skb_tailroom(skb),
                            DMA_FROM_DEVICE);
     if (unlikely(dma_mapping_error(ar->dev, paddr))) {
-        ath10k_warn(ar, "failed to dma map pci rx buf\n");
+        ath10k_info("failed to dma map pci rx buf\n");
         dev_kfree_skb_any(skb);
         return -EIO;
     }
@@ -814,7 +820,7 @@ static void ath10k_pci_rx_post_pipe(struct ath10k_pci_pipe* pipe) {
             if (ret == -ENOSPC) {
                 break;
             }
-            ath10k_warn(ar, "failed to post pci rx buf: %d\n", ret);
+            ath10k_info("failed to post pci rx buf: %d\n", ret);
             mod_timer(&ar_pci->rx_post_retry, jiffies +
                       ATH10K_PCI_RX_POST_RETRY_MS);
             break;
@@ -837,6 +843,7 @@ void ath10k_pci_rx_replenish_retry(unsigned long ptr) {
 
     ath10k_pci_rx_post(ar);
 }
+#endif // TODO
 
 static uint32_t ath10k_pci_qca988x_targ_cpu_to_ce_addr(struct ath10k* ar, uint32_t addr) {
     uint32_t val = 0, region = addr & 0xfffff;
@@ -855,14 +862,16 @@ static uint32_t ath10k_pci_qca99x0_targ_cpu_to_ce_addr(struct ath10k* ar, uint32
     return val;
 }
 
-static uint32_t ath10k_pci_targ_cpu_to_ce_addr(struct ath10k* ar, uint32_t addr) {
+static zx_status_t ath10k_pci_targ_cpu_to_ce_addr(struct ath10k* ar, uint32_t cpu_addr,
+        uint32_t* ce_addr) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
     if (WARN_ON_ONCE(!ar_pci->targ_cpu_to_ce_addr)) {
-        return -ENOTSUPP;
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
-    return ar_pci->targ_cpu_to_ce_addr(ar, addr);
+    *ce_addr = ar_pci->targ_cpu_to_ce_addr(ar, cpu_addr);
+    return ZX_OK;
 }
 
 /*
@@ -870,41 +879,37 @@ static uint32_t ath10k_pci_targ_cpu_to_ce_addr(struct ath10k* ar, uint32_t addr)
  * Caller must guarantee proper alignment, when applicable, and single user
  * at any moment.
  */
-static int ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address, void* data,
-                                    int nbytes) {
+static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address, void* data,
+        int nbytes) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret = 0;
+    zx_status_t ret = ZX_OK;
     uint32_t* buf;
     unsigned int completed_nbytes, alloc_nbytes, remaining_bytes;
     struct ath10k_ce_pipe* ce_diag;
     /* Host buffer address in CE space */
     uint32_t ce_data;
-    dma_addr_t ce_data_base = 0;
+    zx_paddr_t ce_data_base = 0;
+    io_buffer_t ce_buf_handle;
     void* data_buf = NULL;
     int i;
 
-    spin_lock_bh(&ar_pci->ce_lock);
+    mtx_lock(&ar_pci->ce_lock);
 
     ce_diag = ar_pci->ce_diag;
 
     /*
-     * Allocate a temporary bounce buffer to hold caller's data
-     * to be DMA'ed from Target. This guarantees
-     *   1) 4-byte alignment
-     *   2) Buffer in DMA-able space
+     * Allocate a temporary buffer to hold caller's data
+     * to be DMA'ed from Target.
      */
     alloc_nbytes = min_t(unsigned int, nbytes, DIAG_TRANSFER_LIMIT);
 
-    data_buf = (unsigned char*)dma_zalloc_coherent(ar->dev,
-               alloc_nbytes,
-               &ce_data_base,
-               GFP_ATOMIC);
-
-    if (!data_buf) {
-        ret = -ENOMEM;
+    ret = io_buffer_init(&ce_buf_handle, alloc_nbytes, IO_BUFFER_RO | IO_BUFFER_CONTIG);
+    if (ret != ZX_OK) {
         goto done;
     }
-
+    data_buf = io_buffer_virt(&ce_buf_handle);
+    ce_data_base = io_buffer_phys(&ce_buf_handle);
+    ZX_DEBUG_ASSERT((ce_data_base + alloc_nbytes) <= 0x100000000ULL);
     remaining_bytes = nbytes;
     ce_data = ce_data_base;
     while (remaining_bytes) {
@@ -912,7 +917,7 @@ static int ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address, void* d
                        DIAG_TRANSFER_LIMIT);
 
         ret = __ath10k_ce_rx_post_buf(ce_diag, &ce_data, ce_data);
-        if (ret != 0) {
+        if (ret != ZX_OK) {
             goto done;
         }
 
@@ -925,20 +930,23 @@ static int ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address, void* d
          * convert it from Target CPU virtual address space
          * to CE address space
          */
-        address = ath10k_pci_targ_cpu_to_ce_addr(ar, address);
+        ret = ath10k_pci_targ_cpu_to_ce_addr(ar, address, &address);
+        if (ret != ZX_OK) {
+            goto done;
+        }
 
         ret = ath10k_ce_send_nolock(ce_diag, NULL, (uint32_t)address, nbytes, 0,
                                     0);
-        if (ret) {
+        if (ret != ZX_OK) {
             goto done;
         }
 
         i = 0;
         while (ath10k_ce_completed_send_next_nolock(ce_diag,
-                NULL) != 0) {
+                NULL) != ZX_OK) {
             mdelay(1);
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
-                ret = -EBUSY;
+                ret = ZX_ERR_TIMED_OUT;
                 goto done;
             }
         }
@@ -947,22 +955,22 @@ static int ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address, void* d
         while (ath10k_ce_completed_recv_next_nolock(ce_diag,
                 (void**)&buf,
                 &completed_nbytes)
-                != 0) {
+                != ZX_OK) {
             mdelay(1);
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
-                ret = -EBUSY;
+                ret = ZX_ERR_TIMED_OUT;
                 goto done;
             }
         }
 
-        if (nbytes != completed_nbytes) {
-            ret = -EIO;
+        if ((unsigned int)nbytes != completed_nbytes) {
+            ret = ZX_ERR_IO;
             goto done;
         }
 
         if (*buf != ce_data) {
-            ret = -EIO;
+            ret = ZX_ERR_IO;
             goto done;
         }
 
@@ -974,26 +982,20 @@ static int ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address, void* d
     }
 
 done:
+    if (data_buf) {
+        io_buffer_release(&ce_buf_handle);
+    }
 
-    if (data_buf)
-        dma_free_coherent(ar->dev, alloc_nbytes, data_buf,
-                          ce_data_base);
-
-    spin_unlock_bh(&ar_pci->ce_lock);
-
-    return ret;
-}
-
-static int ath10k_pci_diag_read32(struct ath10k* ar, uint32_t address, uint32_t* value) {
-    uint32_t val = 0;
-    int ret;
-
-    ret = ath10k_pci_diag_read_mem(ar, address, &val, sizeof(val));
-    *value = val;
+    mtx_unlock(&ar_pci->ce_lock);
 
     return ret;
 }
 
+static zx_status_t ath10k_pci_diag_read32(struct ath10k* ar, uint32_t address, uint32_t* value) {
+    return ath10k_pci_diag_read_mem(ar, address, value, sizeof(*value));
+}
+
+#if 0 // TODO
 static int __ath10k_pci_diag_read_hi(struct ath10k* ar, void* dest,
                                      uint32_t src, uint32_t len) {
     uint32_t host_addr, addr;
@@ -1003,14 +1005,14 @@ static int __ath10k_pci_diag_read_hi(struct ath10k* ar, void* dest,
 
     ret = ath10k_pci_diag_read32(ar, host_addr, &addr);
     if (ret != 0) {
-        ath10k_warn(ar, "failed to get memcpy hi address for firmware address %d: %d\n",
+        ath10k_info("failed to get memcpy hi address for firmware address %d: %d\n",
                     src, ret);
         return ret;
     }
 
     ret = ath10k_pci_diag_read_mem(ar, addr, dest, len);
     if (ret != 0) {
-        ath10k_warn(ar, "failed to memcpy firmware memory from %d (%d B): %d\n",
+        ath10k_info("failed to memcpy firmware memory from %d (%d B): %d\n",
                     addr, len, ret);
         return ret;
     }
@@ -1018,40 +1020,39 @@ static int __ath10k_pci_diag_read_hi(struct ath10k* ar, void* dest,
     return 0;
 }
 
-#define ath10k_pci_diag_read_hi(ar, dest, src, len)     \
-    __ath10k_pci_diag_read_hi(ar, dest, HI_ITEM(src), len)
+#define ath10k_pci_diag_read_hi(ar, dest, src, len)             \
+        __ath10k_pci_diag_read_hi(ar, dest, HI_ITEM(src), len)
+#endif // TODO
 
-int ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
-                              const void* data, int nbytes) {
+zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
+                                      const void* data, int nbytes) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret = 0;
+    zx_status_t ret = ZX_OK;
     uint32_t* buf;
     unsigned int completed_nbytes, orig_nbytes, remaining_bytes;
     struct ath10k_ce_pipe* ce_diag;
     void* data_buf = NULL;
     uint32_t ce_data;    /* Host buffer address in CE space */
-    dma_addr_t ce_data_base = 0;
+    zx_paddr_t ce_data_base = 0;
+    io_buffer_t ce_buf_handle;
     int i;
 
-    spin_lock_bh(&ar_pci->ce_lock);
+    mtx_lock(&ar_pci->ce_lock);
 
     ce_diag = ar_pci->ce_diag;
 
     /*
-     * Allocate a temporary bounce buffer to hold caller's data
-     * to be DMA'ed to Target. This guarantees
-     *   1) 4-byte alignment
-     *   2) Buffer in DMA-able space
+     * Allocate a temporary buffer to hold caller's data
+     * to be DMA'ed to Target.
      */
     orig_nbytes = nbytes;
-    data_buf = (unsigned char*)dma_alloc_coherent(ar->dev,
-               orig_nbytes,
-               &ce_data_base,
-               GFP_ATOMIC);
-    if (!data_buf) {
-        ret = -ENOMEM;
+    ret = io_buffer_init(&ce_buf_handle, orig_nbytes, IO_BUFFER_RW | IO_BUFFER_CONTIG);
+    if (ret != ZX_OK) {
         goto done;
     }
+    data_buf = io_buffer_virt(&ce_buf_handle);
+    ce_data_base = io_buffer_phys(&ce_buf_handle);
+    ZX_DEBUG_ASSERT((ce_data_base + orig_nbytes) <= 0x100000000ULL);
 
     /* Copy caller's data to allocated DMA buf */
     memcpy(data_buf, data, orig_nbytes);
@@ -1066,7 +1067,10 @@ int ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
      * to
      *    CE address space
      */
-    address = ath10k_pci_targ_cpu_to_ce_addr(ar, address);
+    ret = ath10k_pci_targ_cpu_to_ce_addr(ar, address, &address);
+    if (ret != ZX_OK) {
+        goto done;
+    }
 
     remaining_bytes = orig_nbytes;
     ce_data = ce_data_base;
@@ -1076,7 +1080,7 @@ int ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
 
         /* Set up to receive directly into Target(!) address */
         ret = __ath10k_ce_rx_post_buf(ce_diag, &address, address);
-        if (ret != 0) {
+        if (ret != ZX_OK) {
             goto done;
         }
 
@@ -1086,17 +1090,17 @@ int ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
          */
         ret = ath10k_ce_send_nolock(ce_diag, NULL, (uint32_t)ce_data,
                                     nbytes, 0, 0);
-        if (ret != 0) {
+        if (ret != ZX_OK) {
             goto done;
         }
 
         i = 0;
         while (ath10k_ce_completed_send_next_nolock(ce_diag,
-                NULL) != 0) {
+                NULL) != ZX_OK) {
             mdelay(1);
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
-                ret = -EBUSY;
+                ret = ZX_ERR_TIMED_OUT;
                 goto done;
             }
         }
@@ -1105,22 +1109,22 @@ int ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
         while (ath10k_ce_completed_recv_next_nolock(ce_diag,
                 (void**)&buf,
                 &completed_nbytes)
-                != 0) {
+                != ZX_OK) {
             mdelay(1);
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
-                ret = -EBUSY;
+                ret = ZX_ERR_TIMED_OUT;
                 goto done;
             }
         }
 
-        if (nbytes != completed_nbytes) {
-            ret = -EIO;
+        if ((unsigned int)nbytes != completed_nbytes) {
+            ret = ZX_ERR_IO;
             goto done;
         }
 
         if (*buf != address) {
-            ret = -EIO;
+            ret = ZX_ERR_IO;
             goto done;
         }
 
@@ -1131,15 +1135,15 @@ int ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
 
 done:
     if (data_buf) {
-        dma_free_coherent(ar->dev, orig_nbytes, data_buf,
-                          ce_data_base);
+        io_buffer_release(&ce_buf_handle);
     }
 
-    if (ret != 0)
-        ath10k_warn(ar, "failed to write diag value at 0x%x: %d\n",
-                    address, ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to write diag value at 0x%x: %s\n",
+                    address, zx_status_get_string(ret));
+    }
 
-    spin_unlock_bh(&ar_pci->ce_lock);
+    mtx_unlock(&ar_pci->ce_lock);
 
     return ret;
 }
@@ -1152,12 +1156,13 @@ static int ath10k_pci_diag_write32(struct ath10k* ar, uint32_t address, uint32_t
 
 /* Called by lower (CE) layer when a send to Target completes. */
 static void ath10k_pci_htc_tx_cb(struct ath10k_ce_pipe* ce_state) {
+#if 0 // TODO
     struct ath10k* ar = ce_state->ar;
     struct sk_buff_head list;
     struct sk_buff* skb;
 
     __skb_queue_head_init(&list);
-    while (ath10k_ce_completed_send_next(ce_state, (void**)&skb) == 0) {
+    while (ath10k_ce_completed_send_next(ce_state, (void**)&skb) == ZX_OK) {
         /* no need to call tx completion for NULL pointers */
         if (skb == NULL) {
             continue;
@@ -1169,8 +1174,10 @@ static void ath10k_pci_htc_tx_cb(struct ath10k_ce_pipe* ce_state) {
     while ((skb = __skb_dequeue(&list))) {
         ath10k_htc_tx_completion_handler(ar, skb);
     }
+#endif // TODO
 }
 
+#if 0 // TODO
 static void ath10k_pci_process_rx_cb(struct ath10k_ce_pipe* ce_state,
                                      void (*callback)(struct ath10k* ar,
                                              struct sk_buff* skb)) {
@@ -1191,7 +1198,7 @@ static void ath10k_pci_process_rx_cb(struct ath10k_ce_pipe* ce_state,
                          max_nbytes, DMA_FROM_DEVICE);
 
         if (unlikely(max_nbytes < nbytes)) {
-            ath10k_warn(ar, "rxed more than expected (nbytes %d, max %d)",
+            ath10k_info("rxed more than expected (nbytes %d, max %d)",
                         nbytes, max_nbytes);
             dev_kfree_skb_any(skb);
             continue;
@@ -1237,7 +1244,7 @@ static void ath10k_pci_process_htt_rx_cb(struct ath10k_ce_pipe* ce_state,
         max_nbytes = skb->len + skb_tailroom(skb);
 
         if (unlikely(max_nbytes < nbytes)) {
-            ath10k_warn(ar, "rxed more than expected (nbytes %d, max %d)",
+            ath10k_info("rxed more than expected (nbytes %d, max %d)",
                         nbytes, max_nbytes);
             continue;
         }
@@ -1268,35 +1275,43 @@ static void ath10k_pci_process_htt_rx_cb(struct ath10k_ce_pipe* ce_state,
     }
     ath10k_ce_rx_update_write_idx(ce_pipe, nentries);
 }
+#endif // TODO
 
 /* Called by lower (CE) layer when data is received from the Target. */
 static void ath10k_pci_htc_rx_cb(struct ath10k_ce_pipe* ce_state) {
+#if 0 // TODO
     ath10k_pci_process_rx_cb(ce_state, ath10k_htc_rx_completion_handler);
+#endif // TODO
 }
 
 static void ath10k_pci_htt_htc_rx_cb(struct ath10k_ce_pipe* ce_state) {
+#if 0 // TODO
     /* CE4 polling needs to be done whenever CE pipe which transports
      * HTT Rx (target->host) is processed.
      */
     ath10k_ce_per_engine_service(ce_state->ar, 4);
 
     ath10k_pci_process_rx_cb(ce_state, ath10k_htc_rx_completion_handler);
+#endif // TODO
 }
 
 /* Called by lower (CE) layer when data is received from the Target.
  * Only 10.4 firmware uses separate CE to transfer pktlog data.
  */
 static void ath10k_pci_pktlog_rx_cb(struct ath10k_ce_pipe* ce_state) {
+#if 0 // TODO
     ath10k_pci_process_rx_cb(ce_state,
                              ath10k_htt_rx_pktlog_completion_handler);
+#endif // TODO
 }
 
 /* Called by lower (CE) layer when a send to HTT Target completes. */
 static void ath10k_pci_htt_tx_cb(struct ath10k_ce_pipe* ce_state) {
+#if 0 // TODO
     struct ath10k* ar = ce_state->ar;
     struct sk_buff* skb;
 
-    while (ath10k_ce_completed_send_next(ce_state, (void**)&skb) == 0) {
+    while (ath10k_ce_completed_send_next(ce_state, (void**)&skb) == ZX_OK) {
         /* no need to call tx completion for NULL pointers */
         if (!skb) {
             continue;
@@ -1306,23 +1321,29 @@ static void ath10k_pci_htt_tx_cb(struct ath10k_ce_pipe* ce_state) {
                          skb->len, DMA_TO_DEVICE);
         ath10k_htt_hif_tx_complete(ar, skb);
     }
+#endif // TODO
 }
 
+#if 0 // TODO
 static void ath10k_pci_htt_rx_deliver(struct ath10k* ar, struct sk_buff* skb) {
     skb_pull(skb, sizeof(struct ath10k_htc_hdr));
     ath10k_htt_t2h_msg_handler(ar, skb);
 }
+#endif // TODO
 
 /* Called by lower (CE) layer when HTT data is received from the Target. */
 static void ath10k_pci_htt_rx_cb(struct ath10k_ce_pipe* ce_state) {
+#if 0 // TODO
     /* CE4 polling needs to be done whenever CE pipe which transports
      * HTT Rx (target->host) is processed.
      */
     ath10k_ce_per_engine_service(ce_state->ar, 4);
 
     ath10k_pci_process_htt_rx_cb(ce_state, ath10k_pci_htt_rx_deliver);
+#endif // TODO
 }
 
+#if 0 // TODO
 int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
                          struct ath10k_hif_sg_item* items, int n_items) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
@@ -1418,15 +1439,15 @@ static void ath10k_pci_dump_registers(struct ath10k* ar,
                                   hi_failure_state,
                                   REG_DUMP_COUNT_QCA988X * sizeof(uint32_t));
     if (ret) {
-        ath10k_err(ar, "failed to read firmware dump area: %d\n", ret);
+        ath10k_err("failed to read firmware dump area: %d\n", ret);
         return;
     }
 
     BUILD_BUG_ON(REG_DUMP_COUNT_QCA988X % 4);
 
-    ath10k_err(ar, "firmware register dump:\n");
+    ath10k_err("firmware register dump:\n");
     for (i = 0; i < REG_DUMP_COUNT_QCA988X; i += 4)
-        ath10k_err(ar, "[%02d]: 0x%08X 0x%08X 0x%08X 0x%08X\n",
+        ath10k_err("[%02d]: 0x%08X 0x%08X 0x%08X 0x%08X\n",
                    i,
                    reg_dump_values[i],
                    reg_dump_values[i + 1],
@@ -1441,8 +1462,10 @@ static void ath10k_pci_dump_registers(struct ath10k* ar,
         crash_data->registers[i] = reg_dump_values[i];
     }
 }
+#endif // TODO
 
 static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
+#if 0 // TODO
     struct ath10k_fw_crash_data* crash_data;
     char uuid[50];
 
@@ -1458,7 +1481,7 @@ static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
         scnprintf(uuid, sizeof(uuid), "n/a");
     }
 
-    ath10k_err(ar, "firmware crashed! (uuid %s)\n", uuid);
+    ath10k_err("firmware crashed! (uuid %s)\n", uuid);
     ath10k_print_driver_info(ar);
     ath10k_pci_dump_registers(ar, crash_data);
     ath10k_ce_dump_registers(ar, crash_data);
@@ -1466,8 +1489,10 @@ static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
     spin_unlock_bh(&ar->data_lock);
 
     queue_work(ar->workqueue, &ar->restart_work);
+#endif // TODO
 }
 
+#if 0 // TODO
 void ath10k_pci_hif_send_complete_check(struct ath10k* ar, uint8_t pipe,
                                         int force) {
     ath10k_dbg(ar, ATH10K_DBG_PCI, "pci hif send complete check\n");
@@ -1554,6 +1579,7 @@ void ath10k_pci_hif_get_default_pipe(struct ath10k* ar,
             ATH10K_HTC_SVC_ID_RSVD_CTRL,
             ul_pipe, dl_pipe);
 }
+#endif // TODO
 
 void ath10k_pci_irq_msi_fw_mask(struct ath10k* ar) {
     uint32_t val;
@@ -1580,6 +1606,7 @@ void ath10k_pci_irq_msi_fw_mask(struct ath10k* ar) {
     }
 }
 
+#if 0 // TODO
 static void ath10k_pci_irq_msi_fw_unmask(struct ath10k* ar) {
     uint32_t val;
 
@@ -1604,6 +1631,7 @@ static void ath10k_pci_irq_msi_fw_unmask(struct ath10k* ar) {
         break;
     }
 }
+#endif // TODO
 
 static void ath10k_pci_irq_disable(struct ath10k* ar) {
     ath10k_ce_disable_interrupts(ar);
@@ -1611,6 +1639,7 @@ static void ath10k_pci_irq_disable(struct ath10k* ar) {
     ath10k_pci_irq_msi_fw_mask(ar);
 }
 
+#if 0 // TODO
 static void ath10k_pci_irq_sync(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
@@ -1724,6 +1753,7 @@ static void ath10k_pci_buffer_cleanup(struct ath10k* ar) {
         ath10k_pci_tx_pipe_cleanup(pipe_info);
     }
 }
+#endif // TODO
 
 void ath10k_pci_ce_deinit(struct ath10k* ar) {
     int i;
@@ -1733,6 +1763,7 @@ void ath10k_pci_ce_deinit(struct ath10k* ar) {
     }
 }
 
+#if 0 // TODO
 void ath10k_pci_flush(struct ath10k* ar) {
     ath10k_pci_rx_retry_sync(ar);
     ath10k_pci_buffer_cleanup(ar);
@@ -1767,57 +1798,48 @@ static void ath10k_pci_hif_stop(struct ath10k* ar) {
     WARN_ON(ar_pci->ps_wake_refcount > 0);
     spin_unlock_irqrestore(&ar_pci->ps_lock, flags);
 }
+#endif // TODO
 
-int ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar,
-                                    void* req, uint32_t req_len,
-                                    void* resp, uint32_t* resp_len) {
+zx_status_t ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar,
+        void* req, uint32_t req_len,
+        void* resp, uint32_t* resp_len) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct ath10k_pci_pipe* pci_tx = &ar_pci->pipe_info[BMI_CE_NUM_TO_TARG];
     struct ath10k_pci_pipe* pci_rx = &ar_pci->pipe_info[BMI_CE_NUM_TO_HOST];
     struct ath10k_ce_pipe* ce_tx = pci_tx->ce_hdl;
     struct ath10k_ce_pipe* ce_rx = pci_rx->ce_hdl;
-    dma_addr_t req_paddr = 0;
-    dma_addr_t resp_paddr = 0;
+    zx_paddr_t req_paddr = 0;
+    zx_paddr_t resp_paddr = 0;
     struct bmi_xfer xfer = {};
-    void* treq, *tresp = NULL;
-    int ret = 0;
-
-    might_sleep();
+    io_buffer_t treq, tresp;
+    void* req_vaddr, *resp_vaddr = NULL;
+    zx_status_t ret = ZX_OK;
 
     if (resp && !resp_len) {
-        return -EINVAL;
+        return ZX_ERR_INVALID_ARGS;
     }
 
     if (resp && resp_len && *resp_len == 0) {
-        return -EINVAL;
+        return ZX_ERR_INVALID_ARGS;
     }
 
-    treq = kmemdup(req, req_len, GFP_KERNEL);
-    if (!treq) {
-        return -ENOMEM;
+    ret = io_buffer_init(&treq, req_len, IO_BUFFER_RW | IO_BUFFER_CONTIG);
+    if (ret != ZX_OK) {
+        return ret;
     }
+    req_vaddr = io_buffer_virt(&treq);
+    memcpy(req_vaddr, req, req_len);
 
-    req_paddr = dma_map_single(ar->dev, treq, req_len, DMA_TO_DEVICE);
-    ret = dma_mapping_error(ar->dev, req_paddr);
-    if (ret) {
-        ret = -EIO;
-        goto err_dma;
-    }
+    req_paddr = io_buffer_phys(&treq);
+    ZX_DEBUG_ASSERT((req_paddr + req_len) <= 0x100000000ULL);
 
     if (resp && resp_len) {
-        tresp = kzalloc(*resp_len, GFP_KERNEL);
-        if (!tresp) {
-            ret = -ENOMEM;
+        if (io_buffer_init(&tresp, *resp_len, IO_BUFFER_RO | IO_BUFFER_CONTIG) != ZX_OK) {
+            ret = ZX_ERR_NO_MEMORY;
             goto err_req;
         }
-
-        resp_paddr = dma_map_single(ar->dev, tresp, *resp_len,
-                                    DMA_FROM_DEVICE);
-        ret = dma_mapping_error(ar->dev, resp_paddr);
-        if (ret) {
-            ret = -EIO;
-            goto err_req;
-        }
+        resp_vaddr = io_buffer_virt(&tresp);
+        resp_paddr = io_buffer_phys(&tresp);
 
         xfer.wait_for_resp = true;
         xfer.resp_len = 0;
@@ -1826,12 +1848,12 @@ int ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar,
     }
 
     ret = ath10k_ce_send(ce_tx, &xfer, req_paddr, req_len, -1, 0);
-    if (ret) {
+    if (ret != ZX_OK) {
         goto err_resp;
     }
 
     ret = ath10k_pci_bmi_wait(ar, ce_tx, ce_rx, &xfer);
-    if (ret) {
+    if (ret != ZX_OK) {
         uint32_t unused_buffer;
         unsigned int unused_nbytes;
         unsigned int unused_id;
@@ -1840,7 +1862,7 @@ int ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar,
                                    &unused_nbytes, &unused_id);
     } else {
         /* non-zero means we did not time out */
-        ret = 0;
+        ret = ZX_OK;
     }
 
 err_resp:
@@ -1848,19 +1870,16 @@ err_resp:
         uint32_t unused_buffer;
 
         ath10k_ce_revoke_recv_next(ce_rx, NULL, &unused_buffer);
-        dma_unmap_single(ar->dev, resp_paddr,
-                         *resp_len, DMA_FROM_DEVICE);
     }
 err_req:
-    dma_unmap_single(ar->dev, req_paddr, req_len, DMA_TO_DEVICE);
-
-    if (ret == 0 && resp_len) {
+    if (ret == ZX_OK && resp_len) {
         *resp_len = min(*resp_len, xfer.resp_len);
-        memcpy(resp, tresp, xfer.resp_len);
+        memcpy(resp, resp_vaddr, xfer.resp_len);
     }
-err_dma:
-    kfree(treq);
-    kfree(tresp);
+    io_buffer_release(&treq);
+    if (resp_vaddr != NULL) {
+        io_buffer_release(&tresp);
+    }
 
     return ret;
 }
@@ -1876,7 +1895,6 @@ static void ath10k_pci_bmi_send_done(struct ath10k_ce_pipe* ce_state) {
 }
 
 static void ath10k_pci_bmi_recv_data(struct ath10k_ce_pipe* ce_state) {
-    struct ath10k* ar = ce_state->ar;
     struct bmi_xfer* xfer;
     unsigned int nbytes;
 
@@ -1890,7 +1908,7 @@ static void ath10k_pci_bmi_recv_data(struct ath10k_ce_pipe* ce_state) {
     }
 
     if (!xfer->wait_for_resp) {
-        ath10k_warn(ar, "unexpected: BMI data received; ignoring\n");
+        ath10k_info("unexpected: BMI data received; ignoring\n");
         return;
     }
 
@@ -1898,35 +1916,39 @@ static void ath10k_pci_bmi_recv_data(struct ath10k_ce_pipe* ce_state) {
     xfer->rx_done = true;
 }
 
-static int ath10k_pci_bmi_wait(struct ath10k* ar,
-                               struct ath10k_ce_pipe* tx_pipe,
-                               struct ath10k_ce_pipe* rx_pipe,
-                               struct bmi_xfer* xfer) {
-    unsigned long timeout = jiffies + BMI_COMMUNICATION_TIMEOUT_HZ;
-    unsigned long started = jiffies;
-    unsigned long dur;
-    int ret;
+static zx_status_t ath10k_pci_bmi_wait(struct ath10k* ar,
+                                       struct ath10k_ce_pipe* tx_pipe,
+                                       struct ath10k_ce_pipe* rx_pipe,
+                                       struct bmi_xfer* xfer) {
+    zx_time_t started = zx_clock_get(ZX_CLOCK_MONOTONIC);
+    zx_time_t timeout = started + BMI_COMMUNICATION_TIMEOUT;
+    zx_time_t now, dur;
+    zx_status_t ret;
 
-    while (time_before_eq(jiffies, timeout)) {
+    do {
         ath10k_pci_bmi_send_done(tx_pipe);
         ath10k_pci_bmi_recv_data(rx_pipe);
 
         if (xfer->tx_done && (xfer->rx_done == xfer->wait_for_resp)) {
-            ret = 0;
+            ret = ZX_OK;
             goto out;
         }
 
-        schedule();
-    }
+        thrd_yield();
 
-    ret = -ETIMEDOUT;
+        now = zx_clock_get(ZX_CLOCK_MONOTONIC);
+    } while (now < timeout);
+
+    ret = ZX_ERR_TIMED_OUT;
 
 out:
-    dur = jiffies - started;
-    if (dur > HZ)
+    dur = now - started;
+    if (dur > ZX_SEC(1)) {
+        double secs_elapsed = (double)(now - started) / ZX_SEC(1);
         ath10k_dbg(ar, ATH10K_DBG_BMI,
-                   "bmi cmd took %lu jiffies hz %d ret %d\n",
-                   dur, HZ, ret);
+                   "bmi cmd took %0.2d secs, failed with %s\n",
+                   secs_elapsed, zx_status_get_string(ret));
+    }
     return ret;
 }
 
@@ -1934,7 +1956,7 @@ out:
  * Send an interrupt to the device to wake up the Target CPU
  * so it has an opportunity to notice any changed state.
  */
-static int ath10k_pci_wake_target_cpu(struct ath10k* ar) {
+static zx_status_t ath10k_pci_wake_target_cpu(struct ath10k* ar) {
     uint32_t addr, val;
 
     addr = SOC_CORE_BASE_ADDRESS + CORE_CTRL_ADDRESS;
@@ -1942,13 +1964,11 @@ static int ath10k_pci_wake_target_cpu(struct ath10k* ar) {
     val |= CORE_CTRL_CPU_INTR_MASK;
     ath10k_pci_write32(ar, addr, val);
 
-    return 0;
+    return ZX_OK;
 }
 
 static int ath10k_pci_get_num_banks(struct ath10k* ar) {
-    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-
-    switch (ar_pci->pdev->device) {
+    switch (ar->id.device) {
     case QCA988X_2_0_DEVICE_ID:
     case QCA99X0_2_0_DEVICE_ID:
     case QCA9888_2_0_DEVICE_ID:
@@ -1975,7 +1995,7 @@ static int ath10k_pci_get_num_banks(struct ath10k* ar) {
         return 4;
     }
 
-    ath10k_warn(ar, "unknown number of banks, assuming 1\n");
+    ath10k_info("unknown number of banks, assuming 1\n");
     return 1;
 }
 
@@ -1985,7 +2005,7 @@ static int ath10k_bus_get_num_banks(struct ath10k* ar) {
     return ar_pci->bus_ops->get_num_banks(ar);
 }
 
-int ath10k_pci_init_config(struct ath10k* ar) {
+zx_status_t ath10k_pci_init_config(struct ath10k* ar) {
     uint32_t interconnect_targ_addr;
     uint32_t pcie_state_targ_addr = 0;
     uint32_t pipe_cfg_targ_addr = 0;
@@ -1995,7 +2015,7 @@ int ath10k_pci_init_config(struct ath10k* ar) {
     uint32_t ealloc_targ_addr;
     uint32_t flag2_value;
     uint32_t flag2_targ_addr;
-    int ret = 0;
+    zx_status_t ret = ZX_OK;
 
     /* Download to Target the CE Config and the service-to-CE map */
     interconnect_targ_addr =
@@ -2004,14 +2024,14 @@ int ath10k_pci_init_config(struct ath10k* ar) {
     /* Supply Target-side CE configuration */
     ret = ath10k_pci_diag_read32(ar, interconnect_targ_addr,
                                  &pcie_state_targ_addr);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to get pcie state addr: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to get pcie state addr: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     if (pcie_state_targ_addr == 0) {
-        ret = -EIO;
-        ath10k_err(ar, "Invalid pcie state addr\n");
+        ret = ZX_ERR_IO;
+        ath10k_err("Invalid pcie state addr\n");
         return ret;
     }
 
@@ -2019,14 +2039,14 @@ int ath10k_pci_init_config(struct ath10k* ar) {
                                       offsetof(struct pcie_state,
                                               pipe_cfg_addr)),
                                  &pipe_cfg_targ_addr);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to get pipe cfg addr: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to get pipe cfg addr: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     if (pipe_cfg_targ_addr == 0) {
-        ret = -EIO;
-        ath10k_err(ar, "Invalid pipe cfg addr\n");
+        ret = ZX_ERR_IO;
+        ath10k_err("Invalid pipe cfg addr\n");
         return ret;
     }
 
@@ -2035,8 +2055,8 @@ int ath10k_pci_init_config(struct ath10k* ar) {
                                     sizeof(struct ce_pipe_config) *
                                     NUM_TARGET_CE_CONFIG_WLAN);
 
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to write pipe cfg: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to write pipe cfg: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -2044,22 +2064,22 @@ int ath10k_pci_init_config(struct ath10k* ar) {
                                       offsetof(struct pcie_state,
                                               svc_to_pipe_map)),
                                  &svc_to_pipe_map);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to get svc/pipe map: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to get svc/pipe map: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     if (svc_to_pipe_map == 0) {
-        ret = -EIO;
-        ath10k_err(ar, "Invalid svc_to_pipe map\n");
+        ret = ZX_ERR_IO;
+        ath10k_err("Invalid svc_to_pipe map\n");
         return ret;
     }
 
     ret = ath10k_pci_diag_write_mem(ar, svc_to_pipe_map,
                                     target_service_to_ce_map_wlan,
                                     sizeof(target_service_to_ce_map_wlan));
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to write svc/pipe map: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to write svc/pipe map: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -2067,8 +2087,8 @@ int ath10k_pci_init_config(struct ath10k* ar) {
                                       offsetof(struct pcie_state,
                                               config_flags)),
                                  &pcie_config_flags);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to get pcie config_flags: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to get pcie config_flags: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -2078,8 +2098,9 @@ int ath10k_pci_init_config(struct ath10k* ar) {
                                        offsetof(struct pcie_state,
                                                config_flags)),
                                   pcie_config_flags);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to write pcie config_flags: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to write pcie config_flags: %s\n",
+                   zx_status_get_string(ret));
         return ret;
     }
 
@@ -2087,8 +2108,8 @@ int ath10k_pci_init_config(struct ath10k* ar) {
     ealloc_targ_addr = host_interest_item_address(HI_ITEM(hi_early_alloc));
 
     ret = ath10k_pci_diag_read32(ar, ealloc_targ_addr, &ealloc_value);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to get early alloc val: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to get early alloc val: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -2100,8 +2121,8 @@ int ath10k_pci_init_config(struct ath10k* ar) {
                      HI_EARLY_ALLOC_IRAM_BANKS_MASK);
 
     ret = ath10k_pci_diag_write32(ar, ealloc_targ_addr, ealloc_value);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to set early alloc val: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to set early alloc val: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -2109,20 +2130,20 @@ int ath10k_pci_init_config(struct ath10k* ar) {
     flag2_targ_addr = host_interest_item_address(HI_ITEM(hi_option_flag2));
 
     ret = ath10k_pci_diag_read32(ar, flag2_targ_addr, &flag2_value);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to get option val: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to get option val: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     flag2_value |= HI_OPTION_EARLY_CFG_DONE;
 
     ret = ath10k_pci_diag_write32(ar, flag2_targ_addr, flag2_value);
-    if (ret != 0) {
-        ath10k_err(ar, "Failed to set option val: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("Failed to set option val: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
 static void ath10k_pci_override_ce_config(struct ath10k* ar) {
@@ -2147,10 +2168,11 @@ static void ath10k_pci_override_ce_config(struct ath10k* ar) {
     target_service_to_ce_map_wlan[15].pipenum = 1;
 }
 
-int ath10k_pci_alloc_pipes(struct ath10k* ar) {
+zx_status_t ath10k_pci_alloc_pipes(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct ath10k_pci_pipe* pipe;
-    int i, ret;
+    int i;
+    zx_status_t ret;
 
     for (i = 0; i < CE_COUNT; i++) {
         pipe = &ar_pci->pipe_info[i];
@@ -2159,9 +2181,9 @@ int ath10k_pci_alloc_pipes(struct ath10k* ar) {
         pipe->hif_ce_state = ar;
 
         ret = ath10k_ce_alloc_pipe(ar, i, &host_ce_config_wlan[i]);
-        if (ret) {
-            ath10k_err(ar, "failed to allocate copy engine pipe %d: %d\n",
-                       i, ret);
+        if (ret != ZX_OK) {
+            ath10k_err("failed to allocate copy engine pipe %d: %s\n",
+                       i, zx_status_get_string(ret));
             return ret;
         }
 
@@ -2173,8 +2195,7 @@ int ath10k_pci_alloc_pipes(struct ath10k* ar) {
 
         pipe->buf_sz = (size_t)(host_ce_config_wlan[i].src_sz_max);
     }
-
-    return 0;
+    return ZX_OK;
 }
 
 void ath10k_pci_free_pipes(struct ath10k* ar) {
@@ -2185,14 +2206,15 @@ void ath10k_pci_free_pipes(struct ath10k* ar) {
     }
 }
 
-int ath10k_pci_init_pipes(struct ath10k* ar) {
-    int i, ret;
+zx_status_t ath10k_pci_init_pipes(struct ath10k* ar) {
+    int i;
+    zx_status_t ret;
 
     for (i = 0; i < CE_COUNT; i++) {
         ret = ath10k_ce_init_pipe(ar, i, &host_ce_config_wlan[i]);
-        if (ret) {
-            ath10k_err(ar, "failed to initialize copy engine pipe %d: %d\n",
-                       i, ret);
+        if (ret != ZX_OK) {
+            ath10k_err("failed to initialize copy engine pipe %d: %s\n",
+                       i, zx_status_get_string(ret));
             return ret;
         }
     }
@@ -2213,12 +2235,14 @@ static void ath10k_pci_fw_crashed_clear(struct ath10k* ar) {
     ath10k_pci_write32(ar, FW_INDICATOR_ADDRESS, val);
 }
 
+#if 0 // TODO
 static bool ath10k_pci_has_device_gone(struct ath10k* ar) {
     uint32_t val;
 
     val = ath10k_pci_read32(ar, FW_INDICATOR_ADDRESS);
     return (val == 0xffffffff);
 }
+#endif // TODO
 
 /* this function effectively clears target memory controller assert line */
 static void ath10k_pci_warm_reset_si0(struct ath10k* ar) {
@@ -2229,14 +2253,14 @@ static void ath10k_pci_warm_reset_si0(struct ath10k* ar) {
                            val | SOC_RESET_CONTROL_SI0_RST_MASK);
     val = ath10k_pci_soc_read32(ar, SOC_RESET_CONTROL_ADDRESS);
 
-    msleep(10);
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
 
     val = ath10k_pci_soc_read32(ar, SOC_RESET_CONTROL_ADDRESS);
     ath10k_pci_soc_write32(ar, SOC_RESET_CONTROL_ADDRESS,
                            val & ~SOC_RESET_CONTROL_SI0_RST_MASK);
     val = ath10k_pci_soc_read32(ar, SOC_RESET_CONTROL_ADDRESS);
 
-    msleep(10);
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
 }
 
 static void ath10k_pci_warm_reset_cpu(struct ath10k* ar) {
@@ -2258,7 +2282,7 @@ static void ath10k_pci_warm_reset_ce(struct ath10k* ar) {
 
     ath10k_pci_write32(ar, RTC_SOC_BASE_ADDRESS + SOC_RESET_CONTROL_ADDRESS,
                        val | SOC_RESET_CONTROL_CE_RST_MASK);
-    msleep(10);
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
     ath10k_pci_write32(ar, RTC_SOC_BASE_ADDRESS + SOC_RESET_CONTROL_ADDRESS,
                        val & ~SOC_RESET_CONTROL_CE_RST_MASK);
 }
@@ -2273,14 +2297,14 @@ static void ath10k_pci_warm_reset_clear_lf(struct ath10k* ar) {
                        val & ~SOC_LF_TIMER_CONTROL0_ENABLE_MASK);
 }
 
-static int ath10k_pci_warm_reset(struct ath10k* ar) {
-    int ret;
+static zx_status_t ath10k_pci_warm_reset(struct ath10k* ar) {
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot warm reset\n");
 
-    spin_lock_bh(&ar->data_lock);
+    mtx_lock(&ar->data_lock);
     ar->stats.fw_warm_reset_counter++;
-    spin_unlock_bh(&ar->data_lock);
+    mtx_unlock(&ar->data_lock);
 
     ath10k_pci_irq_disable(ar);
 
@@ -2301,13 +2325,12 @@ static int ath10k_pci_warm_reset(struct ath10k* ar) {
 
     ret = ath10k_pci_wait_for_target_init(ar);
     if (ret) {
-        ath10k_warn(ar, "failed to wait for target init: %d\n", ret);
+        ath10k_info("failed to wait for target init: %d\n", ret);
         return ret;
     }
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot warm reset complete\n");
-
-    return 0;
+    return ZX_OK;
 }
 
 static int ath10k_pci_qca99x0_soft_chip_reset(struct ath10k* ar) {
@@ -2315,6 +2338,7 @@ static int ath10k_pci_qca99x0_soft_chip_reset(struct ath10k* ar) {
     return ath10k_pci_qca99x0_chip_reset(ar);
 }
 
+#if 0 // TODO
 static int ath10k_pci_safe_chip_reset(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
@@ -2324,9 +2348,11 @@ static int ath10k_pci_safe_chip_reset(struct ath10k* ar) {
 
     return ar_pci->pci_soft_reset(ar);
 }
+#endif // TODO
 
-static int ath10k_pci_qca988x_chip_reset(struct ath10k* ar) {
-    int i, ret;
+static zx_status_t ath10k_pci_qca988x_chip_reset(struct ath10k* ar) {
+    int i;
+    zx_status_t ret;
     uint32_t val;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot 988x chip reset\n");
@@ -2340,10 +2366,10 @@ static int ath10k_pci_qca988x_chip_reset(struct ath10k* ar) {
      */
     for (i = 0; i < ATH10K_PCI_NUM_WARM_RESET_ATTEMPTS; i++) {
         ret = ath10k_pci_warm_reset(ar);
-        if (ret) {
-            ath10k_warn(ar, "failed to warm reset attempt %d of %d: %d\n",
+        if (ret != ZX_OK) {
+            ath10k_info("failed to warm reset attempt %d of %d: %s\n",
                         i + 1, ATH10K_PCI_NUM_WARM_RESET_ATTEMPTS,
-                        ret);
+                        zx_status_get_string(ret));
             continue;
         }
 
@@ -2357,17 +2383,17 @@ static int ath10k_pci_qca988x_chip_reset(struct ath10k* ar) {
          * firmware blob.
          */
         ret = ath10k_pci_init_pipes(ar);
-        if (ret) {
-            ath10k_warn(ar, "failed to init copy engine: %d\n",
-                        ret);
+        if (ret != ZX_OK) {
+            ath10k_info("failed to init copy engine: %s\n",
+                        zx_status_get_string(ret));
             continue;
         }
 
         ret = ath10k_pci_diag_read32(ar, QCA988X_HOST_INTEREST_ADDRESS,
                                      &val);
-        if (ret) {
-            ath10k_warn(ar, "failed to poke copy engine: %d\n",
-                        ret);
+        if (ret != ZX_OK) {
+            ath10k_info("failed to poke copy engine: %s\n",
+                        zx_status_get_string(ret));
             continue;
         }
 
@@ -2376,102 +2402,104 @@ static int ath10k_pci_qca988x_chip_reset(struct ath10k* ar) {
     }
 
     if (ath10k_pci_reset_mode == ATH10K_PCI_RESET_WARM_ONLY) {
-        ath10k_warn(ar, "refusing cold reset as requested\n");
-        return -EPERM;
+        ath10k_info("refusing cold reset as requested\n");
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
     ret = ath10k_pci_cold_reset(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to cold reset: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to cold reset: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     ret = ath10k_pci_wait_for_target_init(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to wait for target after cold reset: %d\n",
-                    ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to wait for target after cold reset: %s\n",
+                    zx_status_get_string(ret));
         return ret;
     }
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot qca988x chip reset complete (cold)\n");
 
-    return 0;
+    return ZX_OK;
 }
 
-static int ath10k_pci_qca6174_chip_reset(struct ath10k* ar) {
-    int ret;
+static zx_status_t ath10k_pci_qca6174_chip_reset(struct ath10k* ar) {
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot qca6174 chip reset\n");
 
     /* FIXME: QCA6174 requires cold + warm reset to work. */
 
     ret = ath10k_pci_cold_reset(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to cold reset: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to cold reset: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     ret = ath10k_pci_wait_for_target_init(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to wait for target after cold reset: %d\n",
-                    ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to wait for target after cold reset: %s\n",
+                    zx_status_get_string(ret));
         return ret;
     }
 
     ret = ath10k_pci_warm_reset(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to warm reset: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to warm reset: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot qca6174 chip reset complete (cold)\n");
 
-    return 0;
+    return ZX_OK;
 }
 
-static int ath10k_pci_qca99x0_chip_reset(struct ath10k* ar) {
-    int ret;
+static zx_status_t ath10k_pci_qca99x0_chip_reset(struct ath10k* ar) {
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot qca99x0 chip reset\n");
 
     ret = ath10k_pci_cold_reset(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to cold reset: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to cold reset: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
     ret = ath10k_pci_wait_for_target_init(ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to wait for target after cold reset: %d\n",
-                    ret);
+    if (ret != ZX_OK) {
+        ath10k_info("failed to wait for target after cold reset: %s\n",
+                    zx_status_get_string(ret));
         return ret;
     }
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot qca99x0 chip reset complete (cold)\n");
 
-    return 0;
+    return ZX_OK;
 }
 
-static int ath10k_pci_chip_reset(struct ath10k* ar) {
+static zx_status_t ath10k_pci_chip_reset(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
     if (WARN_ON(!ar_pci->pci_hard_reset)) {
-        return -ENOTSUPP;
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
     return ar_pci->pci_hard_reset(ar);
 }
 
-static int ath10k_pci_hif_power_up(struct ath10k* ar) {
-    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret;
+static zx_status_t ath10k_pci_hif_power_up(struct ath10k* ar) {
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot hif power up\n");
 
+#if 0 // TODO - get PCI express capability offset with kPciCapIdPciExpress and then
+    //        read capability at offset + PCI_EXP_LNKCTL */
     pcie_capability_read_word(ar_pci->pdev, PCI_EXP_LNKCTL,
                               &ar_pci->link_ctl);
     pcie_capability_write_word(ar_pci->pdev, PCI_EXP_LNKCTL,
                                ar_pci->link_ctl & ~PCI_EXP_LNKCTL_ASPMC);
+#endif // TODO
 
     /*
      * Bring the target up cleanly.
@@ -2484,36 +2512,36 @@ static int ath10k_pci_hif_power_up(struct ath10k* ar) {
      * reset the Target and retry the probe.
      */
     ret = ath10k_pci_chip_reset(ar);
-    if (ret) {
+    if (ret != ZX_OK) {
         if (ath10k_pci_has_fw_crashed(ar)) {
-            ath10k_warn(ar, "firmware crashed during chip reset\n");
+            ath10k_info("firmware crashed during chip reset\n");
             ath10k_pci_fw_crashed_clear(ar);
             ath10k_pci_fw_crashed_dump(ar);
         }
 
-        ath10k_err(ar, "failed to reset chip: %d\n", ret);
+        ath10k_err("failed to reset chip: %s\n", zx_status_get_string(ret));
         goto err_sleep;
     }
 
     ret = ath10k_pci_init_pipes(ar);
-    if (ret) {
-        ath10k_err(ar, "failed to initialize CE: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to initialize CE: %s\n", zx_status_get_string(ret));
         goto err_sleep;
     }
 
     ret = ath10k_pci_init_config(ar);
-    if (ret) {
-        ath10k_err(ar, "failed to setup init config: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to setup init config: %s\n", zx_status_get_string(ret));
         goto err_ce;
     }
 
     ret = ath10k_pci_wake_target_cpu(ar);
-    if (ret) {
-        ath10k_err(ar, "could not wake up target CPU: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("could not wake up target CPU: %s\n", zx_status_get_string(ret));
         goto err_ce;
     }
 
-    return 0;
+    return ZX_OK;
 
 err_ce:
     ath10k_pci_ce_deinit(ar);
@@ -2530,6 +2558,7 @@ void ath10k_pci_hif_power_down(struct ath10k* ar) {
      */
 }
 
+#if 0 // TODO
 #ifdef CONFIG_PM
 
 static int ath10k_pci_hif_suspend(struct ath10k* ar) {
@@ -2551,7 +2580,7 @@ static int ath10k_pci_hif_resume(struct ath10k* ar) {
 
     ret = ath10k_pci_force_wake(ar);
     if (ret) {
-        ath10k_err(ar, "failed to wake up target: %d\n", ret);
+        ath10k_err("failed to wake up target: %d\n", ret);
         return ret;
     }
 
@@ -2568,6 +2597,7 @@ static int ath10k_pci_hif_resume(struct ath10k* ar) {
     return ret;
 }
 #endif
+#endif // TODO
 
 static bool ath10k_pci_validate_cal(void* data, size_t size) {
     uint16_t* cal_words = data;
@@ -2620,7 +2650,7 @@ static void ath10k_pci_enable_eeprom(struct ath10k* ar) {
                        SM(8, SI_CONFIG_DIVIDER));
 }
 
-static int ath10k_pci_read_eeprom(struct ath10k* ar, uint16_t addr, uint8_t* out) {
+static zx_status_t ath10k_pci_read_eeprom(struct ath10k* ar, uint16_t addr, uint8_t* out) {
     uint32_t reg;
     int wait_limit;
 
@@ -2646,51 +2676,51 @@ static int ath10k_pci_read_eeprom(struct ath10k* ar, uint16_t addr, uint8_t* out
         }
 
         wait_limit--;
-        udelay(10);
+        zx_nanosleep(zx_deadline_after(ZX_USEC(10)));
     } while (wait_limit > 0);
 
     if (!MS(reg, SI_CS_DONE_INT)) {
-        ath10k_err(ar, "timeout while reading device EEPROM at %04x\n",
+        ath10k_err("timeout while reading device EEPROM at %04x\n",
                    addr);
-        return -ETIMEDOUT;
+        return ZX_ERR_TIMED_OUT;
     }
 
     /* clear SI_CS_DONE_INT */
     ath10k_pci_write32(ar, SI_BASE_ADDRESS + SI_CS_OFFSET, reg);
 
     if (MS(reg, SI_CS_DONE_ERR)) {
-        ath10k_err(ar, "failed to read device EEPROM at %04x\n", addr);
-        return -EIO;
+        ath10k_err("failed to read device EEPROM at %04x\n", addr);
+        return ZX_ERR_IO;
     }
 
     /* extract receive data */
     reg = ath10k_pci_read32(ar, SI_BASE_ADDRESS + SI_RX_DATA0_OFFSET);
     *out = reg;
 
-    return 0;
+    return ZX_OK;
 }
 
-static int ath10k_pci_hif_fetch_cal_eeprom(struct ath10k* ar, void** data,
+static zx_status_t ath10k_pci_hif_fetch_cal_eeprom(struct ath10k* ar, void** data,
         size_t* data_len) {
     uint8_t* caldata = NULL;
     size_t calsize, i;
-    int ret;
+    zx_status_t ret;
 
     if (!QCA_REV_9887(ar)) {
-        return -EOPNOTSUPP;
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
     calsize = ar->hw_params.cal_data_len;
-    caldata = kmalloc(calsize, GFP_KERNEL);
+    caldata = malloc(calsize);
     if (!caldata) {
-        return -ENOMEM;
+        return ZX_ERR_NO_MEMORY;
     }
 
     ath10k_pci_enable_eeprom(ar);
 
     for (i = 0; i < calsize; i++) {
         ret = ath10k_pci_read_eeprom(ar, i, &caldata[i]);
-        if (ret) {
+        if (ret != ZX_OK) {
             goto err_free;
         }
     }
@@ -2702,36 +2732,43 @@ static int ath10k_pci_hif_fetch_cal_eeprom(struct ath10k* ar, void** data,
     *data = caldata;
     *data_len = calsize;
 
-    return 0;
+    return ZX_OK;
 
 err_free:
-    kfree(caldata);
+    free(caldata);
 
-    return -EINVAL;
+    return ZX_ERR_INVALID_ARGS;
 }
 
 static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
-    .tx_sg          = ath10k_pci_hif_tx_sg,
-    .diag_read      = ath10k_pci_hif_diag_read,
-    .diag_write     = ath10k_pci_diag_write_mem,
-    .exchange_bmi_msg   = ath10k_pci_hif_exchange_bmi_msg,
-    .start          = ath10k_pci_hif_start,
-    .stop           = ath10k_pci_hif_stop,
+#if 0 // TODO
+    .tx_sg                  = ath10k_pci_hif_tx_sg,
+    .diag_read              = ath10k_pci_hif_diag_read,
+    .diag_write             = ath10k_pci_diag_write_mem,
+#endif // TODO
+    .exchange_bmi_msg       = ath10k_pci_hif_exchange_bmi_msg,
+#if 0 // TODO
+    .start                  = ath10k_pci_hif_start,
+    .stop                   = ath10k_pci_hif_stop,
     .map_service_to_pipe    = ath10k_pci_hif_map_service_to_pipe,
-    .get_default_pipe   = ath10k_pci_hif_get_default_pipe,
+    .get_default_pipe       = ath10k_pci_hif_get_default_pipe,
     .send_complete_check    = ath10k_pci_hif_send_complete_check,
     .get_free_queue_number  = ath10k_pci_hif_get_free_queue_number,
-    .power_up       = ath10k_pci_hif_power_up,
-    .power_down     = ath10k_pci_hif_power_down,
-    .read32         = ath10k_pci_read32,
-    .write32        = ath10k_pci_write32,
+#endif // TODO
+    .power_up               = ath10k_pci_hif_power_up,
+    .power_down             = ath10k_pci_hif_power_down,
+#if 0 // TODO
+    .read32                 = ath10k_pci_read32,
+    .write32                = ath10k_pci_write32,
 #ifdef CONFIG_PM
-    .suspend        = ath10k_pci_hif_suspend,
-    .resume         = ath10k_pci_hif_resume,
+    .suspend                = ath10k_pci_hif_suspend,
+    .resume                 = ath10k_pci_hif_resume,
 #endif
+#endif // TODO
     .fetch_cal_eeprom   = ath10k_pci_hif_fetch_cal_eeprom,
 };
 
+#if 0 // TODO
 /*
  * Top-level interrupt handler for all PCI interrupts from a Target.
  * When a block of MSI interrupts is allocated, this top-level handler
@@ -2748,7 +2785,7 @@ static irqreturn_t ath10k_pci_interrupt_handler(int irq, void* arg) {
 
     ret = ath10k_pci_force_wake(ar);
     if (ret) {
-        ath10k_warn(ar, "failed to wake device up on irq: %d\n", ret);
+        ath10k_info("failed to wake device up on irq: %d\n", ret);
         return IRQ_NONE;
     }
 
@@ -2800,82 +2837,51 @@ static int ath10k_pci_napi_poll(struct napi_struct* ctx, int budget) {
 out:
     return done;
 }
+#endif // TODO
 
-static int ath10k_pci_request_irq_msi(struct ath10k* ar) {
+static zx_status_t ath10k_pci_request_irq(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret;
+    pci_protocol_t* pdev = &ar_pci->pdev;
+    zx_status_t ret;
 
-    ret = request_irq(ar_pci->pdev->irq,
-                      ath10k_pci_interrupt_handler,
-                      IRQF_SHARED, "ath10k_pci", ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to request MSI irq %d: %d\n",
-                    ar_pci->pdev->irq, ret);
-        return ret;
+    ret = pci_map_interrupt(pdev, 0, &ar_pci->irq_handle);
+    if (ret != ZX_OK) {
+        ath10k_err("couldn't map irq 0\n");
     }
-
-    return 0;
-}
-
-static int ath10k_pci_request_irq_legacy(struct ath10k* ar) {
-    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret;
-
-    ret = request_irq(ar_pci->pdev->irq,
-                      ath10k_pci_interrupt_handler,
-                      IRQF_SHARED, "ath10k_pci", ar);
-    if (ret) {
-        ath10k_warn(ar, "failed to request legacy irq %d: %d\n",
-                    ar_pci->pdev->irq, ret);
-        return ret;
-    }
-
-    return 0;
-}
-
-static int ath10k_pci_request_irq(struct ath10k* ar) {
-    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-
-    switch (ar_pci->oper_irq_mode) {
-    case ATH10K_PCI_IRQ_LEGACY:
-        return ath10k_pci_request_irq_legacy(ar);
-    case ATH10K_PCI_IRQ_MSI:
-        return ath10k_pci_request_irq_msi(ar);
-    default:
-        return -EINVAL;
-    }
+    return ret;
 }
 
 static void ath10k_pci_free_irq(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
-    free_irq(ar_pci->pdev->irq, ar);
+    zx_handle_close(ar_pci->irq_handle);
 }
 
+#if 0 // TODO
 void ath10k_pci_init_napi(struct ath10k* ar) {
     netif_napi_add(&ar->napi_dev, &ar->napi, ath10k_pci_napi_poll,
                    ATH10K_NAPI_BUDGET);
 }
+#endif // TODO
 
-static int ath10k_pci_init_irq(struct ath10k* ar) {
+static zx_status_t ath10k_pci_init_irq(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret;
+    pci_protocol_t* pdev = &ar_pci->pdev;
+    uint32_t irq_cnt = 0;
 
+#if 0 // TODO
     ath10k_pci_init_napi(ar);
+#endif // TODO
 
     if (ath10k_pci_irq_mode != ATH10K_PCI_IRQ_AUTO)
-        ath10k_info(ar, "limiting irq mode to: %d\n",
-                    ath10k_pci_irq_mode);
+        ath10k_trace("limiting irq mode to: %d\n", ath10k_pci_irq_mode);
 
     /* Try MSI */
-    if (ath10k_pci_irq_mode != ATH10K_PCI_IRQ_LEGACY) {
+    if ((ath10k_pci_irq_mode != ATH10K_PCI_IRQ_LEGACY)
+            && (pci_query_irq_mode(pdev, ZX_PCIE_IRQ_MODE_MSI, &irq_cnt) == ZX_OK)
+            && (pci_set_irq_mode(pdev, ZX_PCIE_IRQ_MODE_MSI, 1) == ZX_OK)) {
         ar_pci->oper_irq_mode = ATH10K_PCI_IRQ_MSI;
-        ret = pci_enable_msi(ar_pci->pdev);
-        if (ret == 0) {
-            return 0;
-        }
-
-        /* fall-through */
+        return ZX_OK;
     }
 
     /* Try legacy irq
@@ -2887,12 +2893,18 @@ static int ath10k_pci_init_irq(struct ath10k* ar) {
      * For now, fix the race by repeating the write in below
      * synchronization checking.
      */
-    ar_pci->oper_irq_mode = ATH10K_PCI_IRQ_LEGACY;
+    if ((pci_query_irq_mode(pdev, ZX_PCIE_IRQ_MODE_LEGACY, &irq_cnt) == ZX_OK)
+            && (pci_set_irq_mode(pdev, ZX_PCIE_IRQ_MODE_LEGACY, 1) == ZX_OK)) {
+        ar_pci->oper_irq_mode = ATH10K_PCI_IRQ_LEGACY;
 
-    ath10k_pci_write32(ar, SOC_CORE_BASE_ADDRESS + PCIE_INTR_ENABLE_ADDRESS,
-                       PCIE_INTR_FIRMWARE_MASK | PCIE_INTR_CE_MASK_ALL);
+        ath10k_pci_write32(ar, SOC_CORE_BASE_ADDRESS + PCIE_INTR_ENABLE_ADDRESS,
+                           PCIE_INTR_FIRMWARE_MASK | PCIE_INTR_CE_MASK_ALL);
 
-    return 0;
+        return ZX_OK;
+    }
+
+    ath10k_err("failed to determine IRQ mode\n");
+    return ZX_ERR_NOT_SUPPORTED;
 }
 
 static void ath10k_pci_deinit_irq_legacy(struct ath10k* ar) {
@@ -2900,7 +2912,7 @@ static void ath10k_pci_deinit_irq_legacy(struct ath10k* ar) {
                        0);
 }
 
-static int ath10k_pci_deinit_irq(struct ath10k* ar) {
+static void ath10k_pci_deinit_irq(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
     switch (ar_pci->oper_irq_mode) {
@@ -2908,21 +2920,21 @@ static int ath10k_pci_deinit_irq(struct ath10k* ar) {
         ath10k_pci_deinit_irq_legacy(ar);
         break;
     default:
+#if 0 // TODO - How to disable MSI interrupts?
         pci_disable_msi(ar_pci->pdev);
+#endif // TODO
         break;
     }
-
-    return 0;
 }
 
-int ath10k_pci_wait_for_target_init(struct ath10k* ar) {
+zx_status_t ath10k_pci_wait_for_target_init(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    unsigned long timeout;
+    zx_time_t timeout;
     uint32_t val;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot waiting target to initialise\n");
 
-    timeout = jiffies + msecs_to_jiffies(ATH10K_PCI_TARGET_WAIT);
+    timeout = zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_MSEC(ATH10K_PCI_TARGET_WAIT);
 
     do {
         val = ath10k_pci_read32(ar, FW_INDICATOR_ADDRESS);
@@ -2944,48 +2956,47 @@ int ath10k_pci_wait_for_target_init(struct ath10k* ar) {
             break;
         }
 
-        if (ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY)
+        if (ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY) {
             /* Fix potential race by repeating CORE_BASE writes */
-        {
             ath10k_pci_enable_legacy_irq(ar);
         }
 
         mdelay(10);
-    } while (time_before(jiffies, timeout));
+    } while (zx_clock_get(ZX_CLOCK_MONOTONIC) < timeout);
 
     ath10k_pci_disable_and_clear_legacy_irq(ar);
     ath10k_pci_irq_msi_fw_mask(ar);
 
     if (val == 0xffffffff) {
-        ath10k_err(ar, "failed to read device register, device is gone\n");
-        return -EIO;
+        ath10k_err("failed to read device register, device is gone\n");
+        return ZX_ERR_IO;
     }
 
     if (val & FW_IND_EVENT_PENDING) {
-        ath10k_warn(ar, "device has crashed during init\n");
-        return -ECOMM;
+        ath10k_info("device has crashed during init\n");
+        return ZX_ERR_INTERNAL;
     }
 
     if (!(val & FW_IND_INITIALIZED)) {
-        ath10k_err(ar, "failed to receive initialized event from target: %08x\n",
+        ath10k_err("failed to receive initialized event from target: %08x\n",
                    val);
-        return -ETIMEDOUT;
+        return ZX_ERR_TIMED_OUT;
     }
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot target initialised\n");
-    return 0;
+    return ZX_OK;
 }
 
-static int ath10k_pci_cold_reset(struct ath10k* ar) {
+static zx_status_t ath10k_pci_cold_reset(struct ath10k* ar) {
     uint32_t val;
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot cold reset\n");
 
-    spin_lock_bh(&ar->data_lock);
+    mtx_lock(&ar->data_lock);
 
     ar->stats.fw_cold_reset_counter++;
 
-    spin_unlock_bh(&ar->data_lock);
+    mtx_unlock(&ar->data_lock);
 
     /* Put Target, including PCIe, into RESET. */
     val = ath10k_pci_reg_read32(ar, SOC_GLOBAL_RESET_ADDRESS);
@@ -2997,92 +3008,70 @@ static int ath10k_pci_cold_reset(struct ath10k* ar) {
      * for any immediate pcie register access and cause bus error,
      * add delay before any pcie access request to fix this issue.
      */
-    msleep(20);
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(20)));
 
     /* Pull Target, including PCIe, out of RESET. */
     val &= ~1;
     ath10k_pci_reg_write32(ar, SOC_GLOBAL_RESET_ADDRESS, val);
 
-    msleep(20);
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(20)));
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot cold reset complete\n");
 
-    return 0;
+    return ZX_OK;
 }
 
-static int ath10k_pci_claim(struct ath10k* ar) {
+static zx_status_t ath10k_pci_claim(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    struct pci_dev* pdev = ar_pci->pdev;
-    int ret;
+    pci_protocol_t* pdev = &ar_pci->pdev;
+    zx_status_t ret;
 
-    pci_set_drvdata(pdev, ar);
-
-    ret = pci_enable_device(pdev);
-    if (ret) {
-        ath10k_err(ar, "failed to enable pci device: %d\n", ret);
-        return ret;
-    }
-
-    ret = pci_request_region(pdev, BAR_NUM, "ath");
-    if (ret) {
-        ath10k_err(ar, "failed to request region BAR%d: %d\n", BAR_NUM,
-                   ret);
+    ret = pci_map_bar(pdev, 0u, ZX_CACHE_POLICY_UNCACHED_DEVICE, &ar_pci->mem,
+                      &ar_pci->mem_len, &ar_pci->mem_handle);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to map resources for BAR 0: %s\n",
+                   zx_status_get_string(ret));
         goto err_device;
     }
 
-    /* Target expects 32 bit DMA. Enforce it. */
-    ret = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
-    if (ret) {
-        ath10k_err(ar, "failed to set dma mask to 32-bit: %d\n", ret);
+    // Verify that the requested addresses are in 32b range
+    zx_paddr_t phys_addr;
+    ret = zx_vmo_op_range(ar_pci->mem_handle, ZX_VMO_OP_LOOKUP, 0, 8, &phys_addr,
+                          sizeof(zx_paddr_t));
+    if (ret != ZX_OK) {
+        ath10k_err("failed to get physical address of PCI mem\n");
+        goto err_region;
+    }
+    if (phys_addr + ar_pci->mem_len > 0xffffffff) {
+        ath10k_err("PCI mem allocated outside of 32-bit address space\n");
+        ret = ZX_ERR_INTERNAL;
+        goto err_region;
+    }
+    ret = pci_enable_bus_master(pdev, true);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to enable bus mastering\n");
         goto err_region;
     }
 
-    ret = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(32));
-    if (ret) {
-        ath10k_err(ar, "failed to set consistent dma mask to 32-bit: %d\n",
-                   ret);
-        goto err_region;
-    }
-
-    pci_set_master(pdev);
-
-    /* Arrange for access to Target SoC registers. */
-    ar_pci->mem_len = pci_resource_len(pdev, BAR_NUM);
-    ar_pci->mem = pci_iomap(pdev, BAR_NUM, 0);
-    if (!ar_pci->mem) {
-        ath10k_err(ar, "failed to iomap BAR%d\n", BAR_NUM);
-        ret = -EIO;
-        goto err_master;
-    }
-
-    ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot pci_mem 0x%pK\n", ar_pci->mem);
-    return 0;
-
-err_master:
-    pci_clear_master(pdev);
+    ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot pci_mem 0x%p\n", ar_pci->mem);
+    return ZX_OK;
 
 err_region:
-    pci_release_region(pdev, BAR_NUM);
+    zx_handle_close(ar_pci->mem_handle);
 
 err_device:
-    pci_disable_device(pdev);
-
     return ret;
 }
 
-static void ath10k_pci_release(struct ath10k* ar) {
-    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    struct pci_dev* pdev = ar_pci->pdev;
-
-    pci_iounmap(pdev, ar_pci->mem);
-    pci_release_region(pdev, BAR_NUM);
-    pci_clear_master(pdev);
-    pci_disable_device(pdev);
+static void ath10k_pci_release(void* ctx) {
+    struct ath10k* ath = ctx;
+    // TODO - Clear mastering and releaes handles
+    free(ath);
 }
 
 static bool ath10k_pci_chip_is_supported(uint32_t dev_id, uint32_t chip_id) {
     const struct ath10k_pci_supp_chip* supp_chip;
-    int i;
+    unsigned long i;
     uint32_t rev_id = MS(chip_id, SOC_CHIP_ID_REV);
 
     for (i = 0; i < ARRAY_SIZE(ath10k_pci_supp_chips); i++) {
@@ -3097,15 +3086,16 @@ static bool ath10k_pci_chip_is_supported(uint32_t dev_id, uint32_t chip_id) {
     return false;
 }
 
-int ath10k_pci_setup_resource(struct ath10k* ar) {
+zx_status_t ath10k_pci_setup_resource(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    int ret;
+    zx_status_t ret;
 
-    spin_lock_init(&ar_pci->ce_lock);
-    spin_lock_init(&ar_pci->ps_lock);
+    mtx_init(&ar_pci->ce_lock, mtx_plain);
 
+#if 0 // TODO
     setup_timer(&ar_pci->rx_post_retry, ath10k_pci_rx_replenish_retry,
                 (unsigned long)ar);
+#endif // TODO
 
     if (QCA_REV_6174(ar) || QCA_REV_9377(ar)) {
         ath10k_pci_override_ce_config(ar);
@@ -3113,42 +3103,100 @@ int ath10k_pci_setup_resource(struct ath10k* ar) {
 
     ret = ath10k_pci_alloc_pipes(ar);
     if (ret) {
-        ath10k_err(ar, "failed to allocate copy engine pipes: %d\n",
-                   ret);
+        ath10k_err("failed to allocate copy engine pipes: %s\n",
+                   zx_status_get_string(ret));
         return ret;
     }
-
-    return 0;
+    return ZX_OK;
 }
 
+#if 0 // TODO
 void ath10k_pci_release_resource(struct ath10k* ar) {
     ath10k_pci_rx_retry_sync(ar);
     netif_napi_del(&ar->napi);
     ath10k_pci_ce_deinit(ar);
     ath10k_pci_free_pipes(ar);
 }
+#endif // TODO
 
 static const struct ath10k_bus_ops ath10k_pci_bus_ops = {
-    .read32     = ath10k_bus_pci_read32,
-    .write32    = ath10k_bus_pci_write32,
+    .read32         = ath10k_bus_pci_read32,
+    .write32        = ath10k_bus_pci_write32,
     .get_num_banks  = ath10k_pci_get_num_banks,
 };
-#endif
+
+static zx_protocol_device_t device_ops = {
+    .version = DEVICE_OPS_VERSION,
+    .release = ath10k_pci_release,
+};
+
+static zx_status_t ath10k_pci_query(void* ctx, uint32_t options, wlanmac_info_t* info) {
+    // TODO
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static zx_status_t ath10k_pci_start(void* ctx, wlanmac_ifc_t* ifc, void* cookie) {
+    // TODO
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static void ath10k_pci_stop(void* ctx) {
+    // TODO
+}
+
+static zx_status_t ath10k_pci_queue_tx(void* ctx, uint32_t options, wlan_tx_packet_t* pkt) {
+    // TODO
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static zx_status_t ath10k_pci_set_channel(void* ctx, uint32_t options, wlan_channel_t* chan) {
+    // TODO
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static zx_status_t ath10k_pci_set_bss(void* ctx, uint32_t options, const uint8_t mac[6],
+                                      uint8_t type) {
+    // TODO
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static zx_status_t ath10k_pci_set_key(void* ctx, uint32_t options, wlan_key_config_t* key_config) {
+    // TODO
+    return ZX_ERR_NOT_SUPPORTED;
+}
+
+static wlanmac_protocol_ops_t wlanmac_ops = {
+    .query = ath10k_pci_query,
+    .start = ath10k_pci_start,
+    .stop = ath10k_pci_stop,
+    .queue_tx = ath10k_pci_queue_tx,
+    .set_channel = ath10k_pci_set_channel,
+    .set_bss = ath10k_pci_set_bss,
+    .set_key = ath10k_pci_set_key,
+};
 
 static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
-    return ZX_OK;
-#if 0 // NEEDS PORTING
-    int ret = 0;
+    zx_status_t ret = ZX_OK;
     struct ath10k* ar;
     struct ath10k_pci* ar_pci;
     enum ath10k_hw_rev hw_rev;
     uint32_t chip_id;
     bool pci_ps;
-    int (*pci_soft_reset)(struct ath10k *ar);
-    int (*pci_hard_reset)(struct ath10k *ar);
+    zx_status_t (*pci_soft_reset)(struct ath10k *ar);
+    zx_status_t (*pci_hard_reset)(struct ath10k *ar);
     uint32_t (*targ_cpu_to_ce_addr)(struct ath10k *ar, uint32_t addr);
 
-    switch (pci_dev->device) {
+    pci_protocol_t pci;
+    if (device_get_protocol(dev, ZX_PROTOCOL_PCI, &pci) != ZX_OK) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    zx_pcie_device_info_t pci_info;
+    if (pci_get_device_info(&pci, &pci_info) != ZX_OK) {
+        return ZX_ERR_NOT_SUPPORTED;
+    }
+
+    switch (pci_info.device_id) {
     case QCA988X_2_0_DEVICE_ID:
         hw_rev = ATH10K_HW_QCA988X;
         pci_ps = false;
@@ -3200,112 +3248,124 @@ static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
         targ_cpu_to_ce_addr = ath10k_pci_qca988x_targ_cpu_to_ce_addr;
         break;
     default:
-        WARN_ON(1);
-        return -ENOTSUPP;
+        ath10k_err("unrecognized device ID: %#0" PRIx16 "\n",
+                   pci_info.device_id);
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
-    ar = ath10k_core_create(sizeof(*ar_pci), &pdev->dev, ATH10K_BUS_PCI,
-                            hw_rev, &ath10k_pci_hif_ops);
-    if (!ar) {
-        dev_err(&pdev->dev, "failed to allocate core\n");
-        return -ENOMEM;
+    ret = ath10k_core_create(&ar, sizeof(*ar_pci), dev, ATH10K_BUS_PCI,
+                             hw_rev, &ath10k_pci_hif_ops);
+    if (ret != ZX_OK) {
+        printf("ath10k: failed to create core\n");
+        return ret;
     }
 
-    ath10k_dbg(ar, ATH10K_DBG_BOOT, "pci probe %04x:%04x %04x:%04x\n",
-               pdev->vendor, pdev->device,
-               pdev->subsystem_vendor, pdev->subsystem_device);
+    ath10k_trace("pci probe %04x:%04x\n", pci_info.vendor_id, pci_info.device_id);
 
     ar_pci = ath10k_pci_priv(ar);
-    ar_pci->pdev = pdev;
-    ar_pci->dev = &pdev->dev;
+    memcpy(&ar_pci->pdev, &pci, sizeof(ar_pci->pdev));
+    ar_pci->dev = dev;
     ar_pci->ar = ar;
-    ar->dev_id = pci_dev->device;
+    ar->dev_id = pci_info.device_id;
     ar_pci->pci_ps = pci_ps;
     ar_pci->bus_ops = &ath10k_pci_bus_ops;
     ar_pci->pci_soft_reset = pci_soft_reset;
     ar_pci->pci_hard_reset = pci_hard_reset;
     ar_pci->targ_cpu_to_ce_addr = targ_cpu_to_ce_addr;
-
-    ar->id.vendor = pdev->vendor;
-    ar->id.device = pdev->device;
-    ar->id.subsystem_vendor = pdev->subsystem_vendor;
-    ar->id.subsystem_device = pdev->subsystem_device;
-
-    setup_timer(&ar_pci->ps_timer, ath10k_pci_ps_timer,
-                (unsigned long)ar);
+    ar->id.vendor = pci_info.vendor_id;
+    ar->id.device = pci_info.device_id;
 
     ret = ath10k_pci_setup_resource(ar);
-    if (ret) {
-        ath10k_err(ar, "failed to setup resource: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to setup resource: %s\n", zx_status_get_string(ret));
         goto err_core_destroy;
     }
 
     ret = ath10k_pci_claim(ar);
-    if (ret) {
-        ath10k_err(ar, "failed to claim device: %d\n", ret);
+    if (ret != ZX_OK) {
         goto err_free_pipes;
     }
 
+#if 0 // TODO
     ret = ath10k_pci_force_wake(ar);
     if (ret) {
-        ath10k_warn(ar, "failed to wake up device : %d\n", ret);
+        ath10k_info("failed to wake up device : %s\n", zx_status_get_string(ret));
         goto err_sleep;
     }
+#endif // TODO
 
     ath10k_pci_ce_deinit(ar);
     ath10k_pci_irq_disable(ar);
 
     ret = ath10k_pci_init_irq(ar);
-    if (ret) {
-        ath10k_err(ar, "failed to init irqs: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to init irqs: %s\n", zx_status_get_string(ret));
         goto err_sleep;
     }
 
-    ath10k_info(ar, "pci irq %s oper_irq_mode %d irq_mode %d reset_mode %d\n",
-                ath10k_pci_get_irq_method(ar), ar_pci->oper_irq_mode,
-                ath10k_pci_irq_mode, ath10k_pci_reset_mode);
+    ath10k_trace("pci irq %s oper_irq_mode %d irq_mode %d reset_mode %d\n",
+                 ath10k_pci_get_irq_method(ar), ar_pci->oper_irq_mode,
+                 ath10k_pci_irq_mode, ath10k_pci_reset_mode);
 
     ret = ath10k_pci_request_irq(ar);
     if (ret) {
-        ath10k_warn(ar, "failed to request irqs: %d\n", ret);
+        ath10k_info("failed to request irqs: %d\n", ret);
         goto err_deinit_irq;
     }
 
     ret = ath10k_pci_chip_reset(ar);
     if (ret) {
-        ath10k_err(ar, "failed to reset chip: %d\n", ret);
+        ath10k_err("failed to reset chip: %s\n", zx_status_get_string(ret));
         goto err_free_irq;
     }
 
     chip_id = ath10k_pci_soc_read32(ar, SOC_CHIP_ID_ADDRESS);
     if (chip_id == 0xffffffff) {
-        ath10k_err(ar, "failed to get chip id\n");
+        ath10k_err("failed to get chip id\n");
         goto err_free_irq;
     }
 
-    if (!ath10k_pci_chip_is_supported(pdev->device, chip_id)) {
-        ath10k_err(ar, "device %04x with chip_id %08x isn't supported\n",
-                   pdev->device, chip_id);
+    if (!ath10k_pci_chip_is_supported(pci_info.device_id, chip_id)) {
+        ath10k_err("device %04x with chip_id %08x isn't supported\n",
+                   pci_info.device_id, chip_id);
         goto err_free_irq;
     }
 
     ret = ath10k_core_register(ar, chip_id);
     if (ret) {
-        ath10k_err(ar, "failed to register driver core: %d\n", ret);
+        ath10k_err("failed to register driver core: %s\n", zx_status_get_string(ret));
         goto err_free_irq;
     }
 
-    return 0;
+    device_add_args_t args = {
+        .version = DEVICE_ADD_ARGS_VERSION,
+        .name = "ath10k",
+        .ctx = ar,
+        .ops = &device_ops,
+        .proto_id = ZX_PROTOCOL_WLANMAC,
+        .proto_ops = &wlanmac_ops,
+    };
+
+    ret = device_add(dev, &args, &ar->zxdev);
+    if (ret != ZX_OK) {
+        goto err_free_irq;
+    }
+
+    return ZX_OK;
 
 err_free_irq:
     ath10k_pci_free_irq(ar);
+#if 0 // TODO
     ath10k_pci_rx_retry_sync(ar);
+#endif // TODO
 
 err_deinit_irq:
     ath10k_pci_deinit_irq(ar);
 
 err_sleep:
+#if 0 // TODO
     ath10k_pci_sleep_sync(ar);
+#endif // TODO
     ath10k_pci_release(ar);
 
 err_free_pipes:
@@ -3315,35 +3375,7 @@ err_core_destroy:
     ath10k_core_destroy(ar);
 
     return ret;
-#endif // NEEDS PORTING
 }
-
-#if 0 // NEEDS PORTING
-static void ath10k_pci_remove(struct pci_dev* pdev) {
-    struct ath10k* ar = pci_get_drvdata(pdev);
-    struct ath10k_pci* ar_pci;
-
-    ath10k_dbg(ar, ATH10K_DBG_PCI, "pci remove\n");
-
-    if (!ar) {
-        return;
-    }
-
-    ar_pci = ath10k_pci_priv(ar);
-
-    if (!ar_pci) {
-        return;
-    }
-
-    ath10k_core_unregister(ar);
-    ath10k_pci_free_irq(ar);
-    ath10k_pci_deinit_irq(ar);
-    ath10k_pci_release_resource(ar);
-    ath10k_pci_sleep_sync(ar);
-    ath10k_pci_release(ar);
-    ath10k_core_destroy(ar);
-}
-#endif // NEEDS PORTING
 
 static zx_driver_ops_t ath10k_pci_driver_ops = {
     .version = DRIVER_OPS_VERSION,
@@ -3361,5 +3393,4 @@ BI_ABORT_IF(NE, BIND_PROTOCOL, ZX_PROTOCOL_PCI),
             BI_MATCH_IF(EQ, BIND_PCI_DID, QCA9984_1_0_DEVICE_ID),
             BI_MATCH_IF(EQ, BIND_PCI_DID, QCA9887_1_0_DEVICE_ID),
             BI_MATCH_IF(EQ, BIND_PCI_DID, QCA9888_2_0_DEVICE_ID),
-            ZIRCON_DRIVER_END(ath10k_pci)
-
+            ZIRCON_DRIVER_END(ath10k)

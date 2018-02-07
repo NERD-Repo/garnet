@@ -15,6 +15,10 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <zircon/status.h>
+
+#include <string.h>
+
 #include "bmi.h"
 #include "hif.h"
 #include "debug.h"
@@ -35,6 +39,7 @@ void ath10k_bmi_start(struct ath10k* ar) {
     }
 }
 
+#if 0 // TODO
 int ath10k_bmi_done(struct ath10k* ar) {
     struct bmi_cmd cmd;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.done);
@@ -52,15 +57,16 @@ int ath10k_bmi_done(struct ath10k* ar) {
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
     if (ret) {
-        ath10k_warn(ar, "unable to write to the device: %d\n", ret);
+        ath10k_info("unable to write to the device: %d\n", ret);
         return ret;
     }
 
     return 0;
 }
+#endif // TODO
 
-int ath10k_bmi_get_target_info(struct ath10k* ar,
-                               struct bmi_target_info* target_info) {
+zx_status_t ath10k_bmi_get_target_info(struct ath10k* ar,
+                                       struct bmi_target_info* target_info) {
     struct bmi_cmd cmd;
     union bmi_resp resp;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.get_target_info);
@@ -70,30 +76,32 @@ int ath10k_bmi_get_target_info(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi get target info\n");
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "BMI Get Target Info Command disallowed\n");
-        return -EBUSY;
+        ath10k_info("BMI Get Target Info Command disallowed\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     cmd.id = BMI_GET_TARGET_INFO;
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
     if (ret) {
-        ath10k_warn(ar, "unable to get target info from device\n");
+        ath10k_info("unable to get target info from device: %s\n",
+                    zx_status_get_string(ret));
         return ret;
     }
 
     if (resplen < sizeof(resp.get_target_info)) {
-        ath10k_warn(ar, "invalid get_target_info response length (%d)\n",
+        ath10k_info("invalid get_target_info response length (%d)\n",
                     resplen);
-        return -EIO;
+        return ZX_ERR_IO;
     }
 
     target_info->version = resp.get_target_info.version;
     target_info->type    = resp.get_target_info.type;
 
-    return 0;
+    return ZX_OK;
 }
 
+#if 0 // TODO
 #define TARGET_VERSION_SENTINAL 0xffffffffu
 
 int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
@@ -108,7 +116,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi get target info SDIO\n");
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "BMI Get Target Info Command disallowed\n");
+        ath10k_info("BMI Get Target Info Command disallowed\n");
         return -EBUSY;
     }
 
@@ -121,7 +129,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     resplen = sizeof(uint32_t);
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &tmp, &resplen);
     if (ret) {
-        ath10k_warn(ar, "unable to read from device\n");
+        ath10k_info("unable to read from device\n");
         return ret;
     }
 
@@ -134,7 +142,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
         ret = ath10k_hif_exchange_bmi_msg(ar, NULL, 0, &tmp,
                                           &resplen);
         if (ret) {
-            ath10k_warn(ar, "unable to read from device\n");
+            ath10k_info("unable to read from device\n");
             return ret;
         }
     }
@@ -143,7 +151,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
 
     /* Step 2: Check the target info length */
     if (ver_len != sizeof(resp.get_target_info)) {
-        ath10k_warn(ar, "Unexpected target info len: %u. Expected: %zu\n",
+        ath10k_info("Unexpected target info len: %u. Expected: %zu\n",
                     ver_len, sizeof(resp.get_target_info));
         return -EINVAL;
     }
@@ -154,7 +162,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
                                       &resp.get_target_info.version,
                                       &resplen);
     if (ret) {
-        ath10k_warn(ar, "unable to read from device\n");
+        ath10k_info("unable to read from device\n");
         return ret;
     }
 
@@ -163,21 +171,22 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
 
     return 0;
 }
+#endif // TODO
 
-int ath10k_bmi_read_memory(struct ath10k* ar,
-                           uint32_t address, void* buffer, uint32_t length) {
+zx_status_t ath10k_bmi_read_memory(struct ath10k* ar, uint32_t address,
+                                   void* buffer, uint32_t length) {
     struct bmi_cmd cmd;
     union bmi_resp resp;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.read_mem);
     uint32_t rxlen;
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi read address 0x%x length %d\n",
                address, length);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "command disallowed\n");
-        return -EBUSY;
+        ath10k_info("command disallowed\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     while (length) {
@@ -189,9 +198,9 @@ int ath10k_bmi_read_memory(struct ath10k* ar,
 
         ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen,
                                           &resp, &rxlen);
-        if (ret) {
-            ath10k_warn(ar, "unable to read from the device (%d)\n",
-                        ret);
+        if (ret != ZX_OK) {
+            ath10k_info("unable to read from the device (%s)\n",
+                        zx_status_get_string(ret));
             return ret;
         }
 
@@ -201,21 +210,21 @@ int ath10k_bmi_read_memory(struct ath10k* ar,
         length  -= rxlen;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
-int ath10k_bmi_write_soc_reg(struct ath10k* ar, uint32_t address, uint32_t reg_val) {
+zx_status_t ath10k_bmi_write_soc_reg(struct ath10k* ar, uint32_t address, uint32_t reg_val) {
     struct bmi_cmd cmd;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.write_soc_reg);
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI,
                "bmi write soc register 0x%08x val 0x%08x\n",
                address, reg_val);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "bmi write soc register command in progress\n");
-        return -EBUSY;
+        ath10k_info("bmi write soc register command in progress\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     cmd.id = BMI_WRITE_SOC_REGISTER;
@@ -223,13 +232,13 @@ int ath10k_bmi_write_soc_reg(struct ath10k* ar, uint32_t address, uint32_t reg_v
     cmd.write_soc_reg.value = reg_val;
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
-    if (ret) {
-        ath10k_warn(ar, "Unable to write soc register to device: %d\n",
-                    ret);
+    if (ret != ZX_OK) {
+        ath10k_info("Unable to write soc register to device: %s\n",
+                    zx_status_get_string(ret));
         return ret;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
 int ath10k_bmi_read_soc_reg(struct ath10k* ar, uint32_t address, uint32_t* reg_val) {
@@ -237,14 +246,14 @@ int ath10k_bmi_read_soc_reg(struct ath10k* ar, uint32_t address, uint32_t* reg_v
     union bmi_resp resp;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.read_soc_reg);
     uint32_t resplen = sizeof(resp.read_soc_reg);
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi read soc register 0x%08x\n",
                address);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "bmi read soc register command in progress\n");
-        return -EBUSY;
+        ath10k_info("bmi read soc register command in progress\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     cmd.id = BMI_READ_SOC_REGISTER;
@@ -252,8 +261,8 @@ int ath10k_bmi_read_soc_reg(struct ath10k* ar, uint32_t address, uint32_t* reg_v
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
     if (ret) {
-        ath10k_warn(ar, "Unable to read soc register from device: %d\n",
-                    ret);
+        ath10k_info("Unable to read soc register from device: %s\n",
+                    zx_status_get_string(ret));
         return ret;
     }
 
@@ -262,22 +271,22 @@ int ath10k_bmi_read_soc_reg(struct ath10k* ar, uint32_t address, uint32_t* reg_v
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi read soc register value 0x%08x\n",
                *reg_val);
 
-    return 0;
+    return ZX_OK;
 }
 
-int ath10k_bmi_write_memory(struct ath10k* ar,
-                            uint32_t address, const void* buffer, uint32_t length) {
+zx_status_t ath10k_bmi_write_memory(struct ath10k* ar, uint32_t address,
+                                    const void* buffer, uint32_t length) {
     struct bmi_cmd cmd;
     uint32_t hdrlen = sizeof(cmd.id) + sizeof(cmd.write_mem);
     uint32_t txlen;
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi write address 0x%x length %d\n",
                address, length);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "command disallowed\n");
-        return -EBUSY;
+        ath10k_info("command disallowed\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     while (length) {
@@ -294,8 +303,8 @@ int ath10k_bmi_write_memory(struct ath10k* ar,
         ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, hdrlen + txlen,
                                           NULL, NULL);
         if (ret) {
-            ath10k_warn(ar, "unable to write to the device (%d)\n",
-                        ret);
+            ath10k_info("unable to write to the device (%s)\n",
+                        zx_status_get_string(ret));
             return ret;
         }
 
@@ -307,22 +316,23 @@ int ath10k_bmi_write_memory(struct ath10k* ar,
         length  -= txlen;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
-int ath10k_bmi_execute(struct ath10k* ar, uint32_t address, uint32_t param, uint32_t* result) {
+zx_status_t ath10k_bmi_execute(struct ath10k* ar, uint32_t address,
+                               uint32_t param, uint32_t* result) {
     struct bmi_cmd cmd;
     union bmi_resp resp;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.execute);
     uint32_t resplen = sizeof(resp.execute);
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi execute address 0x%x param 0x%x\n",
                address, param);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "command disallowed\n");
-        return -EBUSY;
+        ath10k_info("command disallowed\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     cmd.id            = BMI_EXECUTE;
@@ -330,36 +340,36 @@ int ath10k_bmi_execute(struct ath10k* ar, uint32_t address, uint32_t param, uint
     cmd.execute.param = param;
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
-    if (ret) {
-        ath10k_warn(ar, "unable to read from the device\n");
+    if (ret != ZX_OK) {
+        ath10k_info("unable to read from the device\n");
         return ret;
     }
 
     if (resplen < sizeof(resp.execute)) {
-        ath10k_warn(ar, "invalid execute response length (%d)\n",
+        ath10k_info("invalid execute response length (%d)\n",
                     resplen);
-        return -EIO;
+        return ZX_ERR_IO;
     }
 
     *result = resp.execute.result;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi execute result 0x%x\n", *result);
 
-    return 0;
+    return ZX_OK;
 }
 
-int ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t length) {
+zx_status_t ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t length) {
     struct bmi_cmd cmd;
     uint32_t hdrlen = sizeof(cmd.id) + sizeof(cmd.lz_data);
     uint32_t txlen;
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi lz data buffer 0x%pK length %d\n",
                buffer, length);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "command disallowed\n");
-        return -EBUSY;
+        ath10k_info("command disallowed\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     while (length) {
@@ -373,8 +383,8 @@ int ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t length) {
 
         ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, hdrlen + txlen,
                                           NULL, NULL);
-        if (ret) {
-            ath10k_warn(ar, "unable to write to the device\n");
+        if (ret != ZX_OK) {
+            ath10k_info("unable to write to the device\n");
             return ret;
         }
 
@@ -382,47 +392,47 @@ int ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t length) {
         length -= txlen;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
-int ath10k_bmi_lz_stream_start(struct ath10k* ar, uint32_t address) {
+zx_status_t ath10k_bmi_lz_stream_start(struct ath10k* ar, uint32_t address) {
     struct bmi_cmd cmd;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.lz_start);
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi lz stream start address 0x%x\n",
                address);
 
     if (ar->bmi.done_sent) {
-        ath10k_warn(ar, "command disallowed\n");
-        return -EBUSY;
+        ath10k_info("command disallowed\n");
+        return ZX_ERR_BAD_STATE;
     }
 
     cmd.id            = BMI_LZ_STREAM_START;
     cmd.lz_start.addr = address;
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
-    if (ret) {
-        ath10k_warn(ar, "unable to Start LZ Stream to the device\n");
+    if (ret != ZX_OK) {
+        ath10k_info("unable to Start LZ Stream to the device\n");
         return ret;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
-int ath10k_bmi_fast_download(struct ath10k* ar,
-                             uint32_t address, const void* buffer, uint32_t length) {
+zx_status_t ath10k_bmi_fast_download(struct ath10k* ar, uint32_t address,
+                                     const void* buffer, uint32_t length) {
     uint8_t trailer[4] = {};
     uint32_t head_len = rounddown(length, 4);
     uint32_t trailer_len = length - head_len;
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI,
                "bmi fast download address 0x%x buffer 0x%pK length %d\n",
                address, buffer, length);
 
     ret = ath10k_bmi_lz_stream_start(ar, address);
-    if (ret) {
+    if (ret != ZX_OK) {
         return ret;
     }
 
@@ -432,7 +442,7 @@ int ath10k_bmi_fast_download(struct ath10k* ar,
     }
 
     ret = ath10k_bmi_lz_data(ar, buffer, head_len);
-    if (ret) {
+    if (ret != ZX_OK) {
         return ret;
     }
 
@@ -440,7 +450,7 @@ int ath10k_bmi_fast_download(struct ath10k* ar,
         ret = ath10k_bmi_lz_data(ar, trailer, 4);
     }
 
-    if (ret != 0) {
+    if (ret != ZX_OK) {
         return ret;
     }
 

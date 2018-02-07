@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2018 The Fuchsia Authors.
+# Copyright (c) 2017 The Fuchsia Authors.
 #
 # Permission to use, copy, modify, and/or distribute this software for any
 # purpose with or without fee is hereby granted, provided that the above
@@ -20,15 +20,21 @@ driver_module("ath10k_driver") {
   output_name = "ath10k"
 
   sources = [
-    "hw.h",
+    "bmi.c",
+    "ce.c",
+    "core.c",
+    "hw.c",
+    "mac.c",
     "pci.c",
-    "pci.h",
+    "swap.c",
   ]
 
   deps = [
-    "//zircon/public/lib/ddktl",
+    "//garnet/drivers/wlan/third_party/atheros/ath10k/firmware:atheros-firmware",
     "//zircon/public/lib/ddk",
-    "//zircon/public/lib/fbl",
+    "//zircon/public/lib/driver",
+    "//zircon/public/lib/sync",
+    "//zircon/public/lib/zx",
   ]
 
   configs += [ "//build/config/fuchsia:enable_zircon_asserts" ]

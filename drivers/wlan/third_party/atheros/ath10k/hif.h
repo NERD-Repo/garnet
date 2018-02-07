@@ -18,10 +18,10 @@
 #ifndef _HIF_H_
 #define _HIF_H_
 
-#include <linux/kernel.h>
 #include "core.h"
 #include "debug.h"
 
+#if 0 // TODO
 struct ath10k_hif_sg_item {
     uint16_t transfer_id;
     void* transfer_context; /* NULL = tx completion callback not called */
@@ -29,8 +29,10 @@ struct ath10k_hif_sg_item {
     uint32_t paddr;
     uint16_t len;
 };
+#endif // TODO
 
 struct ath10k_hif_ops {
+#if 0 // TODO
     /* send a scatter-gather list to the target */
     int (*tx_sg)(struct ath10k* ar, uint8_t pipe_id,
                  struct ath10k_hif_sg_item* items, int n_items);
@@ -41,15 +43,17 @@ struct ath10k_hif_ops {
 
     int (*diag_write)(struct ath10k* ar, uint32_t address, const void* data,
                       int nbytes);
+#endif // TODO
     /*
      * API to handle HIF-specific BMI message exchanges, this API is
      * synchronous and only allowed to be called from a context that
      * can block (sleep)
      */
-    int (*exchange_bmi_msg)(struct ath10k* ar,
-                            void* request, uint32_t request_len,
-                            void* response, uint32_t* response_len);
+    zx_status_t (*exchange_bmi_msg)(struct ath10k* ar,
+                                    void* request, uint32_t request_len,
+                                    void* response, uint32_t* response_len);
 
+#if 0 // TODO
     /* Post BMI phase, after FW is loaded. Starts regular operation */
     int (*start)(struct ath10k* ar);
 
@@ -78,23 +82,26 @@ struct ath10k_hif_ops {
     uint32_t (*read32)(struct ath10k* ar, uint32_t address);
 
     void (*write32)(struct ath10k* ar, uint32_t address, uint32_t value);
+#endif // TODO
 
     /* Power up the device and enter BMI transfer mode for FW download */
-    int (*power_up)(struct ath10k* ar);
+    zx_status_t (*power_up)(struct ath10k* ar);
 
     /* Power down the device and free up resources. stop() must be called
      * before this if start() was called earlier
      */
     void (*power_down)(struct ath10k* ar);
 
+#if 0 // TODO
     int (*suspend)(struct ath10k* ar);
     int (*resume)(struct ath10k* ar);
+#endif // TODO
 
-    /* fetch calibration data from target eeprom */
-    int (*fetch_cal_eeprom)(struct ath10k* ar, void** data,
-                            size_t* data_len);
+    zx_status_t (*fetch_cal_eeprom)(struct ath10k* ar, void** data,
+                                    size_t* data_len);
 };
 
+#if 0 // TODO
 static inline int ath10k_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
                                    struct ath10k_hif_sg_item* items,
                                    int n_items) {
@@ -114,14 +121,16 @@ static inline int ath10k_hif_diag_write(struct ath10k* ar, uint32_t address,
 
     return ar->hif.ops->diag_write(ar, address, data, nbytes);
 }
+#endif // TODO
 
-static inline int ath10k_hif_exchange_bmi_msg(struct ath10k* ar,
-                                              void* request, uint32_t request_len,
-                                              void* response, uint32_t* response_len) {
+static inline zx_status_t ath10k_hif_exchange_bmi_msg(struct ath10k* ar,
+        void* request, uint32_t request_len,
+        void* response, uint32_t* response_len) {
     return ar->hif.ops->exchange_bmi_msg(ar, request, request_len,
                                          response, response_len);
 }
 
+#if 0 // TODO
 static inline int ath10k_hif_start(struct ath10k* ar) {
     return ar->hif.ops->start(ar);
 }
@@ -151,8 +160,9 @@ static inline uint16_t ath10k_hif_get_free_queue_number(struct ath10k* ar,
         uint8_t pipe_id) {
     return ar->hif.ops->get_free_queue_number(ar, pipe_id);
 }
+#endif // TODO
 
-static inline int ath10k_hif_power_up(struct ath10k* ar) {
+static inline zx_status_t ath10k_hif_power_up(struct ath10k* ar) {
     return ar->hif.ops->power_up(ar);
 }
 
@@ -160,6 +170,7 @@ static inline void ath10k_hif_power_down(struct ath10k* ar) {
     ar->hif.ops->power_down(ar);
 }
 
+#if 0 // TODO
 static inline int ath10k_hif_suspend(struct ath10k* ar) {
     if (!ar->hif.ops->suspend) {
         return -EOPNOTSUPP;
@@ -178,7 +189,7 @@ static inline int ath10k_hif_resume(struct ath10k* ar) {
 
 static inline uint32_t ath10k_hif_read32(struct ath10k* ar, uint32_t address) {
     if (!ar->hif.ops->read32) {
-        ath10k_warn(ar, "hif read32 not supported\n");
+        ath10k_info("hif read32 not supported\n");
         return 0xdeaddead;
     }
 
@@ -188,18 +199,19 @@ static inline uint32_t ath10k_hif_read32(struct ath10k* ar, uint32_t address) {
 static inline void ath10k_hif_write32(struct ath10k* ar,
                                       uint32_t address, uint32_t data) {
     if (!ar->hif.ops->write32) {
-        ath10k_warn(ar, "hif write32 not supported\n");
+        ath10k_info("hif write32 not supported\n");
         return;
     }
 
     ar->hif.ops->write32(ar, address, data);
 }
+#endif // TODO
 
-static inline int ath10k_hif_fetch_cal_eeprom(struct ath10k* ar,
+static inline zx_status_t ath10k_hif_fetch_cal_eeprom(struct ath10k* ar,
         void** data,
         size_t* data_len) {
     if (!ar->hif.ops->fetch_cal_eeprom) {
-        return -EOPNOTSUPP;
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
     return ar->hif.ops->fetch_cal_eeprom(ar, data, data_len);

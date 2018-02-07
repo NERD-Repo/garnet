@@ -19,28 +19,29 @@
 #define _DEBUG_H_
 
 #include <stdint.h>
-#include "trace.h"
+
+#include <ddk/debug.h>
 
 enum ath10k_debug_mask {
-    ATH10K_DBG_PCI      = 0x00000001,
-    ATH10K_DBG_WMI      = 0x00000002,
-    ATH10K_DBG_HTC      = 0x00000004,
-    ATH10K_DBG_HTT      = 0x00000008,
-    ATH10K_DBG_MAC      = 0x00000010,
-    ATH10K_DBG_BOOT     = 0x00000020,
-    ATH10K_DBG_PCI_DUMP = 0x00000040,
-    ATH10K_DBG_HTT_DUMP = 0x00000080,
-    ATH10K_DBG_MGMT     = 0x00000100,
-    ATH10K_DBG_DATA     = 0x00000200,
-    ATH10K_DBG_BMI      = 0x00000400,
+    ATH10K_DBG_PCI          = 0x00000001,
+    ATH10K_DBG_WMI          = 0x00000002,
+    ATH10K_DBG_HTC          = 0x00000004,
+    ATH10K_DBG_HTT          = 0x00000008,
+    ATH10K_DBG_MAC          = 0x00000010,
+    ATH10K_DBG_BOOT         = 0x00000020,
+    ATH10K_DBG_PCI_DUMP     = 0x00000040,
+    ATH10K_DBG_HTT_DUMP     = 0x00000080,
+    ATH10K_DBG_MGMT         = 0x00000100,
+    ATH10K_DBG_DATA         = 0x00000200,
+    ATH10K_DBG_BMI          = 0x00000400,
     ATH10K_DBG_REGULATORY   = 0x00000800,
-    ATH10K_DBG_TESTMODE = 0x00001000,
+    ATH10K_DBG_TESTMODE     = 0x00001000,
     ATH10K_DBG_WMI_PRINT    = 0x00002000,
-    ATH10K_DBG_PCI_PS   = 0x00004000,
-    ATH10K_DBG_AHB      = 0x00008000,
-    ATH10K_DBG_SDIO     = 0x00010000,
+    ATH10K_DBG_PCI_PS       = 0x00004000,
+    ATH10K_DBG_AHB          = 0x00008000,
+    ATH10K_DBG_SDIO         = 0x00010000,
     ATH10K_DBG_SDIO_DUMP    = 0x00020000,
-    ATH10K_DBG_ANY      = 0xffffffff,
+    ATH10K_DBG_ANY          = 0xffffffff,
 };
 
 enum ath10k_pktlog_filter {
@@ -63,14 +64,9 @@ enum ath10k_dbg_aggr_mode {
 
 extern unsigned int ath10k_debug_mask;
 
-__printf(2, 3) void ath10k_info(struct ath10k* ar, const char* fmt, ...);
-__printf(2, 3) void ath10k_err(struct ath10k* ar, const char* fmt, ...);
-__printf(2, 3) void ath10k_warn(struct ath10k* ar, const char* fmt, ...);
-
-void ath10k_debug_print_hwfw_info(struct ath10k* ar);
-void ath10k_debug_print_board_info(struct ath10k* ar);
-void ath10k_debug_print_boot_info(struct ath10k* ar);
-void ath10k_print_driver_info(struct ath10k* ar);
+#define ath10k_trace(fmt, ...) zxlogf(TRACE, "ath10k: " fmt, ##__VA_ARGS__)
+#define ath10k_info(fmt, ...) zxlogf(INFO, "ath10k: " fmt, ##__VA_ARGS__)
+#define ath10k_err(fmt, ...) zxlogf(ERROR, "ath10k: " fmt, ##__VA_ARGS__)
 
 #ifdef CONFIG_ATH10K_DEBUGFS
 int ath10k_debug_start(struct ath10k* ar);
@@ -79,9 +75,11 @@ int ath10k_debug_create(struct ath10k* ar);
 void ath10k_debug_destroy(struct ath10k* ar);
 int ath10k_debug_register(struct ath10k* ar);
 void ath10k_debug_unregister(struct ath10k* ar);
+#if 0 // TODO
 void ath10k_debug_fw_stats_process(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_debug_tpc_stats_process(struct ath10k* ar,
                                     struct ath10k_tpc_stats* tpc_stats);
+#endif // TODO
 struct ath10k_fw_crash_data*
 ath10k_debug_get_new_fw_crash_data(struct ath10k* ar);
 
@@ -131,6 +129,7 @@ static inline int ath10k_debug_register(struct ath10k* ar) {
 static inline void ath10k_debug_unregister(struct ath10k* ar) {
 }
 
+#if 0 // TODO
 static inline void ath10k_debug_fw_stats_process(struct ath10k* ar,
         struct sk_buff* skb) {
 }
@@ -139,6 +138,7 @@ static inline void ath10k_debug_tpc_stats_process(struct ath10k* ar,
         struct ath10k_tpc_stats* tpc_stats) {
     kfree(tpc_stats);
 }
+#endif // TODO
 
 static inline void ath10k_debug_dbglog_add(struct ath10k* ar, uint8_t* buffer,
         int len) {
@@ -177,10 +177,12 @@ void ath10k_sta_statistics(struct ieee80211_hw* hw, struct ieee80211_vif* vif,
                            struct ieee80211_sta* sta,
                            struct station_info* sinfo);
 #else
+#if 0 // TODO
 static inline
 void ath10k_sta_update_rx_duration(struct ath10k* ar,
                                    struct ath10k_fw_stats* stats) {
 }
+#endif // TODO
 #endif /* CONFIG_MAC80211_DEBUGFS */
 
 #ifdef CONFIG_ATH10K_DEBUG

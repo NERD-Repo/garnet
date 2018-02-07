@@ -19,7 +19,6 @@
 #define _WMI_H_
 
 #include <stdint.h>
-#include <net/mac80211.h>
 
 /*
  * This file specifies the WMI interface for the Unified Software
@@ -60,10 +59,12 @@
  *
  */
 
+#if 0 // NEEDS PORTING
 /* Control Path */
 struct wmi_cmd_hdr {
     uint32_t cmd_id;
 } __packed;
+#endif // NEEDS PORTING
 
 #define WMI_CMD_HDR_CMD_ID_MASK   0x00FFFFFF
 #define WMI_CMD_HDR_CMD_ID_LSB    0
@@ -293,6 +294,7 @@ enum wmi_10_4_service {
     WMI_10_4_SERVICE_TX_MODE_DYNAMIC,
 };
 
+#if 0 // NEEDS PORTING
 static inline char* wmi_service_name(int service_id) {
 #define SVCSTR(x) case x: return #x
 
@@ -1810,6 +1812,7 @@ struct wmi_channel_arg {
     uint32_t reg_class_id;
     enum wmi_phy_mode mode;
 };
+#endif // NEEDS PORTING
 
 enum wmi_channel_change_cause {
     WMI_CHANNEL_CHANGE_CAUSE_NONE = 0,
@@ -1937,6 +1940,7 @@ enum {
 #define REGDMN_EEPROM_EEREGCAP_EN_KK_U1_ODD     0x0400
 #define REGDMN_EEPROM_EEREGCAP_EN_KK_NEW_11A    0x0800
 
+#if 0 // NEEDS PORTING
 struct hal_reg_capabilities {
     /* regdomain value specified in EEPROM */
     uint32_t eeprom_rd;
@@ -4125,6 +4129,7 @@ struct wmi_pdev_stats_peer {
     /* REMOVE THIS ONCE REAL PEER STAT COUNTERS ARE ADDED */
     uint32_t dummy;
 } __packed;
+#endif // NEEDS PORTING
 
 enum wmi_stats_id {
     WMI_STAT_PEER      = BIT(0),
@@ -4142,6 +4147,7 @@ enum wmi_10_4_stats_id {
     WMI_10_4_STAT_PEER_EXTD = BIT(3),
 };
 
+#if 0 // NEEDS PORTING
 struct wlan_inst_rssi_args {
     uint16_t cfg_retry_count;
     uint16_t retry_count;
@@ -6675,5 +6681,6 @@ void ath10k_wmi_10_4_op_fw_stats_fill(struct ath10k* ar,
 int ath10k_wmi_op_get_vdev_subtype(struct ath10k* ar,
                                    enum wmi_vdev_subtype subtype);
 int ath10k_wmi_barrier(struct ath10k* ar);
+#endif // NEEDS PORTING
 
 #endif /* _WMI_H_ */

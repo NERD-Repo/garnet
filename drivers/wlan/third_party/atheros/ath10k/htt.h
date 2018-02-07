@@ -18,15 +18,9 @@
 #ifndef _HTT_H_
 #define _HTT_H_
 
-#include <linux/bug.h>
-#include <linux/interrupt.h>
-#include <linux/dmapool.h>
-#include <linux/hashtable.h>
-#include <linux/kfifo.h>
-#include <net/mac80211.h>
-
 #include "htc.h"
 #include "hw.h"
+#if 0 // TODO
 #include "rx_desc.h"
 #include "hw.h"
 
@@ -1577,17 +1571,21 @@ struct ath10k_htt_txbuf {
     struct htt_cmd_hdr cmd_hdr;
     struct htt_data_tx_desc cmd_tx;
 } __packed;
+#endif // TODO
 
 struct ath10k_htt {
+#if 0 // TODO
     struct ath10k* ar;
     enum ath10k_htc_ep_id eid;
 
     uint8_t target_version_major;
     uint8_t target_version_minor;
     struct completion target_version_received;
+#endif // TODO
     uint8_t max_num_amsdu;
     uint8_t max_num_ampdu;
 
+#if 0 // TODO
     const enum htt_t2h_msg_type* t2h_msg_types;
     uint32_t t2h_msg_types_max;
 
@@ -1672,7 +1670,9 @@ struct ath10k_htt {
 
     /* Protects access to pending_tx, num_pending_tx */
     spinlock_t tx_lock;
+#endif // TODO
     int max_num_pending_tx;
+#if 0 // TODO
     int num_pending_tx;
     int num_pending_mgmt_tx;
     struct idr pending_tx;
@@ -1719,8 +1719,10 @@ struct ath10k_htt {
     } tx_q_state;
 
     bool tx_mem_allocated;
+#endif // TODO
 };
 
+#if 0 // TODO
 #define RX_HTT_HDR_STATUS_LEN 64
 
 /* This structure layout is programmed via rx ring setup
@@ -1773,6 +1775,7 @@ struct htt_rx_desc {
  */
 #define HTT_LOG2_MAX_CACHE_LINE_SIZE 7  /* 2^7 = 128 */
 #define HTT_MAX_CACHE_LINE_SIZE_MASK ((1 << HTT_LOG2_MAX_CACHE_LINE_SIZE) - 1)
+#endif // TODO
 
 /* These values are default in most firmware revisions and apparently are a
  * sweet spot performance wise.
@@ -1780,6 +1783,7 @@ struct htt_rx_desc {
 #define ATH10K_HTT_MAX_NUM_AMSDU_DEFAULT 3
 #define ATH10K_HTT_MAX_NUM_AMPDU_DEFAULT 64
 
+#if 0 // TODO
 int ath10k_htt_connect(struct ath10k_htt* htt);
 int ath10k_htt_init(struct ath10k* ar);
 int ath10k_htt_setup(struct ath10k_htt* htt);
@@ -1830,5 +1834,6 @@ int ath10k_htt_tx(struct ath10k_htt* htt,
 void ath10k_htt_rx_pktlog_completion_handler(struct ath10k* ar,
         struct sk_buff* skb);
 int ath10k_htt_txrx_compl_task(struct ath10k* ar, int budget);
+#endif // TODO
 
 #endif

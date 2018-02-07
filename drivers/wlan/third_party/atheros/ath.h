@@ -17,12 +17,7 @@
 #ifndef ATH_H
 #define ATH_H
 
-#include <linux/etherdevice.h>
-#include <linux/skbuff.h>
-#include <linux/if_ether.h>
-#include <linux/spinlock.h>
-#include <net/mac80211.h>
-
+#if 0 // TODO
 /*
  * The key cache is used for h/w cipher state and also for
  * tracking station state such as the current tx antenna.
@@ -143,10 +138,14 @@ struct ath_ps_ops {
     void (*wakeup)(struct ath_common* common);
     void (*restore)(struct ath_common* common);
 };
+#endif // TODO
 
 struct ath_common {
+#if 0 // TODO
     void* ah;
+#endif // TODO
     void* priv;
+#if 0 // TODO
     struct ieee80211_hw* hw;
     int debug_mask;
     enum ath_device_state state;
@@ -186,8 +185,10 @@ struct ath_common {
 
     int last_rssi;
     struct ieee80211_supported_band sbands[NUM_NL80211_BANDS];
+#endif
 };
 
+#if 0 // TODO
 static inline const struct ath_ps_ops* ath_ps_ops(struct ath_common* common) {
     return common->ps_ops;
 }
@@ -328,5 +329,6 @@ extern const char* ath_bus_type_strings[];
 static inline const char* ath_bus_type_to_string(enum ath_bus_type bustype) {
     return ath_bus_type_strings[bustype];
 }
+#endif // TODO
 
 #endif /* ATH_H */

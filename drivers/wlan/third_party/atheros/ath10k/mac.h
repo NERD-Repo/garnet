@@ -18,9 +18,9 @@
 #ifndef _MAC_H_
 #define _MAC_H_
 
-#include <net/mac80211.h>
 #include "core.h"
 
+#if 0 // TODO
 #define WEP_KEYID_SHIFT 6
 
 enum wmi_tlv_tx_pause_id;
@@ -38,9 +38,11 @@ struct rfc1042_hdr {
     uint8_t snap_oui[3];
     __be16 snap_type;
 } __packed;
+#endif // TODO
 
 struct ath10k* ath10k_mac_create(size_t priv_size);
 void ath10k_mac_destroy(struct ath10k* ar);
+#if 0 // TODO
 int ath10k_mac_register(struct ath10k* ar);
 void ath10k_mac_unregister(struct ath10k* ar);
 struct ath10k_vif* ath10k_get_arvif(struct ath10k* ar, uint32_t vdev_id);
@@ -53,7 +55,9 @@ void ath10k_mgmt_over_wmi_tx_purge(struct ath10k* ar);
 void ath10k_mgmt_over_wmi_tx_work(struct work_struct* work);
 void ath10k_halt(struct ath10k* ar);
 void ath10k_mac_vif_beacon_free(struct ath10k_vif* arvif);
+#endif // TODO
 void ath10k_drain_tx(struct ath10k* ar);
+#if 0 // TODO
 bool ath10k_mac_is_peer_wep_key_set(struct ath10k* ar, const uint8_t* addr,
                                     uint8_t keyidx);
 int ath10k_mac_vif_chan(struct ieee80211_vif* vif,
@@ -78,7 +82,9 @@ bool ath10k_mac_tx_frm_has_freq(struct ath10k* ar);
 void ath10k_mac_tx_push_pending(struct ath10k* ar);
 int ath10k_mac_tx_push_txq(struct ieee80211_hw* hw,
                            struct ieee80211_txq* txq);
-struct ieee80211_txq* ath10k_mac_txq_lookup(struct ath10k* ar, uint16_t peer_id, uint8_t tid);
+struct ieee80211_txq* ath10k_mac_txq_lookup(struct ath10k* ar,
+        uint16_t peer_id,
+        uint8_t tid);
 int ath10k_mac_ext_resource_config(struct ath10k* ar, uint32_t val);
 
 static inline void ath10k_tx_h_seq_no(struct ieee80211_vif* vif,
@@ -99,5 +105,6 @@ static inline void ath10k_tx_h_seq_no(struct ieee80211_vif* vif,
         hdr->seq_ctrl |= arvif->tx_seq_no;
     }
 }
+#endif // TODO
 
 #endif /* _MAC_H_ */
