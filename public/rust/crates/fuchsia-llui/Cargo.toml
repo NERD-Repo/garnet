@@ -7,7 +7,4 @@ authors = ["Rob Tsuk <robtsuk@google.com>"]
 failure = "0.1"
 fdio = "0.2.0"
 fuchsia-zircon-sys = "0.3"
-
-[dependencies.font-rs]
-optional = true
-version = "0.1"
+font-rs = "0.1"

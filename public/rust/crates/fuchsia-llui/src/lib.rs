@@ -61,8 +61,6 @@ pub enum PixelFormat {
 
 fn get_info_for_device(fd: i32) -> Result<ioctl_display_get_fb_t, Error> {
     let ioctl_display_get_fb_value = make_ioctl(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DISPLAY, 1);
-    println!("ioctl_display_get_fb_value = {:x}", ioctl_display_get_fb_value);
-
     let mut framebuffer: ioctl_display_get_fb_t = ioctl_display_get_fb_t {
         vmo: 0,
         info: zx_display_info_t {
@@ -120,11 +118,8 @@ impl FrameBuffer {
     pub fn new(index: Option<isize>) -> Result<FrameBuffer, Error> {
         let index = index.unwrap_or(0);
         let device_path = format!("/dev/class/framebuffer/{:03}", index);
-        println!("device_path = {}", device_path);
-        // driver.usb-audio.disable
         let file = OpenOptions::new().read(true).write(true).open(device_path)?;
         let fd = file.as_raw_fd() as i32;
-        println!("fd = {}", fd);
         let get_fb_data = get_info_for_device(fd)?;
         let pixel_format = match get_fb_data.info.format {
             ZX_PIXEL_FORMAT_RGB_565 => PixelFormat::Rgb565,
