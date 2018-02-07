@@ -1524,12 +1524,13 @@ static void ath10k_pci_rx_retry_sync(struct ath10k* ar) {
 
     del_timer_sync(&ar_pci->rx_post_retry);
 }
+#endif
 
-int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
-                                       uint8_t* ul_pipe, uint8_t* dl_pipe) {
+zx_status_t ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
+                                               uint8_t* ul_pipe, uint8_t* dl_pipe) {
     const struct service_to_pipe* entry;
     bool ul_set = false, dl_set = false;
-    int i;
+    unsigned int i;
 
     ath10k_dbg(ar, ATH10K_DBG_PCI, "pci hif map service\n");
 
@@ -1565,10 +1566,10 @@ int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
     }
 
     if (WARN_ON(!ul_set || !dl_set)) {
-        return -ENOENT;
+        return ZX_ERR_UNAVAILABLE;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
 void ath10k_pci_hif_get_default_pipe(struct ath10k* ar,
@@ -1579,7 +1580,6 @@ void ath10k_pci_hif_get_default_pipe(struct ath10k* ar,
             ATH10K_HTC_SVC_ID_RSVD_CTRL,
             ul_pipe, dl_pipe);
 }
-#endif // TODO
 
 void ath10k_pci_irq_msi_fw_mask(struct ath10k* ar) {
     uint32_t val;
@@ -2750,8 +2750,10 @@ static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
 #if 0 // TODO
     .start                  = ath10k_pci_hif_start,
     .stop                   = ath10k_pci_hif_stop,
+#endif
     .map_service_to_pipe    = ath10k_pci_hif_map_service_to_pipe,
     .get_default_pipe       = ath10k_pci_hif_get_default_pipe,
+#if 0
     .send_complete_check    = ath10k_pci_hif_send_complete_check,
     .get_free_queue_number  = ath10k_pci_hif_get_free_queue_number,
 #endif // TODO

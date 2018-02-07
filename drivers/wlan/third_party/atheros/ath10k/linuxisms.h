@@ -85,6 +85,7 @@
 #define min_t(t,a,b) (((t)(a) < (t)(b)) ? (t)(a) : (t)(b))
 
 #define __packed __attribute__((packed))
+#define __aligned(n) __attribute__((aligned(n)))
 
 #define rounddown(n,m) ((n) - ((n) % (m)))
 #define roundup(n,m) (((n) % (m) == 0) ? (n) : (n) + ((m) - ((n) % (m))))

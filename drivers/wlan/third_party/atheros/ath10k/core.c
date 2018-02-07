@@ -2001,13 +2001,13 @@ zx_status_t ath10k_core_start(struct ath10k* ar, enum ath10k_firmware_mode mode,
     ar->htc.htc_ops.target_send_suspend_complete =
         ath10k_send_suspend_complete;
 
-#if 0 // TODO
     status = ath10k_htc_init(ar);
     if (status != ZX_OK) {
         ath10k_err("could not init HTC (%d)\n", status);
         goto err;
     }
 
+#if 0 // TODO
     status = ath10k_bmi_done(ar);
     if (status != ZX_OK) {
         goto err;
@@ -2338,7 +2338,7 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k* ar) {
         goto err_unlock;
     }
 
-    printf("***** Success!\n");
+    ath10k_info("initialization complete\n");
 
 #if 0 // TODO
     ath10k_debug_print_boot_info(ar);
@@ -2349,7 +2349,7 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k* ar) {
     mtx_unlock(&ar->conf_mutex);
 
     ath10k_hif_power_down(ar);
-    return 0;
+    return ZX_OK;
 
 err_unlock:
     mtx_unlock(&ar->conf_mutex);

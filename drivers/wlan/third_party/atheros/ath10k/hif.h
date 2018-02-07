@@ -61,12 +61,14 @@ struct ath10k_hif_ops {
      * desired so, call power_down() and power_up()
      */
     void (*stop)(struct ath10k* ar);
+#endif
 
-    int (*map_service_to_pipe)(struct ath10k* ar, uint16_t service_id,
-                               uint8_t* ul_pipe, uint8_t* dl_pipe);
+    zx_status_t (*map_service_to_pipe)(struct ath10k* ar, uint16_t service_id,
+                                       uint8_t* ul_pipe, uint8_t* dl_pipe);
 
     void (*get_default_pipe)(struct ath10k* ar, uint8_t* ul_pipe, uint8_t* dl_pipe);
 
+#if 0
     /*
      * Check if prior sends have completed.
      *
@@ -138,10 +140,11 @@ static inline int ath10k_hif_start(struct ath10k* ar) {
 static inline void ath10k_hif_stop(struct ath10k* ar) {
     return ar->hif.ops->stop(ar);
 }
+#endif
 
-static inline int ath10k_hif_map_service_to_pipe(struct ath10k* ar,
-        uint16_t service_id,
-        uint8_t* ul_pipe, uint8_t* dl_pipe) {
+static inline zx_status_t ath10k_hif_map_service_to_pipe(struct ath10k* ar,
+                                                         uint16_t service_id,
+                                                         uint8_t* ul_pipe, uint8_t* dl_pipe) {
     return ar->hif.ops->map_service_to_pipe(ar, service_id,
                                             ul_pipe, dl_pipe);
 }
@@ -151,6 +154,7 @@ static inline void ath10k_hif_get_default_pipe(struct ath10k* ar,
     ar->hif.ops->get_default_pipe(ar, ul_pipe, dl_pipe);
 }
 
+#if 0
 static inline void ath10k_hif_send_complete_check(struct ath10k* ar,
         uint8_t pipe_id, int force) {
     ar->hif.ops->send_complete_check(ar, pipe_id, force);

@@ -15,6 +15,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <string.h>
+
 #include "core.h"
 #include "hif.h"
 #include "debug.h"
@@ -23,11 +25,11 @@
 /* Send */
 /********/
 
-static void ath10k_htc_control_tx_complete(struct ath10k* ar,
-        struct sk_buff* skb) {
-    kfree_skb(skb);
+static void ath10k_htc_control_tx_complete(struct ath10k* ar, void* data) {
+    free(data);
 }
 
+#if 0 // TODO
 static struct sk_buff* ath10k_htc_build_tx_ctrl_skb(void* ar) {
     struct sk_buff* skb;
     struct ath10k_skb_cb* skb_cb;
@@ -85,9 +87,9 @@ static void ath10k_htc_prepare_tx_skb(struct ath10k_htc_ep* ep,
     hdr->flags = 0;
     hdr->flags |= ATH10K_HTC_FLAG_NEED_CREDIT_UPDATE;
 
-    spin_lock_bh(&ep->htc->tx_lock);
+    mtx_lock(&ep->htc->tx_lock);
     hdr->seq_no = ep->seq_no++;
-    spin_unlock_bh(&ep->htc->tx_lock);
+    mtx_unlock(&ep->htc->tx_lock);
 }
 
 int ath10k_htc_send(struct ath10k_htc* htc,
@@ -114,12 +116,12 @@ int ath10k_htc_send(struct ath10k_htc* htc,
 
     if (ep->tx_credit_flow_enabled) {
         credits = DIV_ROUND_UP(skb->len, htc->target_credit_size);
-        spin_lock_bh(&htc->tx_lock);
+        mtx_lock(&htc->tx_lock);
         if (ep->tx_credits < credits) {
             ath10k_dbg(ar, ATH10K_DBG_HTC,
                        "htc insufficient credits ep %d required %d available %d\n",
                        eid, credits, ep->tx_credits);
-            spin_unlock_bh(&htc->tx_lock);
+            mtx_unlock(&htc->tx_lock);
             ret = -EAGAIN;
             goto err_pull;
         }
@@ -127,7 +129,7 @@ int ath10k_htc_send(struct ath10k_htc* htc,
         ath10k_dbg(ar, ATH10K_DBG_HTC,
                    "htc ep %d consumed %d credits (total %d)\n",
                    eid, credits, ep->tx_credits);
-        spin_unlock_bh(&htc->tx_lock);
+        mtx_unlock(&htc->tx_lock);
     }
 
     ath10k_htc_prepare_tx_skb(ep, skb);
@@ -157,12 +159,12 @@ err_unmap:
     dma_unmap_single(dev, skb_cb->paddr, skb->len, DMA_TO_DEVICE);
 err_credits:
     if (ep->tx_credit_flow_enabled) {
-        spin_lock_bh(&htc->tx_lock);
+        mtx_lock(&htc->tx_lock);
         ep->tx_credits += credits;
         ath10k_dbg(ar, ATH10K_DBG_HTC,
                    "htc ep %d reverted %d credits back (total %d)\n",
                    eid, credits, ep->tx_credits);
-        spin_unlock_bh(&htc->tx_lock);
+        mtx_unlock(&htc->tx_lock);
 
         if (ep->ep_ops.ep_tx_credits) {
             ep->ep_ops.ep_tx_credits(htc->ar);
@@ -209,7 +211,7 @@ ath10k_htc_process_credit_report(struct ath10k_htc* htc,
 
     n_reports = len / sizeof(*report);
 
-    spin_lock_bh(&htc->tx_lock);
+    mtx_lock(&htc->tx_lock);
     for (i = 0; i < n_reports; i++, report++) {
         if (report->eid >= ATH10K_HTC_EP_COUNT) {
             break;
@@ -222,12 +224,12 @@ ath10k_htc_process_credit_report(struct ath10k_htc* htc,
                    report->eid, report->credits, ep->tx_credits);
 
         if (ep->ep_ops.ep_tx_credits) {
-            spin_unlock_bh(&htc->tx_lock);
+            mtx_unlock(&htc->tx_lock);
             ep->ep_ops.ep_tx_credits(htc->ar);
-            spin_lock_bh(&htc->tx_lock);
+            mtx_lock(&htc->tx_lock);
         }
     }
-    spin_unlock_bh(&htc->tx_lock);
+    mtx_unlock(&htc->tx_lock);
 }
 
 static int
@@ -474,33 +476,33 @@ out:
     kfree_skb(skb);
 }
 EXPORT_SYMBOL(ath10k_htc_rx_completion_handler);
+#endif // TODO
 
-static void ath10k_htc_control_rx_complete(struct ath10k* ar,
-        struct sk_buff* skb) {
+static void ath10k_htc_control_rx_complete(struct ath10k* ar, void* data, size_t len) {
     struct ath10k_htc* htc = &ar->htc;
-    struct ath10k_htc_msg* msg = (struct ath10k_htc_msg*)skb->data;
+    struct ath10k_htc_msg* msg = data;
 
     switch (msg->hdr.message_id) {
     case ATH10K_HTC_MSG_READY_ID:
     case ATH10K_HTC_MSG_CONNECT_SERVICE_RESP_ID:
         /* handle HTC control message */
-        if (completion_done(&htc->ctl_resp)) {
+        if (completion_wait(&htc->ctl_resp, 0) == ZX_OK) {
             /* this is a fatal error, target should not be
              * sending unsolicited messages on the ep 0
              */
             ath10k_info("HTC rx ctrl still processing\n");
-            complete(&htc->ctl_resp);
+            completion_signal(&htc->ctl_resp);
             goto out;
         }
 
         htc->control_resp_len =
-            min_t(int, skb->len,
+            min_t(int, len,
                   ATH10K_HTC_MAX_CTRL_MSG_LEN);
 
-        memcpy(htc->control_resp_buffer, skb->data,
+        memcpy(htc->control_resp_buffer, data,
                htc->control_resp_len);
 
-        complete(&htc->ctl_resp);
+        completion_signal(&htc->ctl_resp);
         break;
     case ATH10K_HTC_MSG_SEND_SUSPEND_COMPLETE:
         htc->htc_ops.target_send_suspend_complete(ar);
@@ -511,7 +513,7 @@ static void ath10k_htc_control_rx_complete(struct ath10k* ar,
     }
 
 out:
-    kfree_skb(skb);
+    free(data);
 }
 
 /***************/
@@ -576,7 +578,8 @@ static uint8_t ath10k_htc_get_credit_allocation(struct ath10k_htc* htc,
     return allocation;
 }
 
-int ath10k_htc_wait_target(struct ath10k_htc* htc) {
+#if 0 // TODO
+zx_status_t ath10k_htc_wait_target(struct ath10k_htc* htc) {
     struct ath10k* ar = htc->ar;
     int i, status = 0;
     unsigned long time_left;
@@ -655,23 +658,25 @@ int ath10k_htc_wait_target(struct ath10k_htc* htc) {
 
     return 0;
 }
+#endif
 
-int ath10k_htc_connect_service(struct ath10k_htc* htc,
-                               struct ath10k_htc_svc_conn_req* conn_req,
-                               struct ath10k_htc_svc_conn_resp* conn_resp) {
+zx_status_t ath10k_htc_connect_service(struct ath10k_htc* htc,
+                                       struct ath10k_htc_svc_conn_req* conn_req,
+                                       struct ath10k_htc_svc_conn_resp* conn_resp) {
     struct ath10k* ar = htc->ar;
-    struct ath10k_htc_msg* msg;
-    struct ath10k_htc_conn_svc* req_msg;
+//    struct ath10k_htc_msg* msg;
+//    struct ath10k_htc_conn_svc* req_msg;
     struct ath10k_htc_conn_svc_response resp_msg_dummy;
     struct ath10k_htc_conn_svc_response* resp_msg = &resp_msg_dummy;
     enum ath10k_htc_ep_id assigned_eid = ATH10K_HTC_EP_COUNT;
     struct ath10k_htc_ep* ep;
-    struct sk_buff* skb;
+//    struct sk_buff* skb;
     unsigned int max_msg_size = 0;
-    int length, status;
-    unsigned long time_left;
+//    int length;
+    zx_status_t status;
+//    unsigned long time_left;
     bool disable_credit_flow_ctrl = false;
-    uint16_t message_id, service_id, flags = 0;
+//    uint16_t message_id, service_id, flags = 0;
     uint8_t tx_alloc = 0;
 
     /* special case for HTC pseudo control service */
@@ -685,20 +690,20 @@ int ath10k_htc_connect_service(struct ath10k_htc* htc,
 
     tx_alloc = ath10k_htc_get_credit_allocation(htc,
                conn_req->service_id);
-    if (!tx_alloc)
+    if (!tx_alloc) {
         ath10k_dbg(ar, ATH10K_DBG_BOOT,
                    "boot htc service %s does not allocate target credits\n",
                    htc_service_name(conn_req->service_id));
+    }
 
-    skb = ath10k_htc_build_tx_ctrl_skb(htc->ar);
-    if (!skb) {
+#if 0
+    length = sizeof(msg->hdr) + sizeof(msg->connect_service);
+    buf = malloc(length);
+    if (!buf) {
         ath10k_err("Failed to allocate HTC packet\n");
         return -ENOMEM;
     }
-
-    length = sizeof(msg->hdr) + sizeof(msg->connect_service);
-    skb_put(skb, length);
-    memset(skb->data, 0, length);
+    memset(buf, 0, length);
 
     msg = (struct ath10k_htc_msg*)skb->data;
     msg->hdr.message_id =
@@ -762,22 +767,23 @@ int ath10k_htc_connect_service(struct ath10k_htc* htc,
 
     assigned_eid = (enum ath10k_htc_ep_id)resp_msg->eid;
     max_msg_size = resp_msg->max_msg_size;
+#endif
 
 setup:
 
     if (assigned_eid >= ATH10K_HTC_EP_COUNT) {
-        return -EPROTO;
+        return ZX_ERR_OUT_OF_RANGE;
     }
 
     if (max_msg_size == 0) {
-        return -EPROTO;
+        return ZX_ERR_OUT_OF_RANGE;
     }
 
     ep = &htc->endpoint[assigned_eid];
     ep->eid = assigned_eid;
 
     if (ep->service_id != ATH10K_HTC_SVC_ID_UNUSED) {
-        return -EPROTO;
+        return ZX_ERR_OUT_OF_RANGE;
     }
 
     /* return assigned endpoint to caller */
@@ -797,7 +803,7 @@ setup:
                                             ep->service_id,
                                             &ep->ul_pipe_id,
                                             &ep->dl_pipe_id);
-    if (status) {
+    if (status != ZX_OK) {
         return status;
     }
 
@@ -816,6 +822,7 @@ setup:
     return status;
 }
 
+#if 0
 struct sk_buff* ath10k_htc_alloc_skb(struct ath10k* ar, int size) {
     struct sk_buff* skb;
 
@@ -834,7 +841,7 @@ struct sk_buff* ath10k_htc_alloc_skb(struct ath10k* ar, int size) {
     return skb;
 }
 
-int ath10k_htc_start(struct ath10k_htc* htc) {
+zx_status_t ath10k_htc_start(struct ath10k_htc* htc) {
     struct ath10k* ar = htc->ar;
     struct sk_buff* skb;
     int status = 0;
@@ -869,15 +876,16 @@ int ath10k_htc_start(struct ath10k_htc* htc) {
 
     return 0;
 }
+#endif // TODO
 
 /* registered target arrival callback from the HIF layer */
-int ath10k_htc_init(struct ath10k* ar) {
-    int status;
+zx_status_t ath10k_htc_init(struct ath10k* ar) {
+    zx_status_t status;
     struct ath10k_htc* htc = &ar->htc;
     struct ath10k_htc_svc_conn_req conn_req;
     struct ath10k_htc_svc_conn_resp conn_resp;
 
-    spin_lock_init(&htc->tx_lock);
+    mtx_init(&htc->tx_lock, mtx_plain);
 
     ath10k_htc_reset_endpoint_states(htc);
 
@@ -893,13 +901,13 @@ int ath10k_htc_init(struct ath10k* ar) {
 
     /* connect fake service */
     status = ath10k_htc_connect_service(htc, &conn_req, &conn_resp);
-    if (status) {
+    if (status != ZX_OK) {
         ath10k_err("could not connect to htc service (%d)\n",
                    status);
         return status;
     }
 
-    init_completion(&htc->ctl_resp);
+    completion_reset(&htc->ctl_resp);
 
-    return 0;
+    return ZX_OK;
 }
