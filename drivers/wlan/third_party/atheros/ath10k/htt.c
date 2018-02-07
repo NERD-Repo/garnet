@@ -241,13 +241,13 @@ int ath10k_htt_setup(struct ath10k_htt* htt) {
     status = wait_for_completion_timeout(&htt->target_version_received,
                                          HTT_TARGET_VERSION_TIMEOUT_HZ);
     if (status == 0) {
-        ath10k_info("htt version request timed out\n");
+        ath10k_warn("htt version request timed out\n");
         return -ETIMEDOUT;
     }
 
     status = ath10k_htt_verify_version(htt);
     if (status) {
-        ath10k_info("failed to verify htt version: %d\n",
+        ath10k_warn("failed to verify htt version: %d\n",
                     status);
         return status;
     }
@@ -259,7 +259,7 @@ int ath10k_htt_setup(struct ath10k_htt* htt) {
 
     status = ath10k_htt_send_rx_ring_cfg_ll(htt);
     if (status) {
-        ath10k_info("failed to setup rx ring: %d\n",
+        ath10k_warn("failed to setup rx ring: %d\n",
                     status);
         return status;
     }
@@ -268,7 +268,7 @@ int ath10k_htt_setup(struct ath10k_htt* htt) {
                                          htt->max_num_ampdu,
                                          htt->max_num_amsdu);
     if (status) {
-        ath10k_info("failed to setup amsdu/ampdu limit: %d\n",
+        ath10k_warn("failed to setup amsdu/ampdu limit: %d\n",
                     status);
         return status;
     }

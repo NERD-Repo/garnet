@@ -298,7 +298,7 @@ void ath10k_debug_fw_stats_process(struct ath10k* ar, struct sk_buff* skb) {
     spin_lock_bh(&ar->data_lock);
     ret = ath10k_wmi_pull_fw_stats(ar, skb, &stats);
     if (ret) {
-        ath10k_info("failed to pull fw stats: %d\n", ret);
+        ath10k_warn("failed to pull fw stats: %d\n", ret);
         goto free;
     }
 
@@ -319,7 +319,7 @@ void ath10k_debug_fw_stats_process(struct ath10k* ar, struct sk_buff* skb) {
 
     if (ar->debug.fw_stats_done) {
         if (!ath10k_peer_stats_enabled(ar)) {
-            ath10k_info("received unsolicited stats update event\n");
+            ath10k_warn("received unsolicited stats update event\n");
         }
 
         goto free;
@@ -349,13 +349,13 @@ void ath10k_debug_fw_stats_process(struct ath10k* ar, struct sk_buff* skb) {
              */
             ath10k_fw_stats_peers_free(&ar->debug.fw_stats.peers);
             ath10k_fw_extd_stats_peers_free(&ar->debug.fw_stats.peers_extd);
-            ath10k_info("dropping fw peer stats\n");
+            ath10k_warn("dropping fw peer stats\n");
             goto free;
         }
 
         if (num_vdevs >= BITS_PER_LONG) {
             ath10k_fw_stats_vdevs_free(&ar->debug.fw_stats.vdevs);
-            ath10k_info("dropping fw vdev stats\n");
+            ath10k_warn("dropping fw vdev stats\n");
             goto free;
         }
 
@@ -400,7 +400,7 @@ static int ath10k_debug_fw_stats_request(struct ath10k* ar) {
 
         ret = ath10k_wmi_request_stats(ar, ar->fw_stats_req_mask);
         if (ret) {
-            ath10k_info("could not request stats (%d)\n", ret);
+            ath10k_warn("could not request stats (%d)\n", ret);
             return ret;
         }
 
@@ -442,13 +442,13 @@ static int ath10k_fw_stats_open(struct inode* inode, struct file* file) {
 
     ret = ath10k_debug_fw_stats_request(ar);
     if (ret) {
-        ath10k_info("failed to request fw stats: %d\n", ret);
+        ath10k_warn("failed to request fw stats: %d\n", ret);
         goto err_free;
     }
 
     ret = ath10k_wmi_fw_stats_fill(ar, &ar->debug.fw_stats, buf);
     if (ret) {
-        ath10k_info("failed to fill fw stats: %d\n", ret);
+        ath10k_warn("failed to fill fw stats: %d\n", ret);
         goto err_free;
     }
 
@@ -622,7 +622,7 @@ static ssize_t ath10k_write_simulate_fw_crash(struct file* file,
     }
 
     if (ret) {
-        ath10k_info("failed to simulate firmware crash: %d\n", ret);
+        ath10k_warn("failed to simulate firmware crash: %d\n", ret);
         goto exit;
     }
 
@@ -774,7 +774,7 @@ int ath10k_debug_fw_devcoredump(struct ath10k* ar) {
      */
     dump = ath10k_build_dump_file(ar, false);
     if (!dump) {
-        ath10k_info("no crash dump data found for devcoredump");
+        ath10k_warn("no crash dump data found for devcoredump");
         return -ENODATA;
     }
 
@@ -801,7 +801,7 @@ static int ath10k_fw_crash_dump_open(struct inode* inode, struct file* file) {
     struct ath10k* ar = inode->i_private;
     struct ath10k_dump_file_data* dump;
 
-    ath10k_info("fw_crash_dump debugfs file is deprecated, please use /sys/class/devcoredump instead.");
+    ath10k_warn("fw_crash_dump debugfs file is deprecated, please use /sys/class/devcoredump instead.");
 
     dump = ath10k_build_dump_file(ar, true);
     if (!dump) {
@@ -987,7 +987,7 @@ static ssize_t ath10k_mem_value_read(struct file* file,
 
     ret = ath10k_hif_diag_read(ar, *ppos, buf, count);
     if (ret) {
-        ath10k_info("failed to read address 0x%08x via diagnose window fnrom debugfs: %d\n",
+        ath10k_warn("failed to read address 0x%08x via diagnose window fnrom debugfs: %d\n",
                     (uint32_t)(*ppos), ret);
         goto exit;
     }
@@ -1046,7 +1046,7 @@ static ssize_t ath10k_mem_value_write(struct file* file,
 
     ret = ath10k_hif_diag_write(ar, *ppos, buf, count);
     if (ret) {
-        ath10k_info("failed to write address 0x%08x via diagnose window from debugfs: %d\n",
+        ath10k_warn("failed to write address 0x%08x via diagnose window from debugfs: %d\n",
                     (uint32_t)(*ppos), ret);
         goto exit;
     }
@@ -1090,7 +1090,7 @@ static int ath10k_debug_htt_stats_req(struct ath10k* ar) {
     ret = ath10k_htt_h2t_stats_req(&ar->htt, ar->debug.htt_stats_mask,
                                    cookie);
     if (ret) {
-        ath10k_info("failed to send htt stats request: %d\n", ret);
+        ath10k_warn("failed to send htt stats request: %d\n", ret);
         return ret;
     }
 
@@ -1275,7 +1275,7 @@ static ssize_t ath10k_write_fw_dbglog(struct file* file,
         ret = ath10k_wmi_dbglog_cfg(ar, ar->debug.fw_dbglog_mask,
                                     ar->debug.fw_dbglog_level);
         if (ret) {
-            ath10k_info("dbglog cfg failed from debugfs: %d\n",
+            ath10k_warn("dbglog cfg failed from debugfs: %d\n",
                         ret);
             goto exit;
         }
@@ -1377,7 +1377,7 @@ void ath10k_debug_get_et_stats(struct ieee80211_hw* hw,
         ret = ath10k_debug_fw_stats_request(ar);
         if (ret) {
             /* just print a warning and try to use older results */
-            ath10k_info("failed to get fw stats for ethtool: %d\n",
+            ath10k_warn("failed to get fw stats for ethtool: %d\n",
                         ret);
         }
     }
@@ -1469,7 +1469,7 @@ static int ath10k_debug_cal_data_fetch(struct ath10k* ar) {
 
     ret = ath10k_hif_diag_read(ar, hi_addr, &addr, sizeof(addr));
     if (ret) {
-        ath10k_info("failed to read hi_board_data address: %d\n",
+        ath10k_warn("failed to read hi_board_data address: %d\n",
                     ret);
         return ret;
     }
@@ -1477,7 +1477,7 @@ static int ath10k_debug_cal_data_fetch(struct ath10k* ar) {
     ret = ath10k_hif_diag_read(ar, addr, ar->debug.cal_data,
                                ar->hw_params.cal_data_len);
     if (ret) {
-        ath10k_info("failed to read calibration data: %d\n", ret);
+        ath10k_warn("failed to read calibration data: %d\n", ret);
         return ret;
     }
 
@@ -1537,7 +1537,7 @@ static ssize_t ath10k_write_ani_enable(struct file* file,
     ret = ath10k_wmi_pdev_set_param(ar, ar->wmi.pdev_param->ani_enable,
                                     enable);
     if (ret) {
-        ath10k_info("ani_enable failed from debugfs: %d\n", ret);
+        ath10k_warn("ani_enable failed from debugfs: %d\n", ret);
         goto exit;
     }
     ar->ani_enabled = enable;
@@ -1622,7 +1622,7 @@ static ssize_t ath10k_write_nf_cal_period(struct file* file,
     ret = ath10k_wmi_pdev_set_param(ar, ar->wmi.pdev_param->cal_period,
                                     ar->debug.nf_cal_period);
     if (ret) {
-        ath10k_info("cal period cfg failed from debugfs: %d\n",
+        ath10k_warn("cal period cfg failed from debugfs: %d\n",
                     ret);
         goto exit;
     }
@@ -1655,7 +1655,7 @@ static int ath10k_debug_tpc_stats_request(struct ath10k* ar) {
 
     ret = ath10k_wmi_pdev_get_tpc_config(ar, WMI_TPC_CONFIG_PARAM);
     if (ret) {
-        ath10k_info("failed to request tpc config: %d\n", ret);
+        ath10k_warn("failed to request tpc config: %d\n", ret);
         return ret;
     }
 
@@ -1732,7 +1732,7 @@ static void ath10k_tpc_stats_fill(struct ath10k* ar,
     spin_lock_bh(&ar->data_lock);
 
     if (!tpc_stats) {
-        ath10k_info("failed to get tpc stats\n");
+        ath10k_warn("failed to get tpc stats\n");
         goto unlock;
     }
 
@@ -1828,7 +1828,7 @@ static int ath10k_tpc_stats_open(struct inode* inode, struct file* file) {
 
     ret = ath10k_debug_tpc_stats_request(ar);
     if (ret) {
-        ath10k_info("failed to request tpc config stats: %d\n",
+        ath10k_warn("failed to request tpc config stats: %d\n",
                     ret);
         goto err_free;
     }
@@ -1877,7 +1877,7 @@ int ath10k_debug_start(struct ath10k* ar) {
     ret = ath10k_debug_htt_stats_req(ar);
     if (ret)
         /* continue normally anyway, this isn't serious */
-        ath10k_info("failed to start htt stats workqueue: %d\n",
+        ath10k_warn("failed to start htt stats workqueue: %d\n",
                     ret);
 
     if (ar->debug.fw_dbglog_mask) {
@@ -1885,7 +1885,7 @@ int ath10k_debug_start(struct ath10k* ar) {
                                     ATH10K_DBGLOG_LEVEL_WARN);
         if (ret)
             /* not serious */
-            ath10k_info("failed to enable dbglog during start: %d",
+            ath10k_warn("failed to enable dbglog during start: %d",
                         ret);
     }
 
@@ -1894,14 +1894,14 @@ int ath10k_debug_start(struct ath10k* ar) {
                                             ar->debug.pktlog_filter);
         if (ret)
             /* not serious */
-            ath10k_info("failed to enable pktlog filter %x: %d\n",
+            ath10k_warn("failed to enable pktlog filter %x: %d\n",
                         ar->debug.pktlog_filter, ret);
     } else {
         ret = ath10k_wmi_pdev_pktlog_disable(ar);
         if (ret)
             /* not serious */
         {
-            ath10k_info("failed to disable pktlog: %d\n", ret);
+            ath10k_warn("failed to disable pktlog: %d\n", ret);
         }
     }
 
@@ -1911,7 +1911,7 @@ int ath10k_debug_start(struct ath10k* ar) {
                                         ar->debug.nf_cal_period);
         if (ret)
             /* not serious */
-            ath10k_info("cal period cfg failed from debug start: %d\n",
+            ath10k_warn("cal period cfg failed from debug start: %d\n",
                         ret);
     }
 
@@ -2051,14 +2051,14 @@ static ssize_t ath10k_write_pktlog_filter(struct file* file,
     if (filter) {
         ret = ath10k_wmi_pdev_pktlog_enable(ar, filter);
         if (ret) {
-            ath10k_info("failed to enable pktlog filter %x: %d\n",
+            ath10k_warn("failed to enable pktlog filter %x: %d\n",
                         ar->debug.pktlog_filter, ret);
             goto out;
         }
     } else {
         ret = ath10k_wmi_pdev_pktlog_disable(ar);
         if (ret) {
-            ath10k_info("failed to disable pktlog: %d\n", ret);
+            ath10k_warn("failed to disable pktlog: %d\n", ret);
             goto out;
         }
     }
@@ -2102,7 +2102,7 @@ static ssize_t ath10k_write_quiet_period(struct file* file,
     }
 
     if (period < ATH10K_QUIET_PERIOD_MIN) {
-        ath10k_info("Quiet period %u can not be lesser than 25ms\n",
+        ath10k_warn("Quiet period %u can not be lesser than 25ms\n",
                     period);
         return -EINVAL;
     }
@@ -2173,7 +2173,7 @@ static ssize_t ath10k_write_btcoex(struct file* file,
                  ar->running_fw->fw_file.fw_features)) {
         ret = ath10k_wmi_pdev_set_param(ar, pdev_param, val);
         if (ret) {
-            ath10k_info("failed to enable btcoex: %d\n", ret);
+            ath10k_warn("failed to enable btcoex: %d\n", ret);
             ret = count;
             goto exit;
         }

@@ -49,7 +49,7 @@ ath10k_thermal_set_cur_throttle_state(struct thermal_cooling_device* cdev,
     struct ath10k* ar = cdev->devdata;
 
     if (throttle_state > ATH10K_THERMAL_THROTTLE_MAX) {
-        ath10k_info("throttle state %ld is exceeding the limit %d\n",
+        ath10k_warn("throttle state %ld is exceeding the limit %d\n",
                     throttle_state, ATH10K_THERMAL_THROTTLE_MAX);
         return -EINVAL;
     }
@@ -84,7 +84,7 @@ static ssize_t ath10k_thermal_show_temp(struct device* dev,
     reinit_completion(&ar->thermal.wmi_sync);
     ret = ath10k_wmi_pdev_get_temperature(ar);
     if (ret) {
-        ath10k_info("failed to read temperature %d\n", ret);
+        ath10k_warn("failed to read temperature %d\n", ret);
         goto out;
     }
 
@@ -96,7 +96,7 @@ static ssize_t ath10k_thermal_show_temp(struct device* dev,
     time_left = wait_for_completion_timeout(&ar->thermal.wmi_sync,
                                             ATH10K_THERMAL_SYNC_TIMEOUT_HZ);
     if (!time_left) {
-        ath10k_info("failed to synchronize thermal read\n");
+        ath10k_warn("failed to synchronize thermal read\n");
         ret = -ETIMEDOUT;
         goto out;
     }
@@ -150,7 +150,7 @@ void ath10k_thermal_set_throttling(struct ath10k* ar) {
                                          ATH10K_QUIET_START_OFFSET,
                                          enabled);
     if (ret) {
-        ath10k_info("failed to set quiet mode period %u duarion %u enabled %u ret %d\n",
+        ath10k_warn("failed to set quiet mode period %u duarion %u enabled %u ret %d\n",
                     period, duration, enabled, ret);
     }
 }

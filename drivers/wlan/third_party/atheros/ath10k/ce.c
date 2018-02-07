@@ -303,7 +303,7 @@ zx_status_t ath10k_ce_send_nolock(struct ath10k_ce_pipe* ce_state,
     zx_status_t ret = ZX_OK;
 
     if (nbytes > ce_state->src_sz_max)
-        ath10k_info("%s: send more we can (nbytes: %d, max: %d)\n",
+        ath10k_warn("%s: send more we can (nbytes: %d, max: %d)\n",
                     __func__, nbytes, ce_state->src_sz_max);
 
     if (unlikely(CE_RING_DELTA(nentries_mask,

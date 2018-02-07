@@ -42,7 +42,7 @@ static void ath10k_htc_control_tx_complete(struct ath10k* ar, struct ath10k_htc_
 
 void ath10k_htc_notify_tx_completion(struct ath10k_htc_ep* ep, struct ath10k_htc_buf* msg_buf) {
     if (!ep->ep_ops.ep_tx_complete) {
-        ath10k_info("no tx handler for eid %d\n", ep->eid);
+        ath10k_warn("no tx handler for eid %d\n", ep->eid);
 
         ath10k_htc_buf_free(msg_buf);
         return;
@@ -81,7 +81,7 @@ zx_status_t ath10k_htc_send(struct ath10k_htc* htc,
     }
 
     if (eid >= ATH10K_HTC_EP_COUNT) {
-        ath10k_info("Invalid endpoint id: %d\n", eid);
+        ath10k_warn("Invalid endpoint id: %d\n", eid);
         return ZX_ERR_OUT_OF_RANGE;
     }
 
@@ -162,7 +162,7 @@ ath10k_htc_process_credit_report(struct ath10k_htc* htc,
     int i, n_reports;
 
     if (len % sizeof(*report)) {
-        ath10k_info("Uneven credit report len %d", len);
+        ath10k_warn("Uneven credit report len %d", len);
     }
 
     n_reports = len / sizeof(*report);
@@ -231,7 +231,7 @@ ath10k_htc_process_lookahead_bundle(struct ath10k_htc* htc,
     int bundle_cnt = len / sizeof(*report);
 
     if (!bundle_cnt || (bundle_cnt > HTC_HOST_MAX_MSG_PER_BUNDLE)) {
-        ath10k_info("Invalid lookahead bundle count: %d\n",
+        ath10k_warn("Invalid lookahead bundle count: %d\n",
                     bundle_cnt);
         return -EINVAL;
     }
@@ -278,7 +278,7 @@ int ath10k_htc_process_trailer(struct ath10k_htc* htc,
 
         if (record->hdr.len > length) {
             /* no room left in buffer for record */
-            ath10k_info("Invalid record length: %d\n",
+            ath10k_warn("Invalid record length: %d\n",
                         record->hdr.len);
             status = -EINVAL;
             break;
@@ -288,7 +288,7 @@ int ath10k_htc_process_trailer(struct ath10k_htc* htc,
         case ATH10K_HTC_RECORD_CREDITS:
             len = sizeof(struct ath10k_htc_credit_report);
             if (record->hdr.len < len) {
-                ath10k_info("Credit report too long\n");
+                ath10k_warn("Credit report too long\n");
                 status = -EINVAL;
                 break;
             }
@@ -300,7 +300,7 @@ int ath10k_htc_process_trailer(struct ath10k_htc* htc,
         case ATH10K_HTC_RECORD_LOOKAHEAD:
             len = sizeof(struct ath10k_htc_lookahead_report);
             if (record->hdr.len < len) {
-                ath10k_info("Lookahead report too long\n");
+                ath10k_warn("Lookahead report too long\n");
                 status = -EINVAL;
                 break;
             }
@@ -321,7 +321,7 @@ int ath10k_htc_process_trailer(struct ath10k_htc* htc,
                      next_lookaheads_len);
             break;
         default:
-            ath10k_info("Unhandled record: id:%d length:%d\n",
+            ath10k_warn("Unhandled record: id:%d length:%d\n",
                         record->hdr.id, record->hdr.len);
             break;
         }
@@ -360,7 +360,7 @@ void ath10k_htc_rx_completion_handler(struct ath10k* ar, struct sk_buff* skb) {
     eid = hdr->eid;
 
     if (eid >= ATH10K_HTC_EP_COUNT) {
-        ath10k_info("HTC Rx: invalid eid %d\n", eid);
+        ath10k_warn("HTC Rx: invalid eid %d\n", eid);
         ath10k_dbg_dump(ar, ATH10K_DBG_HTC, "htc bad header", "",
                         hdr, sizeof(*hdr));
         goto out;
@@ -371,7 +371,7 @@ void ath10k_htc_rx_completion_handler(struct ath10k* ar, struct sk_buff* skb) {
     payload_len = hdr->len;
 
     if (payload_len + sizeof(*hdr) > ATH10K_HTC_MAX_LEN) {
-        ath10k_info("HTC rx frame too long, len: %zu\n",
+        ath10k_warn("HTC rx frame too long, len: %zu\n",
                     payload_len + sizeof(*hdr));
         ath10k_dbg_dump(ar, ATH10K_DBG_HTC, "htc bad rx pkt len", "",
                         hdr, sizeof(*hdr));
@@ -397,7 +397,7 @@ void ath10k_htc_rx_completion_handler(struct ath10k* ar, struct sk_buff* skb) {
 
         if ((trailer_len < min_len) ||
                 (trailer_len > payload_len)) {
-            ath10k_info("Invalid trailer length: %d\n",
+            ath10k_warn("Invalid trailer length: %d\n",
                         trailer_len);
             goto out;
         }
@@ -446,7 +446,7 @@ static void ath10k_htc_control_rx_complete(struct ath10k* ar, struct ath10k_htc_
             /* this is a fatal error, target should not be
              * sending unsolicited messages on the ep 0
              */
-            ath10k_info("HTC rx ctrl still processing\n");
+            ath10k_warn("HTC rx ctrl still processing\n");
             completion_signal(&htc->ctl_resp);
             goto out;
         }
@@ -463,7 +463,7 @@ static void ath10k_htc_control_rx_complete(struct ath10k* ar, struct ath10k_htc_
         htc->htc_ops.target_send_suspend_complete(ar);
         break;
     default:
-        ath10k_info("ignoring unsolicited htc ep0 event\n");
+        ath10k_warn("ignoring unsolicited htc ep0 event\n");
         break;
     }
 
@@ -550,7 +550,7 @@ zx_status_t ath10k_htc_wait_target(struct ath10k_htc* htc) {
          * iomap writes unmasking PCI CE irqs aren't propagated
          * properly in KVM PCI-passthrough sometimes.
          */
-        ath10k_info("failed to receive control response completion, polling..\n");
+        ath10k_warn("failed to receive control response completion, polling..\n");
 
         for (i = 0; i < CE_COUNT; i++) {
             ath10k_hif_send_complete_check(htc->ar, i, 1);

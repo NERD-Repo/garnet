@@ -200,7 +200,7 @@ zx_status_t ath10k_swap_code_seg_init(struct ath10k* ar, struct ath10k_fw_file* 
                                     codeswap_data, codeswap_len);
 
     if (ret != ZX_OK) {
-        ath10k_info("failed to initialize fw code swap segment: %s\n",
+        ath10k_warn("failed to initialize fw code swap segment: %s\n",
                     zx_status_get_string(ret));
         ath10k_swap_code_seg_free(ar, seg_info);
         return ret;

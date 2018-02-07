@@ -57,7 +57,7 @@ int ath10k_bmi_done(struct ath10k* ar) {
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
     if (ret) {
-        ath10k_info("unable to write to the device: %d\n", ret);
+        ath10k_warn("unable to write to the device: %d\n", ret);
         return ret;
     }
 
@@ -76,7 +76,7 @@ zx_status_t ath10k_bmi_get_target_info(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi get target info\n");
 
     if (ar->bmi.done_sent) {
-        ath10k_info("BMI Get Target Info Command disallowed\n");
+        ath10k_warn("BMI Get Target Info Command disallowed\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -84,13 +84,13 @@ zx_status_t ath10k_bmi_get_target_info(struct ath10k* ar,
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
     if (ret) {
-        ath10k_info("unable to get target info from device: %s\n",
+        ath10k_warn("unable to get target info from device: %s\n",
                     zx_status_get_string(ret));
         return ret;
     }
 
     if (resplen < sizeof(resp.get_target_info)) {
-        ath10k_info("invalid get_target_info response length (%d)\n",
+        ath10k_warn("invalid get_target_info response length (%d)\n",
                     resplen);
         return ZX_ERR_IO;
     }
@@ -116,7 +116,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi get target info SDIO\n");
 
     if (ar->bmi.done_sent) {
-        ath10k_info("BMI Get Target Info Command disallowed\n");
+        ath10k_warn("BMI Get Target Info Command disallowed\n");
         return -EBUSY;
     }
 
@@ -129,7 +129,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     resplen = sizeof(uint32_t);
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &tmp, &resplen);
     if (ret) {
-        ath10k_info("unable to read from device\n");
+        ath10k_warn("unable to read from device\n");
         return ret;
     }
 
@@ -142,7 +142,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
         ret = ath10k_hif_exchange_bmi_msg(ar, NULL, 0, &tmp,
                                           &resplen);
         if (ret) {
-            ath10k_info("unable to read from device\n");
+            ath10k_warn("unable to read from device\n");
             return ret;
         }
     }
@@ -151,7 +151,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
 
     /* Step 2: Check the target info length */
     if (ver_len != sizeof(resp.get_target_info)) {
-        ath10k_info("Unexpected target info len: %u. Expected: %zu\n",
+        ath10k_warn("Unexpected target info len: %u. Expected: %zu\n",
                     ver_len, sizeof(resp.get_target_info));
         return -EINVAL;
     }
@@ -162,7 +162,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
                                       &resp.get_target_info.version,
                                       &resplen);
     if (ret) {
-        ath10k_info("unable to read from device\n");
+        ath10k_warn("unable to read from device\n");
         return ret;
     }
 
@@ -185,7 +185,7 @@ zx_status_t ath10k_bmi_read_memory(struct ath10k* ar, uint32_t address,
                address, length);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("command disallowed\n");
+        ath10k_warn("command disallowed\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -199,7 +199,7 @@ zx_status_t ath10k_bmi_read_memory(struct ath10k* ar, uint32_t address,
         ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen,
                                           &resp, &rxlen);
         if (ret != ZX_OK) {
-            ath10k_info("unable to read from the device (%s)\n",
+            ath10k_warn("unable to read from the device (%s)\n",
                         zx_status_get_string(ret));
             return ret;
         }
@@ -223,7 +223,7 @@ zx_status_t ath10k_bmi_write_soc_reg(struct ath10k* ar, uint32_t address, uint32
                address, reg_val);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("bmi write soc register command in progress\n");
+        ath10k_warn("bmi write soc register command in progress\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -233,7 +233,7 @@ zx_status_t ath10k_bmi_write_soc_reg(struct ath10k* ar, uint32_t address, uint32
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
     if (ret != ZX_OK) {
-        ath10k_info("Unable to write soc register to device: %s\n",
+        ath10k_warn("Unable to write soc register to device: %s\n",
                     zx_status_get_string(ret));
         return ret;
     }
@@ -252,7 +252,7 @@ int ath10k_bmi_read_soc_reg(struct ath10k* ar, uint32_t address, uint32_t* reg_v
                address);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("bmi read soc register command in progress\n");
+        ath10k_warn("bmi read soc register command in progress\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -261,7 +261,7 @@ int ath10k_bmi_read_soc_reg(struct ath10k* ar, uint32_t address, uint32_t* reg_v
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
     if (ret) {
-        ath10k_info("Unable to read soc register from device: %s\n",
+        ath10k_warn("Unable to read soc register from device: %s\n",
                     zx_status_get_string(ret));
         return ret;
     }
@@ -285,7 +285,7 @@ zx_status_t ath10k_bmi_write_memory(struct ath10k* ar, uint32_t address,
                address, length);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("command disallowed\n");
+        ath10k_warn("command disallowed\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -303,7 +303,7 @@ zx_status_t ath10k_bmi_write_memory(struct ath10k* ar, uint32_t address,
         ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, hdrlen + txlen,
                                           NULL, NULL);
         if (ret) {
-            ath10k_info("unable to write to the device (%s)\n",
+            ath10k_warn("unable to write to the device (%s)\n",
                         zx_status_get_string(ret));
             return ret;
         }
@@ -331,7 +331,7 @@ zx_status_t ath10k_bmi_execute(struct ath10k* ar, uint32_t address,
                address, param);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("command disallowed\n");
+        ath10k_warn("command disallowed\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -341,12 +341,12 @@ zx_status_t ath10k_bmi_execute(struct ath10k* ar, uint32_t address,
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, &resp, &resplen);
     if (ret != ZX_OK) {
-        ath10k_info("unable to read from the device\n");
+        ath10k_warn("unable to read from the device\n");
         return ret;
     }
 
     if (resplen < sizeof(resp.execute)) {
-        ath10k_info("invalid execute response length (%d)\n",
+        ath10k_warn("invalid execute response length (%d)\n",
                     resplen);
         return ZX_ERR_IO;
     }
@@ -368,7 +368,7 @@ zx_status_t ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t l
                buffer, length);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("command disallowed\n");
+        ath10k_warn("command disallowed\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -384,7 +384,7 @@ zx_status_t ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t l
         ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, hdrlen + txlen,
                                           NULL, NULL);
         if (ret != ZX_OK) {
-            ath10k_info("unable to write to the device\n");
+            ath10k_warn("unable to write to the device\n");
             return ret;
         }
 
@@ -404,7 +404,7 @@ zx_status_t ath10k_bmi_lz_stream_start(struct ath10k* ar, uint32_t address) {
                address);
 
     if (ar->bmi.done_sent) {
-        ath10k_info("command disallowed\n");
+        ath10k_warn("command disallowed\n");
         return ZX_ERR_BAD_STATE;
     }
 
@@ -413,7 +413,7 @@ zx_status_t ath10k_bmi_lz_stream_start(struct ath10k* ar, uint32_t address) {
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
     if (ret != ZX_OK) {
-        ath10k_info("unable to Start LZ Stream to the device\n");
+        ath10k_warn("unable to Start LZ Stream to the device\n");
         return ret;
     }
 

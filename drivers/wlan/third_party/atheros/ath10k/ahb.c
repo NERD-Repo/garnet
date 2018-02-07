@@ -80,7 +80,7 @@ static int ath10k_ahb_get_num_banks(struct ath10k* ar) {
         return 1;
     }
 
-    ath10k_info("unknown number of banks, assuming 1\n");
+    ath10k_warn("unknown number of banks, assuming 1\n");
     return 1;
 }
 
@@ -417,7 +417,7 @@ static int ath10k_ahb_request_irq_legacy(struct ath10k* ar) {
                       ath10k_ahb_interrupt_handler,
                       IRQF_SHARED, "ath10k_ahb", ar);
     if (ret) {
-        ath10k_info("failed to request legacy irq %d: %d\n",
+        ath10k_warn("failed to request legacy irq %d: %d\n",
                     ar_ahb->irq, ret);
         return ret;
     }

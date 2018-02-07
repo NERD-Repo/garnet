@@ -69,13 +69,13 @@ bool ath10k_tm_event_wmi(struct ath10k* ar, uint32_t cmd_id, struct sk_buff* skb
              2 * sizeof(uint32_t) + skb->len,
              GFP_ATOMIC);
     if (!nl_skb) {
-        ath10k_info("failed to allocate skb for testmode wmi event\n");
+        ath10k_warn("failed to allocate skb for testmode wmi event\n");
         goto out;
     }
 
     ret = nla_put_u32(nl_skb, ATH10K_TM_ATTR_CMD, ATH10K_TM_CMD_WMI);
     if (ret) {
-        ath10k_info("failed to to put testmode wmi event cmd attribute: %d\n",
+        ath10k_warn("failed to to put testmode wmi event cmd attribute: %d\n",
                     ret);
         kfree_skb(nl_skb);
         goto out;
@@ -83,7 +83,7 @@ bool ath10k_tm_event_wmi(struct ath10k* ar, uint32_t cmd_id, struct sk_buff* skb
 
     ret = nla_put_u32(nl_skb, ATH10K_TM_ATTR_WMI_CMDID, cmd_id);
     if (ret) {
-        ath10k_info("failed to to put testmode wmi even cmd_id: %d\n",
+        ath10k_warn("failed to to put testmode wmi even cmd_id: %d\n",
                     ret);
         kfree_skb(nl_skb);
         goto out;
@@ -91,7 +91,7 @@ bool ath10k_tm_event_wmi(struct ath10k* ar, uint32_t cmd_id, struct sk_buff* skb
 
     ret = nla_put(nl_skb, ATH10K_TM_ATTR_DATA, skb->len, skb->data);
     if (ret) {
-        ath10k_info("failed to copy skb to testmode wmi event: %d\n",
+        ath10k_warn("failed to copy skb to testmode wmi event: %d\n",
                     ret);
         kfree_skb(nl_skb);
         goto out;
@@ -158,7 +158,7 @@ static int ath10k_tm_fetch_utf_firmware_api_1(struct ath10k* ar,
                filename, ret);
 
     if (ret) {
-        ath10k_info("failed to retrieve utf firmware '%s': %d\n",
+        ath10k_warn("failed to retrieve utf firmware '%s': %d\n",
                     filename, ret);
         return ret;
     }
@@ -250,7 +250,7 @@ static int ath10k_tm_cmd_utf_start(struct ath10k* ar, struct nlattr* tb[]) {
         ret = ath10k_swap_code_seg_init(ar,
                                         &ar->testmode.utf_mode_fw.fw_file);
         if (ret) {
-            ath10k_info("failed to init utf code swap segment: %d\n",
+            ath10k_warn("failed to init utf code swap segment: %d\n",
                         ret);
             goto err_release_utf_mode_fw;
         }
@@ -399,7 +399,7 @@ static int ath10k_tm_cmd_wmi(struct ath10k* ar, struct nlattr* tb[]) {
 
     ret = ath10k_wmi_cmd_send(ar, skb, cmd_id);
     if (ret) {
-        ath10k_info("failed to transmit wmi command (testmode): %d\n",
+        ath10k_warn("failed to transmit wmi command (testmode): %d\n",
                     ret);
         goto out;
     }

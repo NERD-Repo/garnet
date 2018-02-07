@@ -670,7 +670,7 @@ static int ath10k_download_cal_dt(struct ath10k* ar, const char* dt_name) {
     }
 
     if (data_len != ar->hw_params.cal_data_len) {
-        ath10k_info("invalid calibration data length in DT: %d\n",
+        ath10k_warn("invalid calibration data length in DT: %d\n",
                     data_len);
         ret = -EMSGSIZE;
         goto out;
@@ -684,14 +684,14 @@ static int ath10k_download_cal_dt(struct ath10k* ar, const char* dt_name) {
 
     ret = of_property_read_u8_array(node, dt_name, data, data_len);
     if (ret) {
-        ath10k_info("failed to read calibration data from DT: %d\n",
+        ath10k_warn("failed to read calibration data from DT: %d\n",
                     ret);
         goto out_free;
     }
 
     ret = ath10k_download_board_data(ar, data, data_len);
     if (ret) {
-        ath10k_info("failed to download calibration data from Device Tree: %d\n",
+        ath10k_warn("failed to download calibration data from Device Tree: %d\n",
                     ret);
         goto out_free;
     }
@@ -714,7 +714,7 @@ static zx_status_t ath10k_download_cal_eeprom(struct ath10k* ar) {
     ret = ath10k_hif_fetch_cal_eeprom(ar, &data, &data_len);
     if (ret) {
         if (ret != ZX_ERR_NOT_SUPPORTED) {
-            ath10k_info("failed to read calibration data from EEPROM: %s\n",
+            ath10k_warn("failed to read calibration data from EEPROM: %s\n",
                         zx_status_get_string(ret));
         }
         goto out_free;
@@ -722,7 +722,7 @@ static zx_status_t ath10k_download_cal_eeprom(struct ath10k* ar) {
 
     ret = ath10k_download_board_data(ar, data, data_len);
     if (ret) {
-        ath10k_info("failed to download calibration data from EEPROM: %s\n",
+        ath10k_warn("failed to download calibration data from EEPROM: %s\n",
                     zx_status_get_string(ret));
         goto out_free;
     }
@@ -745,7 +745,7 @@ static zx_status_t ath10k_core_get_board_id_from_otp(struct ath10k* ar) {
 
     if (!ar->normal_mode_fw.fw_file.otp_data ||
             !ar->normal_mode_fw.fw_file.otp_len) {
-        ath10k_info("failed to retrieve board id because of invalid otp\n");
+        ath10k_warn("failed to retrieve board id because of invalid otp\n");
         return ZX_ERR_NOT_FOUND;
     }
 
@@ -882,7 +882,7 @@ static zx_status_t ath10k_download_and_run_otp(struct ath10k* ar) {
 
     if (!ar->running_fw->fw_file.otp_data ||
             !ar->running_fw->fw_file.otp_len) {
-        ath10k_info("Not running otp, calibration will be incorrect (otp-data %pK otp_len %zd)!\n",
+        ath10k_warn("Not running otp, calibration will be incorrect (otp-data %pK otp_len %zd)!\n",
                     ar->running_fw->fw_file.otp_data,
                     ar->running_fw->fw_file.otp_len);
         return 0;
@@ -1093,7 +1093,7 @@ static zx_status_t ath10k_core_parse_bd_ie_board(struct ath10k* ar,
             ret = 0;
             goto out;
         default:
-            ath10k_info("unknown ATH10K_BD_IE_BOARD found: %d\n",
+            ath10k_warn("unknown ATH10K_BD_IE_BOARD found: %d\n",
                         board_ie_id);
             break;
         }
@@ -1415,7 +1415,7 @@ zx_status_t ath10k_core_fetch_firmware_api_n(struct ath10k* ar, const char* name
             fw_file->codeswap_len = ie_len;
             break;
         default:
-            ath10k_info("Unknown FW IE: %u\n", hdr->id);
+            ath10k_warn("Unknown FW IE: %u\n", hdr->id);
             break;
         }
 
@@ -1428,7 +1428,7 @@ zx_status_t ath10k_core_fetch_firmware_api_n(struct ath10k* ar, const char* name
 
     if (!fw_file->firmware_data ||
             !fw_file->firmware_len) {
-        ath10k_info("No ATH10K_FW_IE_FW_IMAGE found from '%s/%s', skipping\n",
+        ath10k_warn("No ATH10K_FW_IE_FW_IMAGE found from '%s/%s', skipping\n",
                     ar->hw_params.fw.dir, name);
         ret = ZX_ERR_NOT_FOUND;
         goto err;
@@ -1596,7 +1596,7 @@ static zx_status_t ath10k_init_uart(struct ath10k* ar) {
      */
     ret = ath10k_bmi_write32(ar, hi_serial_enable, 0);
     if (ret != ZX_OK) {
-        ath10k_info("could not disable UART prints (%s)\n", zx_status_get_string(ret));
+        ath10k_warn("could not disable UART prints (%s)\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -1606,20 +1606,20 @@ static zx_status_t ath10k_init_uart(struct ath10k* ar) {
 
     ret = ath10k_bmi_write32(ar, hi_dbg_uart_txpin, ar->hw_params.uart_pin);
     if (ret != ZX_OK) {
-        ath10k_info("could not enable UART prints (%s)\n", zx_status_get_string(ret));
+        ath10k_warn("could not enable UART prints (%s)\n", zx_status_get_string(ret));
         return ret;
     }
 
     ret = ath10k_bmi_write32(ar, hi_serial_enable, 1);
     if (ret != ZX_OK) {
-        ath10k_info("could not enable UART prints (%s)\n", zx_status_get_string(ret));
+        ath10k_warn("could not enable UART prints (%s)\n", zx_status_get_string(ret));
         return ret;
     }
 
     /* Set the UART baud rate to 19200. */
     ret = ath10k_bmi_write32(ar, hi_desired_baud_rate, 19200);
     if (ret != ZX_OK) {
-        ath10k_info("could not set the baud rate (%s)\n", zx_status_get_string(ret));
+        ath10k_warn("could not set the baud rate (%s)\n", zx_status_get_string(ret));
         return ret;
     }
 
@@ -1700,7 +1700,7 @@ static void ath10k_core_restart(struct work_struct* work) {
         /* this can happen if driver is being unloaded
          * or if the crash happens during FW probing
          */
-        ath10k_info("cannot restart a device that hasn't been started\n");
+        ath10k_warn("cannot restart a device that hasn't been started\n");
         break;
     case ATH10K_STATE_RESTARTING:
         /* hw restart might be requested from multiple places */
@@ -1709,10 +1709,10 @@ static void ath10k_core_restart(struct work_struct* work) {
         ar->state = ATH10K_STATE_WEDGED;
     /* fall through */
     case ATH10K_STATE_WEDGED:
-        ath10k_info("device is wedged, will not restart\n");
+        ath10k_warn("device is wedged, will not restart\n");
         break;
     case ATH10K_STATE_UTF:
-        ath10k_info("firmware restart in UTF mode not supported\n");
+        ath10k_warn("firmware restart in UTF mode not supported\n");
         break;
     }
 
@@ -1720,7 +1720,7 @@ static void ath10k_core_restart(struct work_struct* work) {
 
     ret = ath10k_debug_fw_devcoredump(ar);
     if (ret)
-        ath10k_info("failed to send firmware crash dump via devcoredump: %d",
+        ath10k_warn("failed to send firmware crash dump via devcoredump: %d",
                     ret);
 }
 
@@ -2072,7 +2072,7 @@ zx_status_t ath10k_core_start(struct ath10k* ar, enum ath10k_firmware_mode mode,
     if (mode == ATH10K_FIRMWARE_MODE_NORMAL) {
         status = ath10k_wmi_wait_for_service_ready(ar);
         if (status != ZX_OK) {
-            ath10k_info("wmi service ready event not received");
+            ath10k_warn("wmi service ready event not received");
             goto err_hif_stop;
         }
     }
@@ -2205,14 +2205,14 @@ int ath10k_wait_for_suspend(struct ath10k* ar, uint32_t suspend_opt) {
 
     ret = ath10k_wmi_pdev_suspend_target(ar, suspend_opt);
     if (ret) {
-        ath10k_info("could not suspend target (%d)\n", ret);
+        ath10k_warn("could not suspend target (%d)\n", ret);
         return ret;
     }
 
     time_left = wait_for_completion_timeout(&ar->target_suspend, 1 * HZ);
 
     if (!time_left) {
-        ath10k_info("suspend timed out - target pause event never came\n");
+        ath10k_warn("suspend timed out - target pause event never came\n");
         return -ETIMEDOUT;
     }
 
@@ -2338,7 +2338,7 @@ static zx_status_t ath10k_core_probe_fw(struct ath10k* ar) {
         goto err_unlock;
     }
 
-    ath10k_info("initialization complete\n");
+    ath10k_warn("initialization complete\n");
 
 #if 0 // TODO
     ath10k_debug_print_boot_info(ar);
