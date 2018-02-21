@@ -10,6 +10,7 @@
 #include "lib/escher/impl/vulkan_utils.h"
 #include "lib/escher/vk/gpu_mem.h"
 #include "lib/escher/vk/image_factory.h"
+#include "lib/escher/util/image_formats.h"
 
 namespace {
 struct RGBA {
@@ -99,15 +100,12 @@ ImagePtr NewColorAttachmentImage(ImageFactory* image_factory,
   return image_factory->NewImage(info);
 }
 
-ImagePtr NewImageFromPixels(ImageFactory* image_factory,
-                            impl::GpuUploader* gpu_uploader,
-                            uint8_t* pixels,
-                            vk::Format format,
-                            uint32_t width,
-                            uint32_t height,
-                            vk::ImageUsageFlags additional_flags) {
+ImagePtr NewGpuImageFromPixels(ImageFactory* image_factory,
+                               vk::Format format,
+                               uint32_t width,
+                               uint32_t height,
+                               vk::ImageUsageFlags additional_flags) {
   FXL_DCHECK(image_factory);
-  FXL_DCHECK(gpu_uploader);
 
   ImageInfo info;
   info.format = format;
@@ -118,26 +116,30 @@ ImagePtr NewImageFromPixels(ImageFactory* image_factory,
                vk::ImageUsageFlagBits::eSampled;
 
   // Create the new image.
-  auto image = image_factory->NewImage(info);
+  auto gpu_image = image_factory->NewImage(info);
 
-  WritePixelsToImage(gpu_uploader, pixels, image);
-
-  return image;
+  return gpu_image;
 }
 
-void WritePixelsToImage(impl::GpuUploader* gpu_uploader,
-                        uint8_t* pixels,
-                        ImagePtr image) {
+void WritePixelsToImage(
+    impl::GpuUploader* gpu_uploader,
+    uint8_t* pixels,
+    ImagePtr gpu_image,
+    const escher::image_formats::ImgConvertFunc& conversion_func) {
   FXL_DCHECK(gpu_uploader);
-  FXL_DCHECK(image);
+  FXL_DCHECK(gpu_image);
   FXL_DCHECK(pixels);
 
-  size_t bytes_per_pixel = BytesPerPixel(image->info().format);
-  size_t width = image->info().width;
-  size_t height = image->info().height;
+  size_t bytes_per_pixel = BytesPerPixel(gpu_image->info().format);
+  size_t width = gpu_image->info().width;
+  size_t height = gpu_image->info().height;
 
   auto writer = gpu_uploader->GetWriter(width * height * bytes_per_pixel);
-  memcpy(writer.ptr(), pixels, width * height * bytes_per_pixel);
+  if (!conversion_func) {
+    std::memcpy(writer.ptr(), pixels, width * height * bytes_per_pixel);
+  } else {
+    conversion_func(writer.ptr(), pixels, width, height);
+  }
 
   vk::BufferImageCopy region;
   region.imageSubresource.aspectMask = vk::ImageAspectFlagBits::eColor;
@@ -149,7 +151,7 @@ void WritePixelsToImage(impl::GpuUploader* gpu_uploader,
   region.imageExtent.depth = 1;
   region.bufferOffset = 0;
 
-  writer.WriteImage(image, region, Semaphore::New(gpu_uploader->device()));
+  writer.WriteImage(gpu_image, region, Semaphore::New(gpu_uploader->device()));
   writer.Submit();
 }
 
@@ -161,8 +163,11 @@ ImagePtr NewRgbaImage(ImageFactory* image_factory,
   FXL_DCHECK(image_factory);
   FXL_DCHECK(gpu_uploader);
 
-  return NewImageFromPixels(image_factory, gpu_uploader, pixels,
-                            vk::Format::eR8G8B8A8Unorm, width, height);
+  auto gpu_image = NewGpuImageFromPixels(
+      image_factory, vk::Format::eR8G8B8A8Unorm, width, height);
+
+  WritePixelsToImage(gpu_uploader, pixels, gpu_image);
+  return gpu_image;
 }
 
 ImagePtr NewCheckerboardImage(ImageFactory* image_factory,
@@ -172,9 +177,12 @@ ImagePtr NewCheckerboardImage(ImageFactory* image_factory,
   FXL_DCHECK(image_factory);
   FXL_DCHECK(gpu_uploader);
 
+  auto gpu_image = NewGpuImageFromPixels(
+      image_factory, vk::Format::eR8G8B8A8Unorm, width, height);
+
   auto pixels = NewCheckerboardPixels(width, height);
-  return NewImageFromPixels(image_factory, gpu_uploader, pixels.get(),
-                            vk::Format::eR8G8B8A8Unorm, width, height);
+  WritePixelsToImage(gpu_uploader, pixels.get(), gpu_image);
+  return gpu_image;
 }
 
 ImagePtr NewGradientImage(ImageFactory* image_factory,
@@ -185,8 +193,11 @@ ImagePtr NewGradientImage(ImageFactory* image_factory,
   FXL_DCHECK(gpu_uploader);
 
   auto pixels = NewGradientPixels(width, height);
-  return NewImageFromPixels(image_factory, gpu_uploader, pixels.get(),
-                            vk::Format::eR8G8B8A8Unorm, width, height);
+  auto gpu_image = NewGpuImageFromPixels(
+      image_factory, vk::Format::eR8G8B8A8Unorm, width, height);
+
+  WritePixelsToImage(gpu_uploader, pixels.get(), gpu_image);
+  return gpu_image;
 }
 
 ImagePtr NewNoiseImage(ImageFactory* image_factory,
@@ -198,9 +209,11 @@ ImagePtr NewNoiseImage(ImageFactory* image_factory,
   FXL_DCHECK(gpu_uploader);
 
   auto pixels = NewNoisePixels(width, height);
-  return NewImageFromPixels(image_factory, gpu_uploader, pixels.get(),
-                            vk::Format::eR8Unorm, width, height,
-                            additional_flags);
+  auto gpu_image = NewGpuImageFromPixels(image_factory, vk::Format::eR8Unorm,
+                                         width, height, additional_flags);
+
+  WritePixelsToImage(gpu_uploader, pixels.get(), gpu_image);
+  return gpu_image;
 }
 
 std::unique_ptr<uint8_t[]> NewCheckerboardPixels(uint32_t width,

@@ -6,6 +6,7 @@
 
 #include "lib/escher/escher.h"
 #include "lib/escher/forward_declarations.h"
+#include "lib/escher/util/image_formats.h"
 #include "lib/escher/vk/image.h"
 
 namespace escher {
@@ -47,21 +48,24 @@ ImagePtr NewColorAttachmentImage(ImageFactory* image_factory,
 // |image_factory| is a generic interface that could be an Image cache (in which
 // case a new Image might be created, or an existing one reused). Alternatively
 // the factory could allocate a new Image every time.
-ImagePtr NewImageFromPixels(
+ImagePtr NewGpuImageFromPixels(
     ImageFactory* image_factory,
-    impl::GpuUploader* gpu_uploader,
-    uint8_t* pixels,
     vk::Format format,
     uint32_t width,
     uint32_t height,
     vk::ImageUsageFlags additional_flags = vk::ImageUsageFlags());
 
-// Write the contents of |pixels| into an existing |image|.
-// The VkFormat, width, and height of |pixels| is assumed to match that of
-// |image|.
-void WritePixelsToImage(impl::GpuUploader* gpu_uploader,
-                        uint8_t* pixels,
-                        ImagePtr image);
+// Write the contents of |pixels| into an existing |gpu_image|.
+// The width, and height of |pixels| is assumed to match that of
+// |gpu_image|.
+// If the format of |pixels| is different from |gpu_image|, a conversion
+// function that can convert from |pixels| to |gpu_image| should be
+// provided as |convertion_func|.
+void WritePixelsToImage(
+    impl::GpuUploader* gpu_uploader,
+    uint8_t* pixels,
+    ImagePtr gpu_image,
+    const escher::image_formats::ImgConvertFunc& convertion_func = nullptr);
 
 // Return new Image containing the provided pixels.  Uses transfer queue to
 // efficiently transfer image data to GPU.  If bytes is null, don't bother
