@@ -5,12 +5,12 @@
 #![recursion_limit = "1024"]
 
 extern crate failure;
-extern crate fuchsia_llui as llui;
 extern crate font_rs;
+extern crate fuchsia_llui as llui;
 
 use failure::Error;
-use font_rs::font::{GlyphBitmap, parse};
-use llui::{Color, FrameBuffer, wait_for_close};
+use font_rs::font::{parse, GlyphBitmap};
+use llui::{wait_for_close, Color, FrameBuffer};
 use std::{thread, time};
 
 static FONT_DATA: &'static [u8] =

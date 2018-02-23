@@ -4,18 +4,12 @@
 
 #![recursion_limit = "1024"]
 
-#[macro_use]
-extern crate error_chain;
+extern crate failure;
 extern crate fuchsia_llui as llui;
 
-use llui::{Color, FrameBuffer, wait_for_close};
+use failure::Error;
+use llui::{wait_for_close, Color, FrameBuffer};
 use std::{thread, time};
-
-error_chain!{
-    links {
-        LUI(::llui::Error, ::llui::ErrorKind);
-    }
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, PartialOrd)]
 pub struct Size {
@@ -120,7 +114,7 @@ fn fill_rectangle(fb: &mut FrameBuffer, color: &Color, r: &Rectangle) {
     }
 }
 
-fn run() -> Result<()> {
+fn run() -> Result<(), Error> {
     wait_for_close();
 
     let mut fb = FrameBuffer::new(None)?;
@@ -151,24 +145,27 @@ fn run() -> Result<()> {
     };
     let mut i: usize = 0;
     loop {
-        fill_with_color(&mut fb, &fuchsia);
-        match i % 3 {
-            0 => {
-                fill_rectangle(&mut fb, &c1, &r1);
-                fill_rectangle(&mut fb, &c2, &r2);
-                fill_rectangle(&mut fb, &c3, &r3);
+        let f = move |fb2: &mut FrameBuffer| {
+            fill_with_color(fb2, &fuchsia);
+            match i % 3 {
+                0 => {
+                    fill_rectangle(fb2, &c1, &r1);
+                    fill_rectangle(fb2, &c2, &r2);
+                    fill_rectangle(fb2, &c3, &r3);
+                }
+                1 => {
+                    fill_rectangle(fb2, &c2, &r1);
+                    fill_rectangle(fb2, &c3, &r2);
+                    fill_rectangle(fb2, &c1, &r3);
+                }
+                _ => {
+                    fill_rectangle(fb2, &c3, &r1);
+                    fill_rectangle(fb2, &c1, &r2);
+                    fill_rectangle(fb2, &c2, &r3);
+                }
             }
-            1 => {
-                fill_rectangle(&mut fb, &c2, &r1);
-                fill_rectangle(&mut fb, &c3, &r2);
-                fill_rectangle(&mut fb, &c1, &r3);
-            }
-            _ => {
-                fill_rectangle(&mut fb, &c3, &r1);
-                fill_rectangle(&mut fb, &c1, &r2);
-                fill_rectangle(&mut fb, &c2, &r3);
-            }
-        }
+        };
+        fb.draw(f);
         i = i.wrapping_add(1);
         fb.flush().unwrap();
         thread::sleep(time::Duration::from_millis(800));
@@ -178,17 +175,6 @@ fn run() -> Result<()> {
 fn main() {
     if let Err(ref e) = run() {
         println!("error: {}", e);
-
-        for e in e.iter().skip(1) {
-            println!("caused by: {}", e);
-        }
-
-        // The backtrace is not always generated. Try to run this example
-        // with `RUST_BACKTRACE=1`.
-        if let Some(backtrace) = e.backtrace() {
-            println!("backtrace: {:?}", backtrace);
-        }
-
         ::std::process::exit(1);
     }
 }

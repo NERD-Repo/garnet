@@ -6,8 +6,8 @@
 
 #[macro_use]
 extern crate failure;
-extern crate fuchsia_zircon_sys;
 extern crate fdio;
+extern crate fuchsia_zircon_sys;
 
 mod color;
 
@@ -15,8 +15,8 @@ pub use color::Color;
 use failure::Error;
 use fdio::{ioctl, make_ioctl};
 use fdio::fdio_sys::{IOCTL_FAMILY_DISPLAY, IOCTL_KIND_DEFAULT, IOCTL_KIND_GET_HANDLE};
-use fuchsia_zircon_sys::{ZX_VM_FLAG_PERM_READ, ZX_VM_FLAG_PERM_WRITE, zx_handle_t, zx_vmar_map,
-                         zx_vmar_root_self};
+use fuchsia_zircon_sys::{zx_handle_t, zx_vmar_map, zx_vmar_root_self, ZX_VM_FLAG_PERM_READ,
+                         ZX_VM_FLAG_PERM_WRITE};
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
@@ -72,8 +72,8 @@ fn get_info_for_device(fd: i32) -> Result<ioctl_display_get_fb_t, Error> {
             flags: 0,
         },
     };
-    let framebuffer_ptr: *mut std::os::raw::c_void = &mut framebuffer as *mut _ as
-        *mut std::os::raw::c_void;
+    let framebuffer_ptr: *mut std::os::raw::c_void =
+        &mut framebuffer as *mut _ as *mut std::os::raw::c_void;
 
     let status = unsafe {
         ioctl(
@@ -89,8 +89,8 @@ fn get_info_for_device(fd: i32) -> Result<ioctl_display_get_fb_t, Error> {
     if status < 0 {
         if status == -2 {
             bail!(
-                "Software framebuffer is not supported on devices with enabled GPU drivers. \
-                 See README.md for instructions on how to disable the GPU driver."
+                "Software framebuffer is not supported on devices with enabled GPU drivers. See \
+                 README.md for instructions on how to disable the GPU driver."
             );
         }
         bail!("ioctl failed with {}", status);
@@ -153,7 +153,11 @@ impl FrameBuffer {
 
         let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
         let frame_buffer_pixels: Vec<u8> = unsafe {
-            Vec::from_raw_parts(frame_buffer_pixel_ptr, byte_size as usize, byte_size as usize)
+            Vec::from_raw_parts(
+                frame_buffer_pixel_ptr,
+                byte_size as usize,
+                byte_size as usize,
+            )
         };
 
         Ok(FrameBuffer {
@@ -198,12 +202,17 @@ impl FrameBuffer {
         self.stride
     }
 
-    /// Return the size in bytes of a pixel pixels.
+    /// Return the size in bytes of a pixel.
     pub fn get_pixel_size(&self) -> usize {
         self.pixel_size
     }
 
-    /// Return the size in bytes of a pixel pixels.
+    /// Return the number of bytes in a row of pixels.
+    pub fn get_row_bytes(&self) -> usize {
+        self.pixel_size * self.stride
+    }
+
+    /// Return the pixel format.
     pub fn get_pixel_format(&self) -> PixelFormat {
         self.pixel_format
     }
@@ -212,20 +221,22 @@ impl FrameBuffer {
     pub fn get_pixels(&mut self) -> &mut [u8] {
         self.frame_buffer_pixels.as_mut_slice()
     }
+
+    pub fn draw<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut FrameBuffer),
+    {
+        f(self);
+    }
 }
 
 impl fmt::Debug for FrameBuffer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "FrameBuffer {{ file: {:?}, pixel_format: {:?}, width: {}, height: {}, \
-stride: {}, pixel_size: {} }}",
-            self.file,
-            self.pixel_format,
-            self.width,
-            self.height,
-            self.stride,
-            self.pixel_size,
+            "FrameBuffer {{ file: {:?}, pixel_format: {:?}, width: {}, height: {}, stride: {}, \
+             pixel_size: {} }}",
+            self.file, self.pixel_format, self.width, self.height, self.stride, self.pixel_size,
         )
     }
 }
