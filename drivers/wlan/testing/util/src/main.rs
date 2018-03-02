@@ -28,7 +28,17 @@ fn usage(appname: &str) {
 }
 
 fn open_rdwr<P: AsRef<Path>>(path: P) -> Result<File, Error> {
-    OpenOptions::new().read(true).write(true).open(path).map_err(|e| e.into())
+    OpenOptions::new().read(true).write(true).open(path).map_err(Into::into)
+}
+
+fn get_proxy() -> Result<(async::Executor, wlan::Phy::Proxy), Error> {
+    let executor = async::Executor::new().context("error creating event loop")?;
+
+    let phy = wlan_dev::WlanPhy::new(DEV_WLANPHY)?;
+    let chan = phy.connect()?;
+    let client_end = fidl::ClientEnd::new(chan);
+    let proxy = wlan::Phy::new_proxy(client_end)?;
+    Ok((executor, proxy))
 }
 
 fn add_wlanphy() -> Result<(), Error> {

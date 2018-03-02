@@ -22,7 +22,9 @@ driver_module("wlanphy-testdev") {
   ]
 
   deps = [
-    "//garnet/lib/wlan/fidl:fidl_data_only",
+    "//garnet/drivers/wlan/dispatcher",
+    "//garnet/lib/wlan/fidl",
+    "//garnet/lib/wlan/fidl2",
     "//garnet/lib/wlan/protocol",
     "//zircon/public/lib/async-cpp",
     "//zircon/public/lib/async-loop-cpp",
