@@ -20,3 +20,11 @@ package("garnet-rust-examples") {
     { name = "testing-integration_test-lib-integration-test" },
   ]
 }
+
+package("spinning_square_view_rs") {
+  deps = [
+    "spinning_square_rs",
+  ]
+
+  binary = "spinning_square_view_rs"
+}

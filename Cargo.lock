@@ -829,6 +829,23 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "spinning_square_rs"
+version = "0.1.0"
+dependencies = [
+ "bytes 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "fdio 0.2.0",
+ "fidl 0.1.0",
+ "fuchsia-app 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "mxruntime 0.1.0",
+ "mxruntime-sys 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
 name = "stable_deref_trait"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
