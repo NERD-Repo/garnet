@@ -1,22 +1,17 @@
 # Copyright 2018 The Fuchsia Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
 [package]
-name = "spinning_square_view_rs"
+name = "garnet_public_lib_ui_mozart_fidl_dummy_system_fidl"
 version = "0.1.0"
 license = "BSD-3-Clause"
+authors = ["rust-fuchsia@fuchsia.com"]
+description = "Generated interface"
+repository = "https://fuchsia.googlesource.com/garnet/"
 
 [dependencies]
-failure = "0.1.1"
 fidl = "0.1"
-fuchsia-app = "0.1"
 fuchsia-zircon = "0.3"
-futures = "0.1"
-garnet_public_lib_ui_views_fidl = "0.1"
-mxruntime = "0.1"
-mxruntime-sys = "0.1"
+futures = "0.1.15"
 tokio-core = "0.1"
 tokio-fuchsia = "0.1"
-bytes = "0.4"
-fdio = "0.2"

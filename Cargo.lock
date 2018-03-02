@@ -414,6 +414,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "garnet_public_lib_images_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_ui_mozart_fidl_presentation_info 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
 name = "garnet_public_lib_logger_fidl"
 version = "0.1.0"
 dependencies = [
@@ -470,6 +482,123 @@ dependencies = [
  "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "garnet_public_lib_app_fidl_service_provider 0.1.0",
  "garnet_public_lib_fsl_fidl 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_geometry_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_input_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_ui_geometry_fidl 0.1.0",
+ "garnet_public_lib_ui_views_fidl_view_token 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_mozart_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_ui_mozart_fidl_dummy_system_fidl 0.1.0",
+ "garnet_public_lib_ui_mozart_fidl_presentation_info 0.1.0",
+ "garnet_public_lib_ui_scenic_fidl 0.1.0",
+ "garnet_public_lib_ui_views_fidl_view_system_fidl 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_mozart_fidl_dummy_system_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_mozart_fidl_presentation_info"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_scenic_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_images_fidl 0.1.0",
+ "garnet_public_lib_ui_geometry_fidl 0.1.0",
+ "garnet_public_lib_ui_mozart_fidl_presentation_info 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_views_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_app_fidl_service_provider 0.1.0",
+ "garnet_public_lib_ui_input_fidl 0.1.0",
+ "garnet_public_lib_ui_mozart_fidl 0.1.0",
+ "garnet_public_lib_ui_scenic_fidl 0.1.0",
+ "garnet_public_lib_ui_views_fidl_view_token 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_views_fidl_view_system_fidl"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_app_fidl_service_provider 0.1.0",
+ "garnet_public_lib_ui_geometry_fidl 0.1.0",
+ "garnet_public_lib_ui_input_fidl 0.1.0",
+ "garnet_public_lib_ui_scenic_fidl 0.1.0",
+ "tokio-core 0.1.12",
+ "tokio-fuchsia 0.1.0",
+]
+
+[[package]]
+name = "garnet_public_lib_ui_views_fidl_view_token"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio-core 0.1.12",
  "tokio-fuchsia 0.1.0",
 ]
@@ -829,7 +958,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "spinning_square_rs"
+name = "spinning_square_view_rs"
 version = "0.1.0"
 dependencies = [
  "bytes 0.4.6 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -839,6 +968,7 @@ dependencies = [
  "fuchsia-app 0.1.0",
  "fuchsia-zircon 0.3.4",
  "futures 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
+ "garnet_public_lib_ui_views_fidl 0.1.0",
  "mxruntime 0.1.0",
  "mxruntime-sys 0.1.0",
  "tokio-core 0.1.12",

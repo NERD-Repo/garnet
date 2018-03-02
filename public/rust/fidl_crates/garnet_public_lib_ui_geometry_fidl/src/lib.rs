@@ -6,4 +6,4 @@
 #![allow(unused_imports)]
 #![allow(unused_extern_crates)]
 
-include!(concat!(env!("FUCHSIA_GEN_ROOT"), "/garnet/public/lib/ui/views/fidl/garnet_public_lib_ui_views_fidl.rs"));
+include!(concat!(env!("FUCHSIA_GEN_ROOT"), "/garnet/public/lib/ui/geometry/fidl/garnet_public_lib_ui_geometry_fidl.rs"));

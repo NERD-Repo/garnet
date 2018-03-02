@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 [package]
-name = "garnet_public_lib_ui_views_fidl"
+name = "garnet_public_lib_ui_scenic_fidl"
 version = "0.1.0"
 license = "BSD-3-Clause"
 authors = ["rust-fuchsia@fuchsia.com"]
@@ -13,10 +13,8 @@ repository = "https://fuchsia.googlesource.com/garnet/"
 fidl = "0.1"
 fuchsia-zircon = "0.3"
 futures = "0.1.15"
-garnet_public_lib_app_fidl_service_provider = "0.1"
-garnet_public_lib_ui_input_fidl = "0.1"
-garnet_public_lib_ui_mozart_fidl = "0.1"
-garnet_public_lib_ui_scenic_fidl = "0.1"
-garnet_public_lib_ui_views_fidl_view_token = "0.1"
+garnet_public_lib_images_fidl = "0.1"
+garnet_public_lib_ui_geometry_fidl = "0.1"
+garnet_public_lib_ui_mozart_fidl_presentation_info = "0.1"
 tokio-core = "0.1"
 tokio-fuchsia = "0.1"
