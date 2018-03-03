@@ -11,6 +11,8 @@ extern crate fuchsia_app;
 extern crate fuchsia_zircon as zx;
 extern crate futures;
 extern crate garnet_public_lib_ui_views_fidl;
+extern crate garnet_public_lib_ui_views_fidl_view_token;
+extern crate garnet_public_lib_app_fidl_service_provider;
 extern crate mxruntime;
 extern crate mxruntime_sys;
 extern crate tokio_core;
