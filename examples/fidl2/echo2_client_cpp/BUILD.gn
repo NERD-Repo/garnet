@@ -12,13 +12,9 @@ executable("bin") {
   ]
 
   deps = [
-    "//garnet/examples/fidl2/services:echo2",
-    "//garnet/public/lib/app/cpp",
+    "//garnet/lib/wlan/fidl2",
+    "//garnet/lib/wlan/protocol",
     "//garnet/public/lib/fidl/cpp",
-    "//garnet/public/lib/svc/cpp",
-    "//zircon/public/lib/async-default",
-    "//zircon/public/lib/async-loop-cpp",
-    "//zircon/public/lib/launchpad",
   ]
 }
 

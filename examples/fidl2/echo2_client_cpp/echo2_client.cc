@@ -2,74 +2,48 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <launchpad/launchpad.h>
-#include <lib/async/cpp/loop.h>
-#include <lib/async/default.h>
-#include <zircon/processargs.h>
-#include <zx/process.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <unistd.h>
 
-#include "garnet/examples/fidl2/services/echo2.fidl.cc.h"
-#include "lib/app/cpp/application_context.h"
-#include "lib/fidl/cpp/binding_set.h"
-#include "lib/svc/cpp/services.h"
-
-namespace echo2 {
-
-class EchoClientApp {
- public:
-  EchoClientApp()
-      : context_(component::ApplicationContext::CreateFromStartupInfo()) {}
-
-  echo2::EchoPtr& echo() { return echo_; }
-
-  void Start(std::string server_url, std::string msg) {
-    auto launch_info = component::ApplicationLaunchInfo::New();
-    launch_info->url = server_url;
-    launch_info->directory_request = echo_provider_.NewRequest();
-    context_->launcher()->CreateApplication(std::move(launch_info),
-                                            controller_.NewRequest());
-
-    echo_provider_.ConnectToService(echo_.NewRequest().TakeChannel(),
-                                    "echo2.Echo");
-  }
-
- private:
-  EchoClientApp(const EchoClientApp&) = delete;
-  EchoClientApp& operator=(const EchoClientApp&) = delete;
-
-  std::unique_ptr<component::ApplicationContext> context_;
-  zx::process server_;
-  component::Services echo_provider_;
-  component::ApplicationControllerPtr controller_;
-  echo2::EchoPtr echo_;
-};
-
-}  // namespace echo2
+#include "garnet/lib/wlan/fidl2/fidl2.fidl.cc.h"
+#include <wlan/protocol/ioctl.h>
 
 int main(int argc, const char** argv) {
-  std::string server_url = "echo2_server_cpp";
-  std::string msg = "hello world";
-
-  for (int i = 1; i < argc - 1; ++i) {
-    if (!strcmp("--server", argv[i])) {
-      server_url = argv[++i];
-    } else if (!strcmp("-m", argv[i])) {
-      msg = argv[++i];
+    int fd = open("/dev/misc/test/wlan/wlanphy-test", O_RDWR);
+    if (fd < 0) {
+        fprintf(stderr, "could not open device: %d\n", fd);
+        return -1;
     }
-  }
 
-  async_loop_config_t config = {
-      // The FIDL support lib requires async_get_default() to return non-null.
-      .make_default_for_current_thread = true,
-  };
-  async::Loop loop(&config);
+    zx::channel local, remote;
+    zx_status_t status = zx::channel::create(0u, &local, &remote);
+    if (status != ZX_OK) {
+        fprintf(stderr, "could not create channel: %d\n", status);
+        close(fd);
+        return -1;
+    }
 
-  echo2::EchoClientApp app;
-  app.Start(server_url, msg);
+    wlan::PhySyncPtr phy;
+    phy.Bind(std::move(local));
 
-  app.echo()->EchoString(msg, [](fidl::StringPtr value) {
-    printf("***** Response: %s\n", value->data());
-  });
+    zx_handle_t remote_hnd = remote.release();
+    status = ioctl_wlanphy_connect(fd, &remote_hnd);
+    if (status < 0) {
+        fprintf(stderr, "could not open phy: %d\n", status);
+        close(fd);
+        return -1;
+    }
 
-  return app.echo().WaitForResponse();
+    wlan::QueryResponse resp;
+    status = phy->Query(&resp);
+    if (status < 0) {
+        fprintf(stderr, "error in query: %d\n", status);
+        close(fd);
+        return -1;
+    }
+
+    fprintf(stderr, "SUCCESS\n");
+    close(fd);
+    return 0;
 }

@@ -1,3 +1,4 @@
 {
+    "dev": [ "misc" ],
     "pkgfs": [ "packages" ]
 }
