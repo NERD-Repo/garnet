@@ -3,6 +3,7 @@
         "rust"
     ],
     "packages": {
-        "garnet-rust-examples": "//garnet/examples/rust:garnet-rust-examples"
+        "garnet-rust-examples": "//garnet/examples/rust:garnet-rust-examples",
+        "spinning_square_view_rs": "//garnet/examples/rust:spinning_square_view_rs"
     }
 }

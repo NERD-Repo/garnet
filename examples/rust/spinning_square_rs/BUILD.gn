@@ -1,0 +1,28 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/rust/rust_binary.gni")
+import("//build/package.gni")
+
+rust_binary("bin") {
+  name = "spinning_square_view_rs"
+
+  deps = [
+    "//garnet/public/rust/fidl_crates/garnet_public_lib_app_fidl",
+    "//garnet/public/rust/fidl_crates/garnet_public_lib_ui_views_fidl",
+  ]
+}
+
+package("spinning_square_rs") {
+  deps = [
+    ":bin",
+  ]
+
+  binary = "spinning_square_rs"
+
+  meta = [{
+    path = rebase_path("meta/sandbox")
+    dest = "sandbox"
+  }]
+}
