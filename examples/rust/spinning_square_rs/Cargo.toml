@@ -1,0 +1,24 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+[package]
+name = "spinning_square_view_rs"
+version = "0.1.0"
+license = "BSD-3-Clause"
+
+[dependencies]
+failure = "0.1.1"
+fidl = "0.1"
+fuchsia-app = "0.1"
+fuchsia-zircon = "0.3"
+futures = "0.1"
+garnet_public_lib_ui_views_fidl = "0.1"
+garnet_public_lib_ui_views_fidl_view_token = "0.1"
+garnet_public_lib_app_fidl_service_provider = "0.1"
+mxruntime = "0.1"
+mxruntime-sys = "0.1"
+tokio-core = "0.1"
+tokio-fuchsia = "0.1"
+bytes = "0.4"
+fdio = "0.2"
