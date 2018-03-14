@@ -5,7 +5,7 @@
 import("//build/rust/rust_binary.gni")
 import("//build/package.gni")
 
-rust_binary("bin") {
+rust_binary("spinning_square_view_rs") {
   name = "spinning_square_view_rs"
 
   deps = [
@@ -16,10 +16,10 @@ rust_binary("bin") {
 
 package("spinning_square_rs") {
   deps = [
-    ":bin",
+    ":spinning_square_view_rs_bin",
   ]
 
-  binary = "spinning_square_rs"
+  binary = "spinning_square_view_rs"
 
   meta = [{
     path = rebase_path("meta/sandbox")

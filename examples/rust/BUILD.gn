@@ -23,7 +23,7 @@ package("garnet-rust-examples") {
 
 package("spinning_square_view_rs") {
   deps = [
-    "spinning_square_rs",
+    "spinning_square_rs:spinning_square_view_rs_bin",
   ]
 
   binary = "spinning_square_view_rs"
