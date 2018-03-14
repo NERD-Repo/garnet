@@ -14,6 +14,7 @@ members =  [
   "examples/bluetooth/ble_battery_service",
   "examples/fidl/*_rust",
   "examples/network/wget-rs",
+  "examples/rust/spinning_square_rs",
   "examples/rust/testing",
   "lib/rust/crates/eapol",
   "lib/rust/crates/fuchsia-bluetooth",
@@ -42,11 +43,21 @@ members =  [
   "public/rust/fidl_crates/garnet_public_lib_bluetooth_fidl",
   "public/rust/fidl_crates/garnet_public_lib_device_settings_fidl",
   "public/rust/fidl_crates/garnet_public_lib_fsl_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_images_fidl",
   "public/rust/fidl_crates/garnet_public_lib_logger_fidl",
   "public/rust/fidl_crates/garnet_public_lib_mdns_fidl",
   "public/rust/fidl_crates/garnet_public_lib_netstack_fidl_net_address",
   "public/rust/fidl_crates/garnet_public_lib_network_fidl",
   "public/rust/fidl_crates/garnet_public_lib_power_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_geometry_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_input_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_mozart_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_mozart_fidl_dummy_system_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_mozart_fidl_presentation_info",
+  "public/rust/fidl_crates/garnet_public_lib_ui_scenic_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_views_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_views_fidl_view_system_fidl",
+  "public/rust/fidl_crates/garnet_public_lib_ui_views_fidl_view_token",
   "public/rust/fidl_crates/garnet_public_lib_xi_fidl",
 ]
 
@@ -73,11 +84,21 @@ garnet_public_lib_app_fidl_service_provider = { path = "public/rust/fidl_crates/
 garnet_public_lib_bluetooth_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_bluetooth_fidl" }
 garnet_public_lib_device_settings_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_device_settings_fidl" }
 garnet_public_lib_fsl_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_fsl_fidl" }
+garnet_public_lib_images_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_images_fidl" }
 garnet_public_lib_logger_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_logger_fidl" }
 garnet_public_lib_mdns_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_mdns_fidl" }
 garnet_public_lib_netstack_fidl_net_address = { path = "public/rust/fidl_crates/garnet_public_lib_netstack_fidl_net_address" }
 garnet_public_lib_network_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_network_fidl" }
 garnet_public_lib_power_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_power_fidl" }
+garnet_public_lib_ui_geometry_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_geometry_fidl" }
+garnet_public_lib_ui_input_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_input_fidl" }
+garnet_public_lib_ui_mozart_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_mozart_fidl" }
+garnet_public_lib_ui_mozart_fidl_dummy_system_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_mozart_fidl_dummy_system_fidl" }
+garnet_public_lib_ui_mozart_fidl_presentation_info = { path = "public/rust/fidl_crates/garnet_public_lib_ui_mozart_fidl_presentation_info" }
+garnet_public_lib_ui_scenic_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_scenic_fidl" }
+garnet_public_lib_ui_views_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_views_fidl" }
+garnet_public_lib_ui_views_fidl_view_system_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_ui_views_fidl_view_system_fidl" }
+garnet_public_lib_ui_views_fidl_view_token = { path = "public/rust/fidl_crates/garnet_public_lib_ui_views_fidl_view_token" }
 garnet_public_lib_xi_fidl = { path = "public/rust/fidl_crates/garnet_public_lib_xi_fidl" }
 mio = { path = "../third_party/rust-mirrors/mio" }
 mxruntime = { path = "public/rust/crates/mxruntime" }
