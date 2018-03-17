@@ -14,7 +14,7 @@ namespace {
 // come up with a system within btlib so that logging works both in a devmgr
 // environment and outside (e.g. tools and unit tests) (NET-357).
 
-#define BT_DEBUG 0
+#define BT_DEBUG 1
 #if BT_DEBUG
 constexpr fxl::LogSeverity kLogLevel = -5;
 #else
