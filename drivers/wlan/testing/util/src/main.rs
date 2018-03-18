@@ -13,7 +13,7 @@ extern crate fuchsia_async as async;
 extern crate fuchsia_wlan_dev as wlan_dev;
 extern crate fuchsia_zircon as zx;
 extern crate futures;
-extern crate garnet_lib_wlan_fidl as wlan;
+extern crate garnet_lib_wlan_fidl2 as wlan;
 
 use failure::{Error, ResultExt};
 use futures::prelude::*;

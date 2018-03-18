@@ -599,6 +599,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "garnet_lib_wlan_fidl2"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fuchsia-async 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "garnet_lib_wlan_fidl_service"
 version = "0.1.0"
 dependencies = [
@@ -1385,7 +1395,7 @@ dependencies = [
  "fuchsia-wlan-dev 0.1.0",
  "fuchsia-zircon 0.3.4",
  "futures 0.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
- "garnet_lib_wlan_fidl 0.1.0",
+ "garnet_lib_wlan_fidl2 0.1.0",
 ]
 
 [[package]]
