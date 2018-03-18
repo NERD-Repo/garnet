@@ -1,0 +1,114 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library wlan;
+
+enum ChannelBandwidth {
+  CBW20 = 0;
+  CBW40ABOVE = 1;
+  CBW40BELOW = 2;
+  CBW80 = 3;
+  CBW160 = 4;
+  CBW80P80 = 5;
+};
+
+struct Channel {
+  uint8 primary;
+  uint8 cbw;
+  uint8 secondary80;
+};
+
+enum SupportedPhy {
+  DSSS = 0;
+  CCK = 1;
+  OFDM = 2;
+  HT = 3;
+  VHT = 4;
+};
+
+enum DriverFeature {
+  SCAN_OFFLOAD = 0;
+  RATE_SELECTION = 1;
+};
+
+enum MacRole {
+  CLIENT = 0;
+  AP = 1;
+};
+
+enum Capability {
+  SHORT_PREAMBLE = 0;
+  SPECTRUM_MGMT = 1;
+  SHORT_SLOT_TIME = 2;
+  RADIO_MGMT = 3;
+};
+
+struct HtCapabilities {
+  uint16 ht_capability_info;
+  uint8 ampdu_params;
+  array<uint8>:16 supported_mcs_set;
+  uint16 ht_ext_capabilities;
+  uint32 tx_beamforming_capabilities;
+  uint8 asel_capabilities;
+};
+
+struct VhtCapabilities {
+  uint32 vht_capability_info;
+  uint64 supported_vht_mcs_and_nss_set;
+};
+
+struct ChannelList {
+  uint16 base_freq;
+  vector<uint8>:200 channels;
+};
+
+struct BandInfo {
+  string description;
+  HtCapabilities ht_caps;
+  VhtCapabilities? vht_caps;
+  vector<uint8>:16 basic_rates;
+  ChannelList supported_channels;
+};
+
+struct WlanPhyInfo {
+  // The id is not set by the device node, as it has no way of knowing what its id is, but this
+  // field may be used by external systems to provide an identifier for a WlanPhy.
+  uint16 id;
+
+  vector<SupportedPhy>:8 supported_phys;
+  vector<DriverFeature>:8 driver_features;
+  vector<MacRole>:8 mac_roles;
+  vector<Capability>:8 caps;
+  vector<BandInfo>:8 bands;
+};
+
+struct QueryResponse {
+  WlanPhyInfo info;
+};
+
+struct CreateIfaceRequest {
+  MacRole role;
+};
+
+struct CreateIfaceResponse {
+  // TODO: better status codes
+  int32 status_;
+
+  //wlan.iface.WlanIfaceInfo info;  // re-enable when fidl2 can import
+};
+
+struct DestroyIfaceRequest {
+    uint16 id;
+};
+
+struct DestroyIfaceResponse {
+  // TODO: better status codes
+  int32 status_;
+};
+
+interface Phy {
+  1: Query() -> (QueryResponse resp);
+  2: CreateIface(CreateIfaceRequest req) -> (CreateIfaceResponse resp);
+  3: DestroyIface(DestroyIfaceRequest req) -> (DestroyIfaceResponse resp);
+};
