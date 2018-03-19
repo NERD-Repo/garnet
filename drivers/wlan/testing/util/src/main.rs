@@ -36,13 +36,12 @@ fn open_rdwr<P: AsRef<Path>>(path: P) -> Result<File, Error> {
     OpenOptions::new().read(true).write(true).open(path).map_err(Into::into)
 }
 
-fn get_proxy() -> Result<(async::Executor, wlan::Phy::Proxy), Error> {
+fn get_proxy() -> Result<(async::Executor, wlan::PhyProxy), Error> {
     let executor = async::Executor::new().context("error creating event loop")?;
 
     let phy = wlan_dev::WlanPhy::new(DEV_WLANPHY)?;
     let chan = phy.connect()?;
-    let client_end = fidl::ClientEnd::new(chan);
-    let proxy = wlan::Phy::new_proxy(client_end)?;
+    let proxy = wlan::PhyProxy::new(async::Channel::from_channel(chan)?);
     Ok((executor, proxy))
 }
 
@@ -88,8 +87,8 @@ fn query_wlanphy() -> Result<(), Error> {
 
 fn create_wlanintf() -> Result<(), Error> {
     let (mut executor, proxy) = get_proxy()?;
-    let req = wlan::CreateIfaceRequest { role: wlan::MacRole::Client };
-    let fut = proxy.create_iface(req).and_then(|resp| {
+    let mut req = wlan::CreateIfaceRequest { role: wlan::MacRole::Client };
+    let fut = proxy.create_iface(&mut req).and_then(|resp| {
        println!("create results: {:?}", resp);
        Ok(())
     });
@@ -98,8 +97,8 @@ fn create_wlanintf() -> Result<(), Error> {
 
 fn destroy_wlanintf(id: u16) -> Result<(), Error> {
     let (mut executor, proxy) = get_proxy()?;
-    let req = wlan::DestroyIfaceRequest { id: id };
-    let fut = proxy.destroy_iface(req).and_then(|resp| {
+    let mut req = wlan::DestroyIfaceRequest { id: id };
+    let fut = proxy.destroy_iface(&mut req).and_then(|resp| {
        println!("destroyed intf {} resp: {:?}", id, resp);
        Ok(())
     });
