@@ -1,0 +1,37 @@
+# Copyright 2016 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+import("//garnet/public/lib/fidl/fidl.gni")
+
+# Copy the script that runs :bin with special flags.  This is needed because
+# runcmds cannot yet pass flags to individual binaries.
+copy("run_foo_benchmarks") {
+  sources = [
+    "tools/run.sh",
+  ]
+
+  outputs = [
+    "$root_out_dir/run_foo_benchmarks",
+  ]
+}
+
+package("foo_benchmarks") {
+  testonly = true
+  fuchsia_package = true
+
+  deps = [
+    ":run_foo_benchmarks",
+  ]
+
+  resources = [{
+        path = rebase_path("runbenchmarks.cfg")
+        dest = "runbenchmarks.cfg"
+  }]
+
+  tests = [ {
+        name = "run_foo_benchmarks"
+        dest = "benchmarks/run_foo_benchmarks.sh"
+      } ]
+}

@@ -3,6 +3,8 @@
         "cpp"
     ],
     "packages": {
-        "zircon_benchmarks": "//garnet/bin/zircon_benchmarks"
+        "zircon_benchmarks": "//garnet/bin/zircon_benchmarks",
+        "foo_benchmarks": "//garnet/bin/foo_benchmarks",
+        "bar_benchmarks": "//garnet/bin/bar_benchmarks"
     }
 }

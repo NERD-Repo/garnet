@@ -94,7 +94,7 @@ copy("run_zircon_benchmarks") {
 
 package("zircon_benchmarks") {
   testonly = true
-  system_image = true
+  fuchsia_package = true
 
   deps = [
     ":bin",
@@ -102,14 +102,13 @@ package("zircon_benchmarks") {
     ":run_zircon_benchmarks",
   ]
 
-  binaries = [ {
-        name = "zircon_benchmarks"
-      } ]
+  resources = [{
+        path = rebase_path("runbenchmarks.cfg")
+        dest = "runbenchmarks.cfg"
+  }]
 
   tests = [ {
         name = "zircon_benchmarks_test"
-      }, {
-        name = "run_zircon_benchmarks"
-        dest = "perf/run_zircon_benchmarks"
+        dest = "benchmarks/zircon_benchmarks_test"
       } ]
 }
