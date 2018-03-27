@@ -108,7 +108,7 @@ package("zircon_benchmarks") {
   }]
 
   tests = [ {
-        name = "zircon_benchmarks_test"
-        dest = "benchmarks/zircon_benchmarks_test"
+        name = "run_zircon_benchmarks"
+        dest = "benchmarks/run_zircon_benchmarks.sh"
       } ]
 }

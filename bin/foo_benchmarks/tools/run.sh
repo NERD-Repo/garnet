@@ -1,3 +1,5 @@
 #!/boot/bin/sh
 
-echo "I am foo benchmarks!"
+RESULTS_FILE=$1
+
+echo "I am foo benchmarks!" > ${RESULTS_FILE}

@@ -7,22 +7,22 @@ import("//garnet/public/lib/fidl/fidl.gni")
 
 # Copy the script that runs :bin with special flags.  This is needed because
 # runcmds cannot yet pass flags to individual binaries.
-copy("run_bar_benchmarks") {
+copy("run_tracing_benchmark") {
   sources = [
     "tools/run.sh",
   ]
 
   outputs = [
-    "$root_out_dir/run_bar_benchmarks",
+    "$root_out_dir/run_tracing_benchmark",
   ]
 }
 
-package("bar_benchmarks") {
+package("tracing_benchmark") {
   testonly = true
   fuchsia_package = true
 
   deps = [
-    ":run_bar_benchmarks",
+    ":run_tracing_benchmark",
   ]
 
   resources = [{
@@ -31,7 +31,7 @@ package("bar_benchmarks") {
   }]
 
   tests = [ {
-        name = "run_bar_benchmarks"
-        dest = "benchmarks/run_bar_benchmarks.sh"
+        name = "run_tracing_benchmark"
+        dest = "benchmarks/run_tracing_benchmark.sh"
       } ]
 }
