@@ -1,0 +1,8 @@
+{
+    "languages": [
+        "rust"
+    ],
+    "packages": {
+        "luthier": "//garnet/bin/luthier:luthier"
+    }
+}

@@ -1,0 +1,7 @@
+[package]
+name = "luthier"
+version = "0.1.0"
+description = "Fidl instrospection"
+authors = ["Benjamin Brittain <bwb@google.com>"]
+
+[dependencies]

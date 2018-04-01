@@ -28,6 +28,7 @@
         "garnet/packages/prod/listen",
         "garnet/packages/prod/log_listener",
         "garnet/packages/prod/logger",
+        "garnet/packages/prod/luthier",
         "garnet/packages/prod/magma",
         "garnet/packages/prod/magma_tools",
         "garnet/packages/prod/mdns",
