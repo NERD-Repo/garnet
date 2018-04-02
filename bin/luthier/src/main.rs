@@ -3,21 +3,37 @@
 // found in the LICENSE file.
 
 #![deny(warnings)]
+#![feature(conservative_impl_trait)]
 
 //#[macro_use]
 extern crate failure;
 // #[macro_use]
 extern crate fdio;
-extern crate fuchsia_async as async;
-extern crate futures;
+extern crate fidl;
 extern crate fidl_luthier;
+extern crate fuchsia_app as app;
+extern crate fuchsia_async as async;
+extern crate fuchsia_zircon as zx;
+extern crate futures;
+extern crate parking_lot;
 
 #[macro_use]
 extern crate structopt;
 
-use failure::Error;
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
+
 use structopt::StructOpt;
+
+use app::server::ServicesServer;
+use failure::{Error, ResultExt};
+use fidl::endpoints2::ServiceMarker;
+use fidl_luthier::{Luthier, LuthierImpl, LuthierMarker};
+use futures::prelude::*;
+use parking_lot::Mutex;
+
+type SimpleStore = Arc<Mutex<HashMap<String, String>>>;
 
 /// A basic example
 #[derive(StructOpt, Debug)]
@@ -33,9 +49,63 @@ struct Opt {
     fidl_files: Vec<PathBuf>,
 }
 
+fn register_ir(store: &mut SimpleStore, interface: String, ir: String) -> bool {
+    let mut map = store.lock();
+    if map.contains_key(&interface) {
+        // TODO trigger cache invalidation on clients
+    }
+    let res = map.insert(interface, ir);
+
+    match res {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+fn request_ir(store: &mut SimpleStore, interface: String) -> Option<String> {
+    let map = store.lock();
+    map.get(&interface).map(|s| s.clone())
+}
+
+fn spawn_luthier_server(chan: async::Channel) {
+    // TODO change to a state that keeps delegates
+    let simple_store: SimpleStore = Arc::new(Mutex::new(HashMap::new()));
+
+    async::spawn(
+        LuthierImpl {
+            state: simple_store,
+            register_ir: |store, interface, fidl_json_ir, res| {
+                let mut status = register_ir(store, interface, fidl_json_ir);
+                res.send(&mut status)
+               .into_future()
+               .map(|_| println!("FIDR IR registered successfully")) // TODO use log crate
+               .recover(|e| eprintln!("error sending response: {:?}", e))
+            },
+            request_ir: |store, interface, res| {
+                println!("Received Ir request for {}", interface);
+                let mut resp = request_ir(store, interface);
+                res.send(&mut resp)
+                    .into_future()
+                    .map(|_| println!("FIDL IR response sent successfully"))
+                    .recover(|e| eprintln!("error sending response: {:?}", e))
+            },
+        }.serve(chan)
+            .recover(|e| eprintln!("error running echo server: {:?}", e)),
+    )
+}
+
 fn startup_luthier() -> Result<(), Error> {
+    let mut executor = async::Executor::new().context("Error creating executor")?;
 
+    let fut = ServicesServer::new()
+        .add_service((LuthierMarker::NAME, |chan| spawn_luthier_server(chan)))
+        .start()
+        .context("Error starting Luthier, the fidl introspector")?;
 
+    // TODO make multithreaded!
+    executor
+        .run_singlethreaded(fut)
+        .context("failed to execute Luthier server future")?;
     Ok(())
 }
 

@@ -9,13 +9,13 @@ library luthier_service;
 //  1: OnInterfaceChange(string InterfaceName);
 //}
 
-[ServiceName="Luthier"]
+[ServiceName="luthier::Luthier"]
 interface Luthier {
   // Register JSON Ir
-  1: RegisterIr(string FidlIr);
+  1: RegisterIr(string @interface, string value) -> (bool value);
 
   // Using the interface name, return FidlIr in json format
-  2: RequestIr(string @interface) -> (string FidlIr);
+  2: RequestIr(string @interface) -> (string? FidlIr);
 
   // 3: SetInterfaceDelegate(InterfaceDelegate id);
 };
