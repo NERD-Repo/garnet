@@ -33,6 +33,6 @@ interface SpaceProvider {
   // Implementors of this interface are responsible for managing their
   // created Spaces and properly responding to Space-related events.
   1: CreateSpace(handle<eventpair> token,
-                 request<component.ServiceProvider>? services_from_space,
-                 component.ServiceProvider services_for_space);
+                 request<component.ServiceProvider>? incoming_services,
+                 component.ServiceProvider outgoing_services);
 };
