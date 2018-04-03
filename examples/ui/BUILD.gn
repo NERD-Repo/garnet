@@ -38,12 +38,16 @@ package("hello_spaces") {
 
   deps = [
     "hello_spaces",
+    "hello_spaces:hello_subspace"
   ]
 
   binaries = [
     {
       name = "hello_spaces"
     },
+    {
+      name = "hello_subspace"
+    }
   ]
 }
 package("hello_pose_buffer") {

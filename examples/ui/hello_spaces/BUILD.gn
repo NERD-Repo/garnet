@@ -26,3 +26,28 @@ executable("hello_spaces") {
     "//lib",
   ]
 }
+
+executable("hello_subspace") {
+  output_name = "hello_subspace"
+
+  sources = [
+    "app.cc",
+    "app.h",
+    "subspace.cc",
+  ]
+
+  deps = [
+    "//garnet/public/lib/app/cpp",
+    "//garnet/public/lib/fidl/cpp",
+    "//garnet/public/lib/fsl",
+    "//garnet/public/lib/fxl",
+    "//garnet/public/lib/ui/gfx/fidl",
+    "//garnet/public/lib/ui/scenic/fidl",
+    "//garnet/public/lib/ui/scenic:client",
+    "//garnet/public/lib/ui/scenic:fidl_helpers",
+  ]
+
+  include_dirs = [
+    "//lib",
+  ]
+}

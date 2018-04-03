@@ -14,8 +14,7 @@ int main(int argc, const char** argv) {
   // Set up the main message loop and app.  The app's constructor will bind all
   // of the services it needs.
   fsl::MessageLoop loop;
-  // hello_spaces::App spaces_app(hello_spaces::AppType::BOTH);
-  hello_spaces::App spaces_app(hello_spaces::AppType::CONTAINER);
+  hello_spaces::App subspace_app(hello_spaces::AppType::SUBSPACE);
 
   // Run the main message loop.
   loop.task_runner()->PostDelayedTask(

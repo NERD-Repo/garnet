@@ -14,13 +14,12 @@
 
 namespace hello_spaces {
 
-enum class AppType : unsigned char { Controller, Guest };
+enum class AppType : unsigned char { CONTAINER, SUBSPACE, BOTH };
 
 class App {
  public:
   explicit App(AppType type);
-
-  const char* AppIdentifier() const;
+  ~App() {}
 
  private:
   // Called asynchronously when the session dies.
@@ -34,15 +33,16 @@ class App {
   // Creates all of the scene resources and sets up the scene graph.
   void CreateScene(float display_width, float display_height);
 
+  std::unique_ptr<component::ApplicationContext> app_context_;
+
   AppType type_;
-  std::unique_ptr<component::ApplicationContext> application_context_;
-  fsl::MessageLoop* loop_;
+  ui::SpaceProviderPtr space_provider_iface_;
+  std::unique_ptr<ui::SpaceProvider> space_provider_impl_;
 
   ui::ScenicPtr scenic_;
   std::unique_ptr<scenic_lib::Session> session_;
   std::unique_ptr<scenic_lib::DisplayCompositor> compositor_;
   std::unique_ptr<scenic_lib::Camera> camera_;
-  std::unique_ptr<ui::SpaceProvider> space_provider_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(App);
 };
