@@ -514,6 +514,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "fuchsia-archive"
+version = "0.1.0"
+dependencies = [
+ "bincode 0.9.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "failure 0.1.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde 1.0.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde_derive 1.0.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "tempdir 0.3.6 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "fuchsia-async"
 version = "0.1.0"
 dependencies = [
