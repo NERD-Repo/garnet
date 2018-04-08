@@ -22,10 +22,10 @@ interface SpaceProvider {
   // graphs to its Space by using |Space.AddChild()|.  The Space itself
   // cannot be parented to anything.
   //
-  // A client can provide services to the SpaceProvider implementation via
-  // the |outgoing_services| ServiceProvider. The client can also request
-  // services from the SpaceProvider implementation via the
-  // |incoming_services| ServiceProvider.
+  // A client can provide services to the SpaceProvider implementation via the
+  // |outgoing_services| ServiceProvider. The client can also request services
+  // from the SpaceProvider implementation via the |incoming_services|
+  // ServiceProvider.
   //
   // Modules can use these mechanisms to establish a distributed,
   // inter-process scene graph.
@@ -34,5 +34,5 @@ interface SpaceProvider {
   // created Spaces and properly responding to Space-related events.
   1: CreateSpace(handle<eventpair> token,
                  request<component.ServiceProvider>? incoming_services,
-                 component.ServiceProvider outgoing_services);
+                 component.ServiceProvider? outgoing_services);
 };
