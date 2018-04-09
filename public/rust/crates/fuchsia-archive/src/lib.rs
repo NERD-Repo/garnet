@@ -11,7 +11,8 @@ use bincode::{serialize_into, Infinite};
 use failure::Error;
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Seek, Write};
+use std::fs::File;
+use std::io::{copy, Seek, Write};
 
 const MAGIC_INDEX_VALUE: [u8; 8] = [0xc8, 0xbf, 0x0b, 0x48, 0xad, 0xab, 0xc5, 0x11];
 
@@ -52,6 +53,16 @@ struct DirectoryEntry {
 const DIRECTORY_ENTRY_LEN: u64 = 4 + 2 + 2 + 8 + 8 + 8;
 const CONTENT_ALIGNMENT: u64 = 4096;
 
+pub fn write_zeros<T>(target: &mut T, count: usize) -> Result<(), Error>
+where
+    T: Write,
+{
+    println!("write_zeros count = {}", count);
+    let b: Vec<u8> = vec![0; count];
+    target.write_all(&b)?;
+    Ok(())
+}
+
 pub fn write<T>(target: &mut T, inputs: &mut Iterator<Item = (&str, &str)>) -> Result<(), Error>
 where
     T: Write + Seek,
@@ -64,10 +75,6 @@ where
     let mut path_data: Vec<u8> = vec![];
     let mut entries = vec![];
     for (destination_name, source_name) in input_map.iter() {
-        println!(
-            "destination_name = {}, source_name = {}",
-            &destination_name, &source_name
-        );
         let metadata = fs::metadata(source_name)?;
         entries.push(DirectoryEntry {
             name_offset: path_data.len() as u32,
@@ -105,13 +112,29 @@ where
 
     let mut content_offset = align(name_index.offset + name_index.length, CONTENT_ALIGNMENT);
 
-    for ref mut entry in entries {
+    for ref mut entry in &mut entries {
         entry.data_offset = content_offset;
         content_offset = align(content_offset + entry.data_length, CONTENT_ALIGNMENT);
         serialize_into(target, &entry, Infinite)?;
     }
 
     target.write(&path_data)?;
+
+    write_zeros(target, name_index.length as usize - path_data.len())?;
+
+    let pos = name_index.offset + name_index.length;
+    let padding_count = align(pos, CONTENT_ALIGNMENT) - pos;
+    write_zeros(target, padding_count as usize)?;
+
+    let mut entry_index = 0;
+    for (_, source_name) in input_map.iter() {
+        let mut f = File::open(source_name)?;
+        copy(&mut f, target)?;
+        let pos = entries[entry_index].data_offset + entries[entry_index].data_length;
+        let padding_count = align(pos, CONTENT_ALIGNMENT) - pos;
+        entry_index = entry_index + 1;
+        write_zeros(target, padding_count as usize)?;
+    }
 
     Ok(())
 }
@@ -192,7 +215,7 @@ mod tests {
         let a_loc = 4096;
         b[a_loc..a_loc + name_a.len()].copy_from_slice(name_a);
         let name_b = b"b\n";
-        let b_loc = 4096;
+        let b_loc = 8192;
         b[b_loc..b_loc + name_b.len()].copy_from_slice(name_b);
         let name_c = b"dir/c\n";
         let c_loc = 12288;
