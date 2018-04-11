@@ -1,5 +1,6 @@
-#![allow(dead_code)]
+#![allow(dead_code, unused, unused_mut)]
 extern crate bincode;
+#[macro_use]
 extern crate failure;
 extern crate itertools;
 extern crate tempdir;
@@ -7,12 +8,12 @@ extern crate tempdir;
 extern crate serde_derive;
 extern crate serde;
 
-use bincode::{serialize_into, Infinite};
+use bincode::{deserialize_from, serialize_into, Infinite};
 use failure::Error;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
-use std::io::{copy, Seek, Write};
+use std::io::{copy, Read, Write};
 
 const MAGIC_INDEX_VALUE: [u8; 8] = [0xc8, 0xbf, 0x0b, 0x48, 0xad, 0xab, 0xc5, 0x11];
 
@@ -53,7 +54,11 @@ struct DirectoryEntry {
 const DIRECTORY_ENTRY_LEN: u64 = 4 + 2 + 2 + 8 + 8 + 8;
 const CONTENT_ALIGNMENT: u64 = 4096;
 
-pub fn write_zeros<T>(target: &mut T, count: usize) -> Result<(), Error>
+#[derive(Debug, Fail)]
+#[fail(display = "Invalid archive")]
+pub struct InvalidArchive {}
+
+fn write_zeros<T>(target: &mut T, count: usize) -> Result<(), Error>
 where
     T: Write,
 {
@@ -65,7 +70,7 @@ where
 
 pub fn write<T>(target: &mut T, inputs: &mut Iterator<Item = (&str, &str)>) -> Result<(), Error>
 where
-    T: Write + Seek,
+    T: Write,
 {
     let mut input_map: BTreeMap<&str, &str> = BTreeMap::new();
     for (destination_name, source_name) in inputs {
@@ -139,6 +144,77 @@ where
     Ok(())
 }
 
+struct Reader {}
+
+impl Reader {
+    pub fn new<T>(source: &mut T) -> Result<Reader, Error>
+    where
+        T: Read,
+    {
+        let mut reader = Reader {};
+        let index = Reader::read_index(source)?;
+        let (dir_index, dir_name_index) =
+            Reader::read_index_entries(source, index.length / INDEX_ENTRY_LEN, &index)?;
+        if dir_index.is_none() {
+            return Err(format_err!("Invalid archive, missing directory index"));
+        }
+        let dir_index = dir_index.unwrap();
+        if dir_name_index.is_none() {
+            return Err(format_err!("Invalid archive, missing directory name index"));
+        }
+        let dir_name_index = dir_name_index.unwrap();
+        Ok(reader)
+    }
+
+    fn read_index<T>(source: &mut T) -> Result<Index, Error>
+    where
+        T: Read,
+    {
+        let decoded_index: Index = deserialize_from(source, Infinite)?;
+        if decoded_index.magic != MAGIC_INDEX_VALUE {
+            Err(format_err!("Invalid archive, bad magic"))
+        } else {
+            if decoded_index.length % INDEX_ENTRY_LEN != 0 {
+                Err(format_err!("Invalid archive, bad index length"))
+            } else {
+                Ok(decoded_index)
+            }
+        }
+    }
+
+    fn read_index_entries<T>(
+        source: &mut T,
+        count: u64,
+        index: &Index,
+    ) -> Result<(Option<Index>, Option<Index>), Error>
+    where
+        T: Read,
+    {
+        let mut dir_index: Option<Index> = None;
+        let mut dir_name_index: Option<Index> = None;
+        let mut entries: Vec<IndexEntry> = vec![];
+        for _index in [0..count].iter() {
+            let entry: IndexEntry = deserialize_from(source, Infinite)?;
+            match entry.chunk_type {
+                _ => {}
+            }
+            match entries.last() {
+                None => {}
+                Some(ref last_entry) => {
+                    if last_entry.chunk_type > entry.chunk_type {
+                        return Err(format_err!("Invalid archive, invalid index entry order"));
+                    }
+                }
+            }
+            if entry.offset < index.length {
+                return Err(format_err!("Invalid archive, short offset"));
+            }
+            entries.push(entry);
+        }
+        Ok((dir_index, dir_name_index))
+    }
+}
+
 // align rounds i up to a multiple of n
 fn align(unrounded_value: u64, multiple: u64) -> u64 {
     let rem = unrounded_value.checked_rem(multiple).unwrap();
@@ -160,7 +236,7 @@ mod tests {
     use std::fs::create_dir_all;
     use std::io::{Cursor, Seek, SeekFrom, Write};
     use tempdir::TempDir;
-    use {align, write, DirectoryEntry, Index, IndexEntry, DIRECTORY_ENTRY_LEN, DIR_CHUNK,
+    use {align, write, DirectoryEntry, Index, IndexEntry, Reader, DIRECTORY_ENTRY_LEN, DIR_CHUNK,
          INDEX_ENTRY_LEN, INDEX_LEN, MAGIC_INDEX_VALUE};
 
     fn create_test_files(file_names: &[&str]) -> Result<TempDir, Error> {
@@ -311,4 +387,39 @@ mod tests {
         align(3, 0);
     }
 
+    fn corrupt_magic(b: &mut Vec<u8>) {
+        b[0] = 0;
+    }
+
+    fn corrupt_index_length(b: &mut Vec<u8>) {
+        let v: u64 = 1;
+        let mut cursor = Cursor::new(b);
+        cursor.seek(SeekFrom::Start(8)).unwrap();
+        serialize_into(&mut cursor, &v, Infinite).unwrap();
+    }
+
+    fn corrupt_dir_index_type(b: &mut Vec<u8>) {
+        let v: u8 = 255;
+        let mut cursor = Cursor::new(b);
+        cursor.seek(SeekFrom::Start(INDEX_LEN)).unwrap();
+        serialize_into(&mut cursor, &v, Infinite).unwrap();
+    }
+
+    #[test]
+    fn test_reader() {
+        let example = example_archive();
+        let mut example_cursor = Cursor::new(&example);
+        let mut reader = Reader::new(&mut example_cursor).unwrap();
+
+        let corrupters = [corrupt_magic, corrupt_index_length, corrupt_dir_index_type];
+        let mut index = 0;
+        for corrupter in corrupters.iter() {
+            let mut example = example_archive();
+            corrupter(&mut example);
+            let mut example_cursor = Cursor::new(&mut example);
+            let mut reader = Reader::new(&mut example_cursor);
+            assert!(reader.is_err(), "corrupter index = {}", index);
+            index += 1;
+        }
+    }
 }
