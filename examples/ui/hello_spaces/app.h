@@ -5,7 +5,7 @@
 #ifndef GARNET_EXAMPLES_UI_HELLO_SPACES_APP_H_
 #define GARNET_EXAMPLES_UI_HELLO_SPACES_APP_H_
 
-#include <fuchsia/cpp/ui.h>
+#include <fuchsia/cpp/gfx.h>
 
 #include "lib/app/cpp/application_context.h"
 #include "lib/fsl/tasks/message_loop.h"
@@ -36,8 +36,8 @@ class App {
   std::unique_ptr<component::ApplicationContext> app_context_;
 
   AppType type_;
-  ui::SpaceProviderPtr space_provider_iface_;
-  std::unique_ptr<ui::SpaceProvider> space_provider_impl_;
+  gfx::SpaceProviderPtr space_provider_iface_;
+  std::unique_ptr<gfx::SpaceProvider> space_provider_impl_;
 
   ui::ScenicPtr scenic_;
   std::unique_ptr<scenic_lib::Session> session_;

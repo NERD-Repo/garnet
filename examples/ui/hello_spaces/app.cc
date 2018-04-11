@@ -4,17 +4,44 @@
 
 #include "garnet/examples/ui/hello_spaces/app.h"
 
+#include <unistd.h>
+
+#include <fdio/limits.h>
+#include <fdio/util.h>
 #include <fuchsia/cpp/gfx.h>
 #include <zircon/process.h>
 #include <zircon/processargs.h>
 #include <zircon/types.h>
-#include <zx/channel.h>
-#include <zx/eventpair.h>
+
+#include <fuchsia/cpp/component.h>
+#include <fuchsia/cpp/ui.h>
+#include <lib/zx/eventpair.h>
 
 #include "lib/app/cpp/environment_services.h"
 #include "lib/fxl/logging.h"
 #include "lib/svc/cpp/services.h"
 #include "lib/ui/scenic/fidl_helpers.h"
+
+static component::FileDescriptorPtr CloneFileDescriptor(int fd) {
+  zx_handle_t handles[FDIO_MAX_HANDLES] = {0, 0, 0};
+  uint32_t types[FDIO_MAX_HANDLES] = {
+      ZX_HANDLE_INVALID,
+      ZX_HANDLE_INVALID,
+      ZX_HANDLE_INVALID,
+  };
+  zx_status_t status = fdio_clone_fd(fd, 0, handles, types);
+  if (status <= 0) {
+    return nullptr;
+  }
+  component::FileDescriptorPtr result = component::FileDescriptor::New();
+  result->type0 = types[0];
+  result->handle0 = zx::handle(handles[0]);
+  result->type1 = types[1];
+  result->handle1 = zx::handle(handles[1]);
+  result->type2 = types[2];
+  result->handle2 = zx::handle(handles[2]);
+  return result;
+}
 
 namespace hello_spaces {
 
@@ -36,7 +63,7 @@ class SpaceProviderService : public gfx::SpaceProvider {
       : app_context_(app_context), space_factory_fn_(factory) {
     FXL_DCHECK(app_context_);
 
-    application_context_->outgoing_services()->AddService<gfx::SpaceProvider>(
+    app_context_->outgoing_services()->AddService<gfx::SpaceProvider>(
         [this](fidl::InterfaceRequest<gfx::SpaceProvider> request) {
           FXL_LOG(INFO) << "Bound service iface to impl!";
 
@@ -46,7 +73,7 @@ class SpaceProviderService : public gfx::SpaceProvider {
   }
 
   ~SpaceProviderService() {
-    application_context_->outgoing_services()
+    app_context_->outgoing_services()
         ->RemoveService<gfx::SpaceProvider>();
   }
 
@@ -103,6 +130,8 @@ App::App(AppType type) : type_(type) {
     // Launch the subspace app
     component::Services subspace_services;
     component::ApplicationLaunchInfo launch_info;
+    launch_info.out = CloneFileDescriptor(STDOUT_FILENO);
+    launch_info.err = CloneFileDescriptor(STDERR_FILENO);
     launch_info.url = "hello_subspace";
     launch_info.directory_request = subspace_services.NewRequest();
     app_context_->launcher()->CreateApplication(
