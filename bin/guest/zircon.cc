@@ -13,6 +13,7 @@
 #include <fbl/unique_fd.h>
 #include <zircon/assert.h>
 #include <zircon/boot/bootdata.h>
+#include <zircon/boot/kernel-drivers.h>
 
 #include "garnet/bin/guest/kernel.h"
 #include "garnet/lib/machina/guest.h"
@@ -32,10 +33,12 @@ static bool is_bootdata(const bootdata_t* header) {
          header->magic == BOOTITEM_MAGIC;
 }
 
-static void set_bootdata(bootdata_t* header, uint32_t type, uint32_t len) {
+static void set_bootdata(bootdata_t* header, uint32_t type, uint32_t extra,
+                         uint32_t len) {
   // Guest memory is initially zeroed, so we skip fields that must be zero.
   header->type = type;
   header->length = len;
+  header->extra = extra;
   header->flags = BOOTDATA_FLAG_V2;
   header->magic = BOOTITEM_MAGIC;
   header->crc32 = BOOTITEM_NO_CRC32;
@@ -55,7 +58,7 @@ static zx_status_t load_cmdline(const std::string& cmdline,
   }
 
   auto cmdline_hdr = phys_mem.as<bootdata_t>(data_off);
-  set_bootdata(cmdline_hdr, BOOTDATA_CMDLINE,
+  set_bootdata(cmdline_hdr, BOOTDATA_CMDLINE, 0,
                static_cast<uint32_t>(cmdline_len));
   memcpy(cmdline_hdr + 1, cmdline.c_str(), cmdline_len);
 
@@ -135,6 +138,46 @@ static bootdata_mem_range_t mem_config[] = {
         .length = 0x1000000, // 16MB
     },
 };
+
+static const bootdata_platform_id_t platform_id = {
+    .vid = 3, // PDEV_VID_GOOGLE
+    .pid = 2, // PDEV_PID_MACHINA
+    .board_name = "machina",
+};
+
+static const bootdata_kernel_driver_t uart_driver = {
+    .mmio_phys = 0xfff32000,
+    .irq = 111,
+};
+
+static const bootdata_arm_gicv2_driver_t gicv2_driver = {
+    .mmio_phys = 0x001b0000,
+    .msi_frame_phys = 0xe82b0000,
+    .gicd_offset = 0x1000,
+    .gicc_offset = 0x2000,
+    .gich_offset = 0x4000,
+    .gicv_offset = 0x6000,
+    .ipi_base = 13,
+    .optional = true,
+};
+
+static const bootdata_arm_gicv3_driver_t gicv3_driver = {
+    .mmio_phys = 0xe82b0000,
+    .gicd_offset = 0x00000,
+    .gicr_offset = 0xa0000,
+    .gicr_stride = 0x20000,
+    .ipi_base = 13,
+    .optional = true,
+};
+
+static const bootdata_arm_psci_driver_t psci_driver = {
+    .use_hvc = false,
+};
+
+static const bootdata_arm_generic_timer_driver_t timer_driver = {
+    .irq_virt = 27,
+};
+
 #endif // __aarch64__
 
 static zx_status_t create_bootdata(const machina::PhysMem& phys_mem,
@@ -146,11 +189,17 @@ static zx_status_t create_bootdata(const machina::PhysMem& phys_mem,
 #if __aarch64__
   bootdata_cpu_config_t cpu_config;
   cpu_config.cluster_count = 0;
-  cpu_config.clusters[0].cpu_count = num_cpus; 
+  cpu_config.clusters[0].cpu_count = num_cpus;
 
   const size_t bootdata_len = sizeof(bootdata_t) +
                               BOOTDATA_ALIGN(sizeof(cpu_config)) + sizeof(bootdata_t) +
-                              BOOTDATA_ALIGN(sizeof(mem_config)) + sizeof(bootdata_t);
+                              BOOTDATA_ALIGN(sizeof(mem_config)) + sizeof(bootdata_t) +
+                              BOOTDATA_ALIGN(sizeof(platform_id)) + sizeof(bootdata_t) +
+                              BOOTDATA_ALIGN(sizeof(uart_driver)) + sizeof(bootdata_t) +
+                              BOOTDATA_ALIGN(sizeof(gicv2_driver)) + sizeof(bootdata_t) +
+                              BOOTDATA_ALIGN(sizeof(gicv3_driver)) + sizeof(bootdata_t) +
+                              BOOTDATA_ALIGN(sizeof(psci_driver)) + sizeof(bootdata_t) +
+                              BOOTDATA_ALIGN(sizeof(timer_driver)) + sizeof(bootdata_t);
 #elif __x86_64__
   const size_t e820_size = machina::e820_size(phys_mem.size());
   const size_t bootdata_len = sizeof(bootdata_t) +
@@ -163,15 +212,14 @@ static zx_status_t create_bootdata(const machina::PhysMem& phys_mem,
 
   // Bootdata container.
   auto container_hdr = phys_mem.as<bootdata_t>(bootdata_off);
-  set_bootdata(container_hdr, BOOTDATA_CONTAINER,
+  set_bootdata(container_hdr, BOOTDATA_CONTAINER, BOOTDATA_MAGIC,
                static_cast<uint32_t>(bootdata_len));
-  container_hdr->extra = BOOTDATA_MAGIC;
   bootdata_off += sizeof(bootdata_t);
 
 #if __aarch64__
   // CPU config
   auto bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
-  set_bootdata(bootdata_header, BOOTDATA_CPU_CONFIG, sizeof(cpu_config));
+  set_bootdata(bootdata_header, BOOTDATA_CPU_CONFIG, 0, sizeof(cpu_config));
   bootdata_off += sizeof(bootdata_t);
   memcpy(phys_mem.as<void*>(bootdata_off), &cpu_config, sizeof(cpu_config));
   bootdata_off += BOOTDATA_ALIGN(sizeof(cpu_config));
@@ -179,23 +227,70 @@ static zx_status_t create_bootdata(const machina::PhysMem& phys_mem,
   // memory config
   mem_config[0].length = phys_mem.size();
   bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
-  set_bootdata(bootdata_header, BOOTDATA_MEM_CONFIG, sizeof(mem_config));
+  set_bootdata(bootdata_header, BOOTDATA_MEM_CONFIG, 0, sizeof(mem_config));
   bootdata_off += sizeof(bootdata_t);
   memcpy(phys_mem.as<void*>(bootdata_off), &mem_config, sizeof(mem_config));
   bootdata_off += BOOTDATA_ALIGN(sizeof(mem_config));
+
+  // platform ID
+  bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
+  set_bootdata(bootdata_header, BOOTDATA_PLATFORM_ID, 0, sizeof(platform_id));
+  bootdata_off += sizeof(bootdata_t);
+  memcpy(phys_mem.as<void*>(bootdata_off), &platform_id, sizeof(platform_id));
+  bootdata_off += BOOTDATA_ALIGN(sizeof(platform_id));
+
+  // uart driver
+  bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
+  set_bootdata(bootdata_header, BOOTDATA_KERNEL_DRIVER, KDRV_PL011_UART,
+               sizeof(uart_driver));
+  bootdata_off += sizeof(bootdata_t);
+  memcpy(phys_mem.as<void*>(bootdata_off), &uart_driver, sizeof(uart_driver));
+  bootdata_off += BOOTDATA_ALIGN(sizeof(uart_driver));
+
+  // gicv2 driver
+  bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
+  set_bootdata(bootdata_header, BOOTDATA_KERNEL_DRIVER, KDRV_ARM_GIC_V2,
+               sizeof(gicv2_driver));
+  bootdata_off += sizeof(bootdata_t);
+  memcpy(phys_mem.as<void*>(bootdata_off), &gicv2_driver, sizeof(gicv2_driver));
+  bootdata_off += BOOTDATA_ALIGN(sizeof(gicv2_driver));
+
+  // gicv3 driver
+  bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
+  set_bootdata(bootdata_header, BOOTDATA_KERNEL_DRIVER, KDRV_ARM_GIC_V3,
+               sizeof(gicv3_driver));
+  bootdata_off += sizeof(bootdata_t);
+  memcpy(phys_mem.as<void*>(bootdata_off), &gicv3_driver, sizeof(gicv3_driver));
+  bootdata_off += BOOTDATA_ALIGN(sizeof(gicv3_driver));
+
+  // psci driver
+  bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
+  set_bootdata(bootdata_header, BOOTDATA_KERNEL_DRIVER, KDRV_ARM_PSCI,
+               sizeof(psci_driver));
+  bootdata_off += sizeof(bootdata_t);
+  memcpy(phys_mem.as<void*>(bootdata_off), &psci_driver, sizeof(psci_driver));
+  bootdata_off += BOOTDATA_ALIGN(sizeof(psci_driver));
+
+  // timer driver
+  bootdata_header = phys_mem.as<bootdata_t>(bootdata_off);
+  set_bootdata(bootdata_header, BOOTDATA_KERNEL_DRIVER, KDRV_ARM_GENERIC_TIMER,
+               sizeof(timer_driver));
+  bootdata_off += sizeof(bootdata_t);
+  memcpy(phys_mem.as<void*>(bootdata_off), &timer_driver, sizeof(timer_driver));
+  bootdata_off += BOOTDATA_ALIGN(sizeof(timer_driver));
 
   return ZX_OK;
 #elif __x86_64__
   // ACPI root table pointer.
   auto acpi_rsdp_hdr = phys_mem.as<bootdata_t>(bootdata_off);
-  set_bootdata(acpi_rsdp_hdr, BOOTDATA_ACPI_RSDP, sizeof(uint64_t));
+  set_bootdata(acpi_rsdp_hdr, BOOTDATA_ACPI_RSDP, 0, sizeof(uint64_t));
   bootdata_off += sizeof(bootdata_t);
   *phys_mem.as<uint64_t>(bootdata_off) = machina::kAcpiOffset;
 
   // E820 memory map.
   bootdata_off += BOOTDATA_ALIGN(sizeof(uint64_t));
   auto e820_table_hdr = phys_mem.as<bootdata_t>(bootdata_off);
-  set_bootdata(e820_table_hdr, BOOTDATA_E820_TABLE,
+  set_bootdata(e820_table_hdr, BOOTDATA_E820_TABLE, 0,
                static_cast<uint32_t>(e820_size));
   bootdata_off += sizeof(bootdata_t);
   return machina::create_e820(phys_mem, bootdata_off);
