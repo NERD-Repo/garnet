@@ -13,7 +13,8 @@ use failure::Error;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
-use std::io::{copy, Read, Write};
+use std::io::{copy, Read, Seek, SeekFrom, Write};
+use std::str;
 
 const MAGIC_INDEX_VALUE: [u8; 8] = [0xc8, 0xbf, 0x0b, 0x48, 0xad, 0xab, 0xc5, 0x11];
 
@@ -62,7 +63,6 @@ fn write_zeros<T>(target: &mut T, count: usize) -> Result<(), Error>
 where
     T: Write,
 {
-    println!("write_zeros count = {}", count);
     let b: Vec<u8> = vec![0; count];
     target.write_all(&b)?;
     Ok(())
@@ -144,26 +144,60 @@ where
     Ok(())
 }
 
-struct Reader {}
+struct Reader {
+    dir_index: IndexEntry,
+    dir_name_index: IndexEntry,
+    directory_entries: Vec<DirectoryEntry>,
+    path_data: Vec<u8>,
+}
 
 impl Reader {
     pub fn new<T>(source: &mut T) -> Result<Reader, Error>
     where
-        T: Read,
+        T: Read + Seek,
     {
-        let mut reader = Reader {};
         let index = Reader::read_index(source)?;
+
         let (dir_index, dir_name_index) =
             Reader::read_index_entries(source, index.length / INDEX_ENTRY_LEN, &index)?;
         if dir_index.is_none() {
             return Err(format_err!("Invalid archive, missing directory index"));
         }
         let dir_index = dir_index.unwrap();
+
         if dir_name_index.is_none() {
             return Err(format_err!("Invalid archive, missing directory name index"));
         }
         let dir_name_index = dir_name_index.unwrap();
-        Ok(reader)
+
+        let dir_entry_count = dir_index.length / DIRECTORY_ENTRY_LEN;
+        let mut dir_entires = vec![];
+        for i in 0..dir_entry_count {
+            dir_entires.push(deserialize_from(source, Infinite)?);
+        }
+
+        source.seek(SeekFrom::Start(dir_name_index.offset))?;
+        let mut path_data = vec![0; dir_name_index.length as usize];
+        source.read(&mut path_data)?;
+
+        Ok(Reader {
+            dir_index,
+            dir_name_index,
+            directory_entries: dir_entires,
+            path_data: path_data,
+        })
+    }
+
+    pub fn list(&self) -> Result<Vec<String>, Error> {
+        let mut file_names = vec![];
+        for ref entry in &self.directory_entries {
+            let name_start = entry.name_offset as usize;
+            let after_name_end = name_start + entry.name_length as usize;
+            let file_name_str = str::from_utf8(&self.path_data[name_start..after_name_end])?;
+            let file_name = String::from(file_name_str);
+            file_names.push(file_name);
+        }
+        Ok(file_names)
     }
 
     fn read_index<T>(source: &mut T) -> Result<Index, Error>
@@ -186,32 +220,49 @@ impl Reader {
         source: &mut T,
         count: u64,
         index: &Index,
-    ) -> Result<(Option<Index>, Option<Index>), Error>
+    ) -> Result<(Option<IndexEntry>, Option<IndexEntry>), Error>
     where
         T: Read,
     {
-        let mut dir_index: Option<Index> = None;
-        let mut dir_name_index: Option<Index> = None;
-        let mut entries: Vec<IndexEntry> = vec![];
-        for _index in [0..count].iter() {
+        let mut dir_index: Option<IndexEntry> = None;
+        let mut dir_name_index: Option<IndexEntry> = None;
+        let mut last_chunk_type: Option<ChunkType> = None;
+        for i in 0..count {
             let entry: IndexEntry = deserialize_from(source, Infinite)?;
-            match entry.chunk_type {
-                _ => {}
-            }
-            match entries.last() {
+
+            match last_chunk_type {
                 None => {}
-                Some(ref last_entry) => {
-                    if last_entry.chunk_type > entry.chunk_type {
+                Some(chunk_type) => {
+                    if chunk_type > entry.chunk_type {
                         return Err(format_err!("Invalid archive, invalid index entry order"));
                     }
                 }
             }
+
+            last_chunk_type = Some(entry.chunk_type);
+
             if entry.offset < index.length {
                 return Err(format_err!("Invalid archive, short offset"));
             }
-            entries.push(entry);
+
+            match entry.chunk_type {
+                DIR_HASH_CHUNK => {}
+                DIR_NAMES_CHUNK => {
+                    dir_name_index = Some(entry);
+                }
+                DIR_CHUNK => {
+                    dir_index = Some(entry);
+                }
+                _ => {
+                    return Err(format_err!("Invalid archive, invalid chunk type"));
+                }
+            }
         }
         Ok((dir_index, dir_name_index))
+    }
+
+    pub fn open(&self, archive_path: &str) -> Result<(), Error> {
+        return Err(format_err!("Not yet implemented"));
     }
 }
 
@@ -420,6 +471,30 @@ mod tests {
             let mut reader = Reader::new(&mut example_cursor);
             assert!(reader.is_err(), "corrupter index = {}", index);
             index += 1;
+        }
+    }
+
+    #[test]
+    fn test_list_files() {
+        let example = example_archive();
+        let mut example_cursor = Cursor::new(&example);
+        let mut reader = Reader::new(&mut example_cursor).unwrap();
+
+        let mut files = reader.list().unwrap();
+        let want = ["a", "b", "dir/c"];
+        files.sort();
+        assert_equal(want.iter(), &files);
+    }
+
+    #[test]
+    fn test_reader_open() {
+        let example = example_archive();
+        let mut example_cursor = Cursor::new(&example);
+        let mut reader = Reader::new(&mut example_cursor).unwrap();
+        assert_eq!(3, reader.directory_entries.len());
+
+        for one_name in ["a", "b", "dir/c"].iter() {
+            let resource = reader.open(one_name).unwrap();
         }
     }
 }
