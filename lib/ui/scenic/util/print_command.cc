@@ -4,6 +4,8 @@
 
 #include "garnet/lib/ui/scenic/util/print_command.h"
 
+#include "lib/fxl/logging.h"
+
 using gfx::Command;
 using gfx::CommandPtr;
 using gfx::RendererParam;
@@ -49,6 +51,9 @@ std::ostream& operator<<(std::ostream& stream, const gfx::Command& command) {
       return stream << "SetClip";
     case Command::Tag::kSetHitTestBehavior:
       return stream << "SetHitTestBehavior";
+    case Command::Tag::kSetSpaceProperties:
+      FXL_CHECK(false);
+      return stream << "SetSpaceProperties";
     case Command::Tag::kSetCamera:
       return stream << "SetCamera";
     case Command::Tag::kSetCameraTransform:
@@ -155,6 +160,14 @@ std::ostream& operator<<(std::ostream& stream,
       break;
     case ResourceArgs::Tag::kShapeNode:
       stream << "ShapeNode";
+      break;
+    case ResourceArgs::Tag::kSpaceNode:
+      FXL_CHECK(false);
+      stream << "SpaceNode";
+      break;
+    case ResourceArgs::Tag::kSpaceHolderNode:
+      FXL_CHECK(false);
+      stream << "SpaceHolderNode";
       break;
     case ResourceArgs::Tag::kDisplayCompositor:
       stream << "DisplayCompositor";
