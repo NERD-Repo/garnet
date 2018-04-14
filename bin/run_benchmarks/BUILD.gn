@@ -4,26 +4,21 @@
 
 import("//build/package.gni")
 
-copy("run_benchmarks") {
+copy("scripts") {
   sources = [
-    "run_benchmarks.sh",
+    "run_benchmarks",
+    "test_benchmarks",
   ]
-
-  outputs = [
-    "$root_out_dir/run_benchmarks",
-  ]
+  outputs = ["$root_out_dir/{{source_file_part}}"]
 }
 
 package("run_benchmarks") {
   testonly = true
   deprecated_system_image = true
-
-  deps = [
-    ":run_benchmarks",
-  ]
-
+  deps = [":scripts"]
   tests = [ {
-        name = "run_benchmarks"
+        name = "test_benchmarks"
+        dest = "perf/test_benchmarks"
       }, {
         name = "run_benchmarks"
         dest = "perf/run_benchmarks"

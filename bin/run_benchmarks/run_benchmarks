@@ -1,0 +1,56 @@
+#!/boot/bin/sh
+#
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# This script runs all fuchsia benchmark suites, producing results files in a 
+# specified directory.  When run on CI, the results are uploaded to the 
+# performance dashboard and stored permanently in a test storage.  
+#
+# If you are adding a benchmark to Fuchsia, update ./test_benchmarks with a test
+# case for your benchmark.
+
+# Fast fail on error.
+set -e
+
+OUTPUT_DIR="${1}"
+LEDGER_TSPEC_DIR=""
+
+# trace-test runs a trace-based test from tspec file.
+function trace-test {
+    TSPEC_FILE="${1}"
+    # Use the name of the tspec file as the unique test ID. Strip away the
+    # ".tspec" file suffix.
+    BENCHMARK_ID="$(basename $TSPEC_FILE .tspec)"
+    RESULTS_FILE="${OUTPUT_DIR}/${BENCHMARK_ID}"
+
+    # Run the tracing test.
+    trace record --spec-file=${TSPEC_FILE} \
+                    --benchmark-results-file=${RESULTS_FILE}
+}
+
+# trace-tests runs a trace-based tets for every tspec file in a directory.
+#
+# If the directory does not exist, the function prints an error message and
+# returns immediately.
+#
+# Example usage: `trace-tests /path/to/tspec/dir`.
+
+# Run Zircon microbenchmarks.
+#
+# Set the name of the results file to the unique ID to use in the
+# performance dashboard and other post-processing systems.
+/system/bin/zircon_benchmarks --fbenchmark_out="${OUTPUT_DIR}/zircon_benchmarks"
+
+# Run Ledger benchmarks.
+if [[ -d $LEDGER_TSPEC_DIR]]; then
+    for $TSPEC_FILE in ${LEDGER_TSPEC_DIR}/*; do
+        trace-test $TSPEC_FILE
+    do
+else 
+    echo "could not find directory $LEDGER_TSPEC_DIR"
+fi
+
+
+

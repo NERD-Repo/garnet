@@ -1,0 +1,68 @@
+#!/boot/bin/sh
+#
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+#
+# This script runs the benchmark suite and tests that all benchmark results
+# files are generated as expected.  If any files are missing, the test exits
+# with a non-zero exit-code.  If you are adding a new benchmark, test case to
+# the list below.
+
+# Fast fail on errors
+set -e
+
+# The directory where output will be written.
+OUTPUT_DIR=$1 # /tmp/benchmark_results
+
+# Whether any tests failed. 
+#
+# This is set 1 in expect() if an output file is missing.
+TESTS_FAILED=0;
+
+# expect ensures a regular, readable file exists in $OUTPUT_DIRECTORY
+# Example usage: `expect /relative/path/to/file`.
+function expect {
+    FILEPATH="${1}"
+    EXPECTED_FILE="${OUTPUT_DIR}/${FILEPATH}"
+    if [[ ! test -r $EXPECTED_FILE]]; then
+      echo "error: missing file ${EXPECTED_FILE}"
+      TESTS_FAILED=1
+    fi
+}
+
+# Run the benchmark suite to generate results files.
+echo "running benchmarks..."
+./run_benchmarks "${OUTPUT_DIR}" 
+
+# Test cases.
+#
+# Each expectation ensures that a regular, readable file exists in OUTPUT_DIR.
+# If you are adding a benchmark, add a test case to the list below.
+#
+# Please keep this list sorted alphabetically.
+
+# Ledger Tests
+expect "add_new_page"
+expect "backlog"
+expect "backlog_big_entry"
+expect "backlog_big_entry_updates"
+expect "backlog_many_big_entries"
+expect "backlog_many_small_entries"
+expect "backlog_small_entry_updates"
+expect "get_same_page"
+expect "convergence"
+expect "multidevice_convergence"
+expect "put"
+expect "sync"
+expect "sync_big_change"
+expect "update_entry"
+expect "update_entry_transactions"
+expect "fetch"
+expect "fetch_partial"
+expect "delete_entry"
+expect "delete_entry_transaction"
+# Zircon Tests
+expect "zircon_benchmarks"
+
+exit $TESTS_FAILED

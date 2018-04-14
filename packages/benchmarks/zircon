@@ -1,5 +1,6 @@
 {
     "packages": {
+        "run_benchmarks": "//garnet/bin/run_benchmarks",
         "zircon_benchmarks": "//garnet/bin/zircon_benchmarks"
     }
 }
