@@ -3,10 +3,10 @@ extern crate bincode;
 #[macro_use]
 extern crate failure;
 extern crate itertools;
-extern crate tempdir;
+extern crate serde;
 #[macro_use]
 extern crate serde_derive;
-extern crate serde;
+extern crate tempdir;
 
 use bincode::{deserialize_from, serialize_into, Infinite};
 use failure::Error;
@@ -144,22 +144,26 @@ where
     Ok(())
 }
 
-struct Reader {
+struct Reader<'a, T: 'a>
+where
+    T: Read + Seek,
+{
+    source: &'a mut T,
     dir_index: IndexEntry,
     dir_name_index: IndexEntry,
     directory_entries: Vec<DirectoryEntry>,
     path_data: Vec<u8>,
 }
 
-impl Reader {
-    pub fn new<T>(source: &mut T) -> Result<Reader, Error>
-    where
-        T: Read + Seek,
-    {
-        let index = Reader::read_index(source)?;
+impl<'a, T> Reader<'a, T>
+where
+    T: Read + Seek,
+{
+    pub fn new(source: &'a mut T) -> Result<Reader<'a, T>, Error> {
+        let index = Reader::<T>::read_index(source)?;
 
         let (dir_index, dir_name_index) =
-            Reader::read_index_entries(source, index.length / INDEX_ENTRY_LEN, &index)?;
+            Reader::<T>::read_index_entries(source, index.length / INDEX_ENTRY_LEN, &index)?;
         if dir_index.is_none() {
             return Err(format_err!("Invalid archive, missing directory index"));
         }
@@ -181,6 +185,7 @@ impl Reader {
         source.read(&mut path_data)?;
 
         Ok(Reader {
+            source,
             dir_index,
             dir_name_index,
             directory_entries: dir_entires,
@@ -200,10 +205,7 @@ impl Reader {
         Ok(file_names)
     }
 
-    fn read_index<T>(source: &mut T) -> Result<Index, Error>
-    where
-        T: Read,
-    {
+    fn read_index(source: &mut T) -> Result<Index, Error> {
         let decoded_index: Index = deserialize_from(source, Infinite)?;
         if decoded_index.magic != MAGIC_INDEX_VALUE {
             Err(format_err!("Invalid archive, bad magic"))
@@ -216,14 +218,9 @@ impl Reader {
         }
     }
 
-    fn read_index_entries<T>(
-        source: &mut T,
-        count: u64,
-        index: &Index,
-    ) -> Result<(Option<IndexEntry>, Option<IndexEntry>), Error>
-    where
-        T: Read,
-    {
+    fn read_index_entries(
+        source: &mut T, count: u64, index: &Index,
+    ) -> Result<(Option<IndexEntry>, Option<IndexEntry>), Error> {
         let mut dir_index: Option<IndexEntry> = None;
         let mut dir_name_index: Option<IndexEntry> = None;
         let mut last_chunk_type: Option<ChunkType> = None;
@@ -261,8 +258,46 @@ impl Reader {
         Ok((dir_index, dir_name_index))
     }
 
-    pub fn open(&self, archive_path: &str) -> Result<(), Error> {
-        return Err(format_err!("Not yet implemented"));
+    pub fn open(&mut self, archive_path: &str) -> Result<EntryReader<T>, Error> {
+        for entry in &self.directory_entries {
+            let name_start = entry.name_offset as usize;
+            let after_name_end = name_start + entry.name_length as usize;
+            let file_name_str = str::from_utf8(&self.path_data[name_start..after_name_end])?;
+            if file_name_str == archive_path {
+                return Ok(EntryReader {
+                    source: self.source,
+                    offset: entry.data_offset,
+                    length: entry.data_length,
+                });
+            }
+        }
+        Err(format_err!("Path '{}' not found in archive", archive_path))
+    }
+}
+
+pub struct EntryReader<'a, T: 'a>
+where
+    T: Read + Seek,
+{
+    offset: u64,
+    length: u64,
+    source: &'a mut T,
+}
+
+impl<'a, T> EntryReader<'a, T>
+where
+    T: Read + Seek,
+{
+    pub fn read_at(&mut self, offset: u64) -> Result<Vec<u8>, Error> {
+        if offset > self.length {
+            return Err(format_err!("Offset exceeds length of entry"));
+        }
+        self.source.seek(SeekFrom::Start(self.offset + offset))?;
+        let clamped_length = self.length - offset;
+
+        let mut data = vec![0; clamped_length as usize];
+        self.source.read(&mut data)?;
+        Ok(data)
     }
 }
 
@@ -283,9 +318,10 @@ mod tests {
     use failure::Error;
     use itertools::assert_equal;
     use std::collections::HashMap;
-    use std::fs::File;
     use std::fs::create_dir_all;
+    use std::fs::File;
     use std::io::{Cursor, Seek, SeekFrom, Write};
+    use std::str;
     use tempdir::TempDir;
     use {align, write, DirectoryEntry, Index, IndexEntry, Reader, DIRECTORY_ENTRY_LEN, DIR_CHUNK,
          INDEX_ENTRY_LEN, INDEX_LEN, MAGIC_INDEX_VALUE};
@@ -305,22 +341,23 @@ mod tests {
 
     fn example_archive() -> Vec<u8> {
         let mut b: Vec<u8> = vec![0; 16384];
+        #[cfg_attr(rustfmt, rustfmt_skip)]
         let header = vec![
-            // magic
+            /* magic */
             0xc8, 0xbf, 0x0b, 0x48, 0xad, 0xab, 0xc5, 0x11,
-            // length of index entries
+            /* length of index entries */
             0x30, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // chunk type
+            /* chunk type */
             0x44, 0x49, 0x52, 0x2d, 0x2d, 0x2d, 0x2d, 0x2d,
-            // offset to chunk
+            /* offset to chunk */
             0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // length of chunk
+            /* length of chunk */
             0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // chunk type
+            /* chunk type */
             0x44, 0x49, 0x52, 0x4e, 0x41, 0x4d, 0x45, 0x53,
-            // offset to chunk
+            /* offset to chunk */
             0xa0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            // length of chunk
+            /* length of chunk */
             0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00,
             0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -493,8 +530,26 @@ mod tests {
         let mut reader = Reader::new(&mut example_cursor).unwrap();
         assert_eq!(3, reader.directory_entries.len());
 
+        for one_name in ["frobulate", "dir/enhunts"].iter() {
+            let entry_reader = reader.open(one_name);
+            assert!(
+                entry_reader.is_err(),
+                "Expected error for archive path \"{}\"",
+                one_name
+            );
+        }
+
         for one_name in ["a", "b", "dir/c"].iter() {
-            let resource = reader.open(one_name).unwrap();
+            let mut entry_reader = reader.open(one_name).unwrap();
+            let expected_error = entry_reader.read_at(99);
+            assert!(
+                expected_error.is_err(),
+                "Expected error for offset that exceeds length"
+            );
+            let content = entry_reader.read_at(0).unwrap();
+            let content_str = str::from_utf8(&content).unwrap();
+            let expected = format!("{}\n", one_name);
+            assert_eq!(content_str, &expected);
         }
     }
 }
