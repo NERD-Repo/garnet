@@ -13,7 +13,7 @@ use failure::Error;
 use std::collections::BTreeMap;
 use std::fs;
 use std::fs::File;
-use std::io::{copy, Read, Seek, SeekFrom, Write};
+use std::io::{copy, Cursor, Read, Seek, SeekFrom, Write};
 use std::str;
 
 const MAGIC_INDEX_VALUE: [u8; 8] = [0xc8, 0xbf, 0x0b, 0x48, 0xad, 0xab, 0xc5, 0x11];
@@ -68,6 +68,7 @@ where
     Ok(())
 }
 
+/// Write a FAR-formatted archive to the target.
 pub fn write<T>(target: &mut T, inputs: &mut Iterator<Item = (&str, &str)>) -> Result<(), Error>
 where
     T: Write,
@@ -144,7 +145,8 @@ where
     Ok(())
 }
 
-struct Reader<'a, T: 'a>
+/// A struct to open and read FAR-formatted archive.
+pub struct Reader<'a, T: 'a>
 where
     T: Read + Seek,
 {
@@ -159,6 +161,7 @@ impl<'a, T> Reader<'a, T>
 where
     T: Read + Seek,
 {
+    /// Create a new Reader for the provided source.
     pub fn new(source: &'a mut T) -> Result<Reader<'a, T>, Error> {
         let index = Reader::<T>::read_index(source)?;
 
@@ -193,6 +196,7 @@ where
         })
     }
 
+    /// Return a list of the items in the archive
     pub fn list(&self) -> Result<Vec<String>, Error> {
         let mut file_names = vec![];
         for ref entry in &self.directory_entries {
@@ -258,6 +262,7 @@ where
         Ok((dir_index, dir_name_index))
     }
 
+    /// Create an EntryReader for an entry with the specified name.
     pub fn open(&mut self, archive_path: &str) -> Result<EntryReader<T>, Error> {
         for entry in &self.directory_entries {
             let name_start = entry.name_offset as usize;
