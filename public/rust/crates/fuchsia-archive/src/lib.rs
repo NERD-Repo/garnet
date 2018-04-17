@@ -21,9 +21,9 @@ const MAGIC_INDEX_VALUE: [u8; 8] = [0xc8, 0xbf, 0x0b, 0x48, 0xad, 0xab, 0xc5, 0x
 type ChunkType = u64;
 
 const HASH_CHUNK: ChunkType = 0;
-const DIR_HASH_CHUNK: ChunkType = 0x2d48534148524944; // "DIRHASH-"
-const DIR_CHUNK: ChunkType = 0x2d2d2d2d2d524944; // "DIR-----"
-const DIR_NAMES_CHUNK: ChunkType = 0x53454d414e524944; // "DIRNAMES"
+const DIR_HASH_CHUNK: ChunkType = 0x2d_48_53_41_48_52_49_44; // "DIRHASH-"
+const DIR_CHUNK: ChunkType = 0x2d_2d_2d_2d_2d_52_49_44; // "DIR-----"
+const DIR_NAMES_CHUNK: ChunkType = 0x53_45_4d_41_4e_52_49_44; // "DIRNAMES"
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 struct Index {
@@ -80,7 +80,7 @@ where
 
     let mut path_data: Vec<u8> = vec![];
     let mut entries = vec![];
-    for (destination_name, source_name) in input_map.iter() {
+    for (destination_name, source_name) in &input_map {
         let metadata = fs::metadata(source_name)?;
         entries.push(DirectoryEntry {
             name_offset: path_data.len() as u32,
@@ -118,13 +118,13 @@ where
 
     let mut content_offset = align(name_index.offset + name_index.length, CONTENT_ALIGNMENT);
 
-    for ref mut entry in &mut entries {
+    for entry in &mut entries {
         entry.data_offset = content_offset;
         content_offset = align(content_offset + entry.data_length, CONTENT_ALIGNMENT);
         serialize_into(target, &entry, Infinite)?;
     }
 
-    target.write(&path_data)?;
+    target.write_all(&path_data)?;
 
     write_zeros(target, name_index.length as usize - path_data.len())?;
 
@@ -132,13 +132,11 @@ where
     let padding_count = align(pos, CONTENT_ALIGNMENT) - pos;
     write_zeros(target, padding_count as usize)?;
 
-    let mut entry_index = 0;
-    for (_, source_name) in input_map.iter() {
+    for (entry_index, source_name) in input_map.values().enumerate() {
         let mut f = File::open(source_name)?;
         copy(&mut f, target)?;
         let pos = entries[entry_index].data_offset + entries[entry_index].data_length;
         let padding_count = align(pos, CONTENT_ALIGNMENT) - pos;
-        entry_index = entry_index + 1;
         write_zeros(target, padding_count as usize)?;
     }
 
@@ -185,21 +183,21 @@ where
 
         source.seek(SeekFrom::Start(dir_name_index.offset))?;
         let mut path_data = vec![0; dir_name_index.length as usize];
-        source.read(&mut path_data)?;
+        source.read_exact(&mut path_data)?;
 
         Ok(Reader {
             source,
             dir_index,
             dir_name_index,
             directory_entries: dir_entires,
-            path_data: path_data,
+            path_data,
         })
     }
 
     /// Return a list of the items in the archive
     pub fn list(&self) -> Result<Vec<String>, Error> {
         let mut file_names = vec![];
-        for ref entry in &self.directory_entries {
+        for entry in &self.directory_entries {
             let name_start = entry.name_offset as usize;
             let after_name_end = name_start + entry.name_length as usize;
             let file_name_str = str::from_utf8(&self.path_data[name_start..after_name_end])?;
@@ -213,12 +211,10 @@ where
         let decoded_index: Index = deserialize_from(source, Infinite)?;
         if decoded_index.magic != MAGIC_INDEX_VALUE {
             Err(format_err!("Invalid archive, bad magic"))
+        } else if decoded_index.length % INDEX_ENTRY_LEN != 0 {
+            Err(format_err!("Invalid archive, bad index length"))
         } else {
-            if decoded_index.length % INDEX_ENTRY_LEN != 0 {
-                Err(format_err!("Invalid archive, bad index length"))
-            } else {
-                Ok(decoded_index)
-            }
+            Ok(decoded_index)
         }
     }
 
@@ -301,7 +297,7 @@ where
         let clamped_length = self.length - offset;
 
         let mut data = vec![0; clamped_length as usize];
-        self.source.read(&mut data)?;
+        self.source.read_exact(&mut data)?;
         Ok(data)
     }
 }
