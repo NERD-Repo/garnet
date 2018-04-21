@@ -109,7 +109,7 @@ pub struct Decoder<'a> {
     remaining_depth: usize,
 
     /// Buffer from which to read data.
-    buf: &'a [u8],
+    pub buf: &'a [u8],
 
     /// Buffer from which to read out-of-line data.
     out_of_line_buf: &'a [u8],

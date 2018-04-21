@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "echo2_server_rust": "//garnet/bin/echo2_server_rust"
+    }
+}

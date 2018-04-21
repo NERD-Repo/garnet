@@ -62,6 +62,7 @@ impl InterestId {
         InterestId(txid.0 as usize - 1)
     }
 
+    /// aoeusnth
     fn as_raw_id(&self) -> usize {
         self.0
     }
@@ -72,7 +73,8 @@ impl Txid {
         Txid((int_id.0 + 1) as u32)
     }
 
-    fn as_raw_id(&self) -> u32 {
+    /// aoeusnth
+    pub fn as_raw_id(&self) -> u32 {
         self.0
     }
 }

@@ -35,9 +35,8 @@ use parking_lot::Mutex;
 
 type SimpleStore = Arc<Mutex<HashMap<String, String>>>;
 
-/// A basic example
 #[derive(StructOpt, Debug)]
-#[structopt(name = "basic")]
+#[structopt(name = "luthier")]
 struct Opt {
     #[structopt(short = "v", long = "verbose", parse(from_occurrences))]
     verbose: u8,
@@ -67,19 +66,16 @@ fn request_ir(store: &mut SimpleStore, interface: String) -> Option<String> {
     map.get(&interface).map(|s| s.clone())
 }
 
-fn spawn_luthier_server(chan: async::Channel) {
-    // TODO change to a state that keeps delegates
-    let simple_store: SimpleStore = Arc::new(Mutex::new(HashMap::new()));
-
+fn spawn_luthier_server(simple_store: SimpleStore, chan: async::Channel) {
     async::spawn(
         LuthierImpl {
             state: simple_store,
             register_ir: |store, interface, fidl_json_ir, res| {
                 let mut status = register_ir(store, interface, fidl_json_ir);
                 res.send(&mut status)
-               .into_future()
-               .map(|_| println!("FIDR IR registered successfully")) // TODO use log crate
-               .recover(|e| eprintln!("error sending response: {:?}", e))
+                    .into_future()
+                    .map(|_| println!("FIDR IR registered successfully")) // TODO use log crate
+                    .recover(|e| eprintln!("error sending response: {:?}", e))
             },
             request_ir: |store, interface, res| {
                 println!("Received Ir request for {}", interface);
@@ -94,11 +90,11 @@ fn spawn_luthier_server(chan: async::Channel) {
     )
 }
 
-fn startup_luthier() -> Result<(), Error> {
+fn startup_luthier(simple_store: SimpleStore) -> Result<(), Error> {
     let mut executor = async::Executor::new().context("Error creating executor")?;
 
     let fut = ServicesServer::new()
-        .add_service((LuthierMarker::NAME, |chan| spawn_luthier_server(chan)))
+        .add_service((LuthierMarker::NAME, move |chan| spawn_luthier_server(simple_store.clone(), chan)))
         .start()
         .context("Error starting Luthier, the fidl introspector")?;
 
@@ -111,8 +107,12 @@ fn startup_luthier() -> Result<(), Error> {
 
 fn main() {
     let opt = Opt::from_args();
-    if opt.fidl_files.is_empty() {
-        startup_luthier().unwrap(); //TODO error
-    }
-    println!("{:?}", opt);
+    let simple_store: SimpleStore = Arc::new(Mutex::new(HashMap::new()));
+    let mut s = simple_store.clone();
+
+    let control_ir = include_str!(concat!(env!("FIDL_GEN_ROOT"), "/garnet/public/lib/bluetooth/fidl/bluetooth_control.fidl.json"));
+
+    register_ir(&mut s, "bluetooth::control::Control".to_string(), control_ir.to_string());
+
+    startup_luthier(simple_store).unwrap(); //TODO error
 }

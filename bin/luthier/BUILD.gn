@@ -8,19 +8,28 @@ import("//garnet/public/lib/fidl/build/fidl/fidl.gni")
 
 rust_binary("binary") {
   name = "luthier"
+
 }
 
 package("luthier") {
-  system_image = true
 
   deps = [
     ":binary",
     ":service"
   ]
 
-  binaries = [ {
-     name = "luthier"
-  } ]
+  meta = [
+# //{
+# //    path = rebase_path("meta/sandbox")
+# //    dest = "sandbox"
+# //  },
+ {
+    path = rebase_path("//garnet/bin/appmgr/legacy_flat_exported_dir")
+    dest = "legacy_flat_exported_dir"
+  }]
+
+  binary ="luthier"
+
 }
 
 fidl("service") {
