@@ -14,7 +14,6 @@
 #include <zircon/types.h>
 
 #include <fuchsia/cpp/component.h>
-#include <fuchsia/cpp/ui.h>
 #include <lib/zx/eventpair.h>
 
 #include "lib/app/cpp/environment_services.h"
@@ -56,15 +55,15 @@ struct SpaceContext {
 // |SpaceProvider.CreateSpace()|.
 using SpaceFactory = std::function<void(SpaceContext context)>;
 
-class SpaceProviderService : public gfx::SpaceProvider {
+class SpaceProviderService : public spaces::SpaceProvider {
  public:
   explicit SpaceProviderService(component::ApplicationContext* app_context,
                                 SpaceFactory factory)
       : app_context_(app_context), space_factory_fn_(factory) {
     FXL_DCHECK(app_context_);
 
-    app_context_->outgoing_services()->AddService<gfx::SpaceProvider>(
-        [this](fidl::InterfaceRequest<gfx::SpaceProvider> request) {
+    app_context_->outgoing_services()->AddService<spaces::SpaceProvider>(
+        [this](fidl::InterfaceRequest<spaces::SpaceProvider> request) {
           FXL_LOG(INFO) << "Bound service iface to impl!";
 
           bindings_.AddBinding(this, std::move(request));
@@ -74,7 +73,7 @@ class SpaceProviderService : public gfx::SpaceProvider {
 
   ~SpaceProviderService() {
     app_context_->outgoing_services()
-        ->RemoveService<gfx::SpaceProvider>();
+        ->RemoveService<spaces::SpaceProvider>();
   }
 
   // |ui::SpaceProvider|
@@ -90,7 +89,7 @@ class SpaceProviderService : public gfx::SpaceProvider {
   component::ApplicationContext* app_context_;
   SpaceFactory space_factory_fn_;
 
-  fidl::BindingSet<gfx::SpaceProvider> bindings_;
+  fidl::BindingSet<spaces::SpaceProvider> bindings_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(SpaceProviderService);
 };
