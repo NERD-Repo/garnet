@@ -4,6 +4,7 @@
 
 #include "fake_controller_base.h"
 
+#include <lib/async/default.h>
 #include <zircon/status.h>
 
 #include "garnet/drivers/bluetooth/lib/hci/acl_data_packet.h"
@@ -17,7 +18,7 @@ FakeControllerBase::FakeControllerBase() {}
 FakeControllerBase::~FakeControllerBase() {
   // When this destructor gets called any subclass state will be undefined. If
   // Stop() has not been called before reaching this point this can cause
-  // runtime errors when our MessageLoop handlers attempt to invoke the pure
+  // runtime errors when our event loop handlers attempt to invoke the pure
   // virtual methods of this class.
 }
 

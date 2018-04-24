@@ -16,11 +16,16 @@ members =  [
   "bin/bluetooth_tests/integration",
   "examples/bluetooth/ble_battery_service",
   "examples/fidl/*rust",
+  "examples/media/audio_player_rust",
   "examples/network/wget-rs",
   "examples/rust/testing",
   "lib/rust/crates/eapol",
   "lib/rust/crates/fuchsia-bluetooth",
   "lib/rust/crates/fuchsia-wlan-dev",
+  "lib/rust/crates/flatten-future-sink",
+  "lib/rust/crates/mesh-endpoint",
+  "lib/rust/crates/mesh-protocol",
+  "lib/rust/crates/mesh-router",
   "lib/rust/crates/wlan-rsn",
   "lib/rust/crates/wlan-sme",
   "lib/rust/fidl_crates/fidl_wlan_device",
@@ -31,6 +36,7 @@ members =  [
   "public/rust/crates/fuchsia-ddk/examples/microorb",
   "public/rust/crates/fdio",
   "public/rust/crates/fuchsia-app",
+  "public/rust/crates/fuchsia-archive",
   "public/rust/crates/fuchsia-async",
   "public/rust/crates/fuchsia-syslog",
   "public/rust/crates/fuchsia-vfs",
@@ -46,13 +52,14 @@ members =  [
   "public/rust/fidl_crates/fidl_component",
   "public/rust/fidl_crates/fidl_device_settings",
   "public/rust/fidl_crates/fidl_echo2",
-  "public/rust/fidl_crates/fidl_mem",
   "public/rust/fidl_crates/fidl_geometry",
   "public/rust/fidl_crates/fidl_gfx",
   "public/rust/fidl_crates/fidl_images",
   "public/rust/fidl_crates/fidl_input",
   "public/rust/fidl_crates/fidl_logger",
   "public/rust/fidl_crates/fidl_media",
+  "public/rust/fidl_crates/fidl_media_player",
+  "public/rust/fidl_crates/fidl_mem",
   "public/rust/fidl_crates/fidl_netstack",
   "public/rust/fidl_crates/fidl_network",
   "public/rust/fidl_crates/fidl_power_manager",
@@ -75,13 +82,14 @@ fidl_bluetooth_low_energy = { path = "public/rust/fidl_crates/fidl_bluetooth_low
 fidl_component = { path = "public/rust/fidl_crates/fidl_component" }
 fidl_device_settings = { path = "public/rust/fidl_crates/fidl_device_settings" }
 fidl_echo2 = { path = "public/rust/fidl_crates/fidl_echo2" }
-fidl_mem = { path = "public/rust/fidl_crates/fidl_mem" }
 fidl_geometry = { path = "public/rust/fidl_crates/fidl_geometry" }
 fidl_gfx = { path = "public/rust/fidl_crates/fidl_gfx" }
 fidl_images = { path = "public/rust/fidl_crates/fidl_images" }
 fidl_input = { path = "public/rust/fidl_crates/fidl_input" }
 fidl_logger = { path = "public/rust/fidl_crates/fidl_logger" }
 fidl_media = { path = "public/rust/fidl_crates/fidl_media" }
+fidl_media_player = { path = "public/rust/fidl_crates/fidl_media_player" }
+fidl_mem = { path = "public/rust/fidl_crates/fidl_mem" }
 fidl_netstack = { path = "public/rust/fidl_crates/fidl_netstack" }
 fidl_network = { path = "public/rust/fidl_crates/fidl_network" }
 fidl_power_manager = { path = "public/rust/fidl_crates/fidl_power_manager" }
@@ -97,6 +105,7 @@ fuchsia-ddk = { path = "public/rust/crates/fuchsia-ddk" }
 eapol = { path = "lib/rust/crates/eapol" }
 fdio = { path = "public/rust/crates/fdio" }
 fidl = { path = "public/lib/fidl/rust/fidl" }
+flatten-future-sink = { path = "lib/rust/crates/flatten-future-sink" }
 fuchsia-app = { path = "public/rust/crates/fuchsia-app" }
 fuchsia-syslog = { path = "public/rust/crates/fuchsia-syslog" }
 fuchsia-async = { path = "public/rust/crates/fuchsia-async" }
@@ -105,6 +114,9 @@ fuchsia-vfs-watcher = { path = "public/rust/crates/fuchsia-vfs/fuchsia-vfs-watch
 fuchsia-wlan-dev = { path = "lib/rust/crates/fuchsia-wlan-dev" }
 fuchsia-zircon = { path = "public/rust/crates/fuchsia-zircon" }
 fuchsia-zircon-sys = { path = "public/rust/crates/fuchsia-zircon/fuchsia-zircon-sys" }
+mesh-endpoint = { path = "lib/rust/crates/mesh-endpoint" }
+mesh-protocol = { path = "lib/rust/crates/mesh-protocol" }
+mesh-router = { path = "lib/rust/crates/mesh-router" }
 mio = { path = "../third_party/rust-mirrors/mio" }
 mxruntime = { path = "public/rust/crates/mxruntime" }
 mxruntime-sys = { path = "public/rust/crates/mxruntime/mxruntime-sys" }

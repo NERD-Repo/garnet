@@ -146,12 +146,6 @@ fractional bits -- will require changes to all stages, including Rechannel.
 
 **Interpolate**
 
-*   MTWN-77
-
-    On the last sample of a mix, for certain combinations of buffer sizes for
-Dest and Source, the LinearSampler will point-sample instead of interpolate.
-(This very well could be by-design behavior; I just need to take a closer look.)
-
 *   MTWN-87
 
     Today, interpolation and media scheduling is performed using audio sample
@@ -214,16 +208,6 @@ overflow, given a sufficient number of incoming streams. This limit is
 admittedly beyond any foreseeable scenario (65,000 streams), but this should be
 documented even if the code does not explicitly clamp.
 
-*   MTWN-76
-
-    Gain is applied to audio data during the interpolation-and-accumulation
-process. As an optimization, if gain is lower than 160 dB for a given stream,
-we skip any mixing and simply advance the positions accordingly. In the case
-where the 'accumulate' flag is NOT set, we should also zero-out the destination
-buffer. The proper fix for this might simply be to document this behavior,
-since the OutputBase object does zero-out a mix buffer before providing it to
-the Mixer object.
-
 *   MTWN-86
 
     Expanding the width of our internal data processing pipeline -- whether
@@ -240,15 +224,6 @@ fractional bits -- will require changes to all stages, including Denormalize
 /Output.
 
 **Interface to Renderer (or other parts of audio_server)**
-
-*   MTWN-78
-
-    If by chance the source and destination buffers are both fully completed on
-the last sample of a mix, the Mix function returns FALSE, which indicates that
-the source buffer has not been fully consumed and should be held. Although
-there could be scenarios in the future that take advantage of this, if the
-definition of this return value is "whether the source buffer can be safely
-released", then by this definition we should return TRUE in this case.
 
 *   MTWN-88
 

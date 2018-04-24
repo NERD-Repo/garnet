@@ -37,8 +37,6 @@ const common::DeviceAddress kAddress1(common::DeviceAddress::Type::kLEPublic,
 const common::DeviceAddress kAddress2(common::DeviceAddress::Type::kBREDR,
                                       "00:00:00:00:00:03");
 
-constexpr int64_t kTestRequestTimeoutMs = 1;
-
 class LowEnergyConnectionManagerTest : public TestingBase {
  public:
   LowEnergyConnectionManagerTest() = default;
@@ -61,7 +59,7 @@ class LowEnergyConnectionManagerTest : public TestingBase {
 
     // TODO(armansito): Pass a fake connector here.
     connector_ = std::make_unique<hci::LowEnergyConnector>(
-        transport(), message_loop()->task_runner(),
+        transport(), dispatcher(),
         [this](auto link) { OnIncomingConnection(std::move(link)); });
 
     conn_mgr_ = std::make_unique<LowEnergyConnectionManager>(
@@ -71,7 +69,7 @@ class LowEnergyConnectionManagerTest : public TestingBase {
     test_device()->SetConnectionStateCallback(
         fbl::BindMember(
             this, &LowEnergyConnectionManagerTest::OnConnectionStateChanged),
-        message_loop()->task_runner());
+        dispatcher());
 
     test_device()->StartCmdChannel(test_cmd_chan());
     test_device()->StartAclChannel(test_acl_chan());
@@ -219,6 +217,8 @@ TEST_F(GAP_LowEnergyConnectionManagerTest, ConnectSingleDeviceFailure) {
 }
 
 TEST_F(GAP_LowEnergyConnectionManagerTest, ConnectSingleDeviceTimeout) {
+  constexpr int64_t kTestRequestTimeoutMs = 20000;
+
   auto* dev = dev_cache()->NewDevice(kAddress0, true);
 
   // We add no fake devices to cause the request to time out.
@@ -227,7 +227,6 @@ TEST_F(GAP_LowEnergyConnectionManagerTest, ConnectSingleDeviceTimeout) {
   auto callback = [&status](auto cb_status, auto conn_ref) {
     EXPECT_FALSE(conn_ref);
     status = cb_status;
-    fsl::MessageLoop::GetCurrent()->QuitNow();
   };
 
   conn_mgr()->set_request_timeout_for_testing(kTestRequestTimeoutMs);
@@ -235,10 +234,15 @@ TEST_F(GAP_LowEnergyConnectionManagerTest, ConnectSingleDeviceTimeout) {
   EXPECT_EQ(RemoteDevice::ConnectionState::kInitializing,
             dev->connection_state());
 
-  RunMessageLoop();
+  // Make sure the first HCI transaction completes before advancing the fake
+  // clock.
+  RunUntilIdle();
+
+  AdvanceTimeBy(zx::msec(kTestRequestTimeoutMs));
+  RunUntilIdle();
 
   EXPECT_FALSE(status);
-  EXPECT_EQ(common::HostError::kTimedOut, status.error());
+  EXPECT_EQ(common::HostError::kTimedOut, status.error()) << status.ToString();
   EXPECT_EQ(RemoteDevice::ConnectionState::kNotConnected,
             dev->connection_state());
 }
@@ -772,8 +776,7 @@ TEST_F(GAP_LowEnergyConnectionManagerTest, L2CAPLEConnectionParameterUpdate) {
     fake_dev_cb_called = true;
     actual = params;
   };
-  test_device()->SetLEConnectionParametersCallback(
-      fake_dev_cb, message_loop()->task_runner());
+  test_device()->SetLEConnectionParametersCallback(fake_dev_cb, dispatcher());
 
   auto conn_params_cb = [&conn_params_cb_called, &conn_ref](const auto& dev) {
     EXPECT_EQ(conn_ref->device_identifier(), dev.identifier());

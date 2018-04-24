@@ -15,10 +15,13 @@ import (
 )
 
 const (
-	ProxySuffix   = "Interface"
-	StubSuffix    = "Stub"
-	RequestSuffix = "InterfaceRequest"
-	TagSuffix     = "Tag"
+	ProxySuffix       = "Interface"
+	StubSuffix        = "Stub"
+	EventProxySuffix  = "EventProxy"
+	ServiceSuffix     = "Service"
+	ServiceNameSuffix = "Name"
+	RequestSuffix     = "InterfaceRequest"
+	TagSuffix         = "Tag"
 
 	MessageHeaderSize = 16
 )
@@ -192,11 +195,20 @@ type Interface struct {
 	// StubName is the name of the stub type for this FIDL interface.
 	StubName string
 
+	// EventProxyName is the name of the event proxy type for this FIDL interface.
+	EventProxyName string
+
 	// RequestName is the name of the interface request type for this FIDL interface.
 	RequestName string
 
-	// ServiceName is the service name for this FIDL interface.
-	ServiceName string
+	// ServerName is the name of the server type for this FIDL interface.
+	ServerName string
+
+	// ServiceNameString is the string service name for this FIDL interface.
+	ServiceNameString string
+
+	// ServiceNameConstant is the name of the service name constant for this FIDL interface.
+	ServiceNameConstant string
 
 	// Methods is a list of methods for this FIDL interface.
 	Methods []Method
@@ -215,6 +227,14 @@ type Method struct {
 
 	// Response represents an optional golang struct containing the response parameters.
 	Response *Struct
+
+	// EventExpectName is the name of the method for the client-side event proxy.
+	// Only relevant if the method is an event.
+	EventExpectName string
+
+	// IsEvent is set to true if the method is an event. In this case, Response will always be
+	// non-nil while Request will always be nil. EventExpectName will also be non-empty.
+	IsEvent bool
 }
 
 // Root is the root of the golang backend IR structure.
@@ -259,6 +279,9 @@ type compiler struct {
 
 	// decls contains all top-level declarations for the FIDL source.
 	decls types.DeclMap
+
+	// library is the name of the current library
+	library types.LibraryIdentifier
 }
 
 // Contains the full set of reserved golang keywords, in addition to a set of
@@ -341,7 +364,7 @@ var handleTypes = map[types.HandleSubtype]string{
 	types.Vmar:    "_zx.VMAR",
 }
 
-func exportIdentifier(name types.EncodedIdentifier) types.CompoundIdentifier {
+func exportIdentifier(name types.EncodedCompoundIdentifier) types.CompoundIdentifier {
 	ci := types.ParseCompoundIdentifier(name)
 	ci.Name = types.Identifier(common.ToUpperCamelCase(string(ci.Name)))
 	return ci
@@ -361,6 +384,18 @@ func changeIfReserved(val types.Identifier, ext string) string {
 	return str
 }
 
+func (c *compiler) inExternalLibrary(ci types.CompoundIdentifier) bool {
+	if len(ci.Library) != len(c.library) {
+		return true
+	}
+	for i, part := range c.library {
+		if ci.Library[i] != part {
+			return true
+		}
+	}
+	return false
+}
+
 func (_ *compiler) compileIdentifier(id types.Identifier, export bool, ext string) string {
 	str := string(id)
 	if export {
@@ -371,11 +406,12 @@ func (_ *compiler) compileIdentifier(id types.Identifier, export bool, ext strin
 	return changeIfReserved(types.Identifier(str), ext)
 }
 
-func (_ *compiler) compileCompoundIdentifier(ei types.EncodedIdentifier, ext string) string {
-	ci := exportIdentifier(ei)
+func (c *compiler) compileCompoundIdentifier(eci types.EncodedCompoundIdentifier, ext string) string {
+	ci := exportIdentifier(eci)
 	strs := []string{}
-	if ci.Library != "" {
-		strs = append(strs, changeIfReserved(ci.Library, "")+".")
+	if c.inExternalLibrary(ci) {
+		// TODO(FIDL-159) handle more than one library name component
+		strs = append(strs, changeIfReserved(ci.Library[0], "")+".")
 	}
 	strs = append(strs, changeIfReserved(ci.Name, ext))
 	return strings.Join(strs, "")
@@ -572,11 +608,13 @@ func (c *compiler) compileParameter(p types.Parameter) StructMember {
 	}
 }
 
-func (c *compiler) compileMethod(ifaceName types.EncodedIdentifier, val types.Method) Method {
+func (c *compiler) compileMethod(ifaceName types.EncodedCompoundIdentifier, val types.Method) Method {
 	methodName := c.compileIdentifier(val.Name, true, "")
 	r := Method{
-		Name:    methodName,
-		Ordinal: val.Ordinal,
+		Name:            methodName,
+		Ordinal:         val.Ordinal,
+		EventExpectName: "Expect" + methodName,
+		IsEvent:         !val.HasRequest && val.HasResponse,
 	}
 	if val.HasRequest {
 		req := Struct{
@@ -607,11 +645,14 @@ func (c *compiler) compileMethod(ifaceName types.EncodedIdentifier, val types.Me
 
 func (c *compiler) compileInterface(val types.Interface) Interface {
 	r := Interface{
-		Name:        c.compileCompoundIdentifier(val.Name, ""),
-		ProxyName:   c.compileCompoundIdentifier(val.Name, ProxySuffix),
-		StubName:    c.compileCompoundIdentifier(val.Name, StubSuffix),
-		RequestName: c.compileCompoundIdentifier(val.Name, RequestSuffix),
-		ServiceName: val.GetAttribute("ServiceName"),
+		Name:                c.compileCompoundIdentifier(val.Name, ""),
+		ProxyName:           c.compileCompoundIdentifier(val.Name, ProxySuffix),
+		StubName:            c.compileCompoundIdentifier(val.Name, StubSuffix),
+		RequestName:         c.compileCompoundIdentifier(val.Name, RequestSuffix),
+		EventProxyName:      c.compileCompoundIdentifier(val.Name, EventProxySuffix),
+		ServerName:          c.compileCompoundIdentifier(val.Name, ServiceSuffix),
+		ServiceNameConstant: c.compileCompoundIdentifier(val.Name, ServiceNameSuffix),
+		ServiceNameString:   val.GetAttribute("ServiceName"),
 	}
 	for _, v := range val.Methods {
 		r.Methods = append(r.Methods, c.compileMethod(val.Name, v))
@@ -621,7 +662,8 @@ func (c *compiler) compileInterface(val types.Interface) Interface {
 
 // Compile translates parsed FIDL IR into golang backend IR for code generation.
 func Compile(fidlData types.Root) Root {
-	c := compiler{decls: fidlData.Decls}
+	libraryName := types.ParseLibraryName(fidlData.Name)
+	c := compiler{decls: fidlData.Decls, library: libraryName}
 	r := Root{Name: string(fidlData.Name)}
 	for _, v := range fidlData.Consts {
 		r.Consts = append(r.Consts, c.compileConst(v))

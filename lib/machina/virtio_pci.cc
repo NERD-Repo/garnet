@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include <fbl/auto_lock.h>
+#include <trace/event.h>
 #include <virtio/virtio_ids.h>
 
 #include "garnet/lib/machina/bits.h"
@@ -276,8 +277,14 @@ zx_status_t VirtioPci::CommonCfgWrite(uint64_t addr, const IoValue& value) {
       if (value.access_size != 1)
         return ZX_ERR_IO_DATA_INTEGRITY;
 
-      fbl::AutoLock lock(&device_->mutex_);
-      device_->status_ = value.u8;
+
+      {
+        fbl::AutoLock lock(&device_->mutex_);
+        device_->status_ = value.u8;
+      }
+      if (value.u8 & VIRTIO_STATUS_DRIVER_OK) {
+        device_->OnDeviceReady();
+      }
       return ZX_OK;
     }
     case VIRTIO_PCI_COMMON_CFG_QUEUE_SEL: {
@@ -466,6 +473,8 @@ VirtioPci::VirtioPci(VirtioDevice* device)
 zx_status_t VirtioPci::ReadBar(uint8_t bar,
                                uint64_t offset,
                                IoValue* value) const {
+  TRACE_DURATION("machina", "pci_readbar", "bar", bar, "offset", offset,
+                 "access_size", value->access_size);
   switch (bar) {
     case kVirtioPciBar:
       return ConfigBarRead(offset, value);
@@ -477,6 +486,8 @@ zx_status_t VirtioPci::ReadBar(uint8_t bar,
 zx_status_t VirtioPci::WriteBar(uint8_t bar,
                                 uint64_t offset,
                                 const IoValue& value) {
+  TRACE_DURATION("machina", "pci_writebar", "bar", bar, "offset", offset,
+                 "access_size", value.access_size);
   switch (bar) {
     case kVirtioPciBar:
       return ConfigBarWrite(offset, value);

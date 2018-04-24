@@ -26,8 +26,8 @@ union ResourceArgs {
   ShapeNodeArgs shape_node;
   ClipNodeArgs clip_node;
   EntityNodeArgs entity_node;
-  SpaceNodeArgs space_node;
-  SpaceHolderNodeArgs space_holder_node;
+  SpaceArgs space_node;
+  SpaceHolderArgs space_holder_node;
 
   // Layers.
   DisplayCompositorArgs display_compositor;
@@ -84,6 +84,7 @@ struct BufferArgs {
 // A DisplayCompositor draws its attached |LayerStack| into an image that is
 // presented on a display.
 struct DisplayCompositorArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -101,6 +102,7 @@ struct ImagePipeCompositorArgs {
 // Supported commands:
 // - AddLayer
 struct LayerStackArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -117,6 +119,7 @@ struct LayerStackArgs {
 //
 // A layer is not drawn unless it has a camera, texture, or color.
 struct LayerArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -126,6 +129,7 @@ struct LayerArgs {
 //   - Add/RemoveLight
 //   - AddChild
 struct SceneArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -155,6 +159,7 @@ struct StereoCameraArgs {
 //   - SetCamera
 //   - SetRendererParam
 struct RendererArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -165,6 +170,7 @@ struct RendererArgs {
 // (public/lib/ui/gfx/fidl/commands.fidl):
 //   - SetLightColor
 struct AmbientLightArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -180,6 +186,7 @@ struct AmbientLightArgs {
 //   - SetLightColor
 //   - SetDirection
 struct DirectionalLightArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -191,6 +198,7 @@ struct DirectionalLightArgs {
 //   The texture can be an Image or ImagePipe.
 // SetColorCommand will set the color.
 struct MaterialArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 dummy = 0;
 };
 
@@ -200,7 +208,10 @@ struct VariableArgs {
 };
 
 // Describes an exported resource that is to be imported by an
-// ImportResourceCommand. NOTE: Currently just an enum of importable resource
-// types, but may later be expanded to express concepts like "meshes with a
-// particular vertex format".
-enum ImportSpec { NODE = 0; };
+// ImportResourceCommand.
+//
+// NOTE: Currently just an enum of importable resource types, but may later be
+// expanded to express concepts like "meshes with a particular vertex format".
+enum ImportSpec {
+  NODE = 0;
+};

@@ -37,6 +37,9 @@
 
 #include "sdio.h"
 
+#include <sync/completion.h>
+#include <threads.h>
+
 #include "brcm_hw_ids.h"
 #include "brcmu_utils.h"
 #include "brcmu_wifi.h"
@@ -50,8 +53,8 @@
 #include "linuxisms.h"
 #include "soc.h"
 
-#define DCMD_RESP_TIMEOUT msecs_to_jiffies(2500)
-#define CTL_DONE_TIMEOUT msecs_to_jiffies(2500)
+#define DCMD_RESP_TIMEOUT_MSEC (2500)
+#define CTL_DONE_TIMEOUT_MSEC (2500)
 
 #ifdef DEBUG
 
@@ -105,6 +108,7 @@ struct rte_console {
 
 #include "bus.h"
 #include "debug.h"
+#include "device.h"
 #include "tracepoint.h"
 
 #define TXQLEN 2048         /* bulk tx queue length */
@@ -308,8 +312,8 @@ struct rte_console {
  * for HT availability, it could take a couple hundred ms more, so
  * max out at a 1 second (1000000us).
  */
-#undef PMU_MAX_TRANSITION_DLY
-#define PMU_MAX_TRANSITION_DLY 1000000
+#undef PMU_MAX_TRANSITION_DLY_USEC
+#define PMU_MAX_TRANSITION_DLY_USEC 1000000
 
 /* Value for ChipClockCSR during initial setup */
 #define BRCMF_INIT_CLKCTL1 (SBSDIO_FORCE_HW_CLKREQ_OFF | SBSDIO_ALP_AVAIL_REQ)
@@ -321,7 +325,7 @@ struct rte_console {
 #define BRCMF_IDLE_INTERVAL 1
 
 #define KSO_WAIT_US 50
-#define MAX_KSO_ATTEMPTS (PMU_MAX_TRANSITION_DLY / KSO_WAIT_US)
+#define MAX_KSO_ATTEMPTS (PMU_MAX_TRANSITION_DLY_USEC / KSO_WAIT_US)
 #define BRCMF_SDIO_MAX_ACCESS_ERRORS 5
 
 /*
@@ -475,7 +479,7 @@ struct brcmf_sdio {
     uint8_t* rxctl;             /* Aligned pointer into rxbuf */
     uint8_t* rxctl_orig;        /* pointer for freeing rxctl */
     uint rxlen;            /* Length of valid data in buffer */
-    spinlock_t rxctl_lock; /* protection lock for ctrl frame resources */
+    //spinlock_t rxctl_lock; /* protection lock for ctrl frame resources */
 
     uint8_t sdpcm_ver; /* Bus protocol reported by dongle */
 
@@ -505,12 +509,12 @@ struct brcmf_sdio {
     bool ctrl_frame_stat;
     zx_status_t ctrl_frame_err;
 
-    spinlock_t txq_lock; /* protect bus->txq */
+    // spinlock_t txq_lock; /* protect bus->txq */
     wait_queue_head_t ctrl_wait;
     wait_queue_head_t dcmd_resp_wait;
 
     struct timer_list timer;
-    struct completion watchdog_wait;
+    completion_t watchdog_wait;
     struct task_struct* watchdog_tsk;
     bool wd_active;
 
@@ -691,7 +695,7 @@ static zx_status_t brcmf_sdio_kso_control(struct brcmf_sdio* bus, bool on) {
             break;
         }
 
-        udelay(KSO_WAIT_US);
+        usleep(KSO_WAIT_US);
         brcmf_sdiod_writeb(bus->sdiodev, SBSDIO_FUNC1_SLEEPCSR, wr_val, &err);
 
     } while (try_cnt++ < MAX_KSO_ATTEMPTS);
@@ -713,7 +717,7 @@ static zx_status_t brcmf_sdio_kso_control(struct brcmf_sdio* bus, bool on) {
 static zx_status_t brcmf_sdio_htclk(struct brcmf_sdio* bus, bool on, bool pendok) {
     zx_status_t err;
     uint8_t clkctl, clkreq, devctl;
-    unsigned long timeout;
+    zx_time_t timeout;
 
     brcmf_dbg(SDIO, "Enter\n");
 
@@ -764,10 +768,10 @@ static zx_status_t brcmf_sdio_htclk(struct brcmf_sdio* bus, bool on, bool pendok
         }
 
         /* Otherwise, wait here (polling) for HT Avail */
-        timeout = jiffies + msecs_to_jiffies(PMU_MAX_TRANSITION_DLY / 1000);
+        timeout = zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_USEC(PMU_MAX_TRANSITION_DLY_USEC);
         while (!SBSDIO_CLKAV(clkctl, bus->alp_only)) {
             clkctl = brcmf_sdiod_readb(bus->sdiodev, SBSDIO_FUNC1_CHIPCLKCSR, &err);
-            if (time_after(jiffies, timeout)) {
+            if (zx_clock_get(ZX_CLOCK_MONOTONIC) > timeout) {
                 break;
             } else {
                 usleep_range(5000, 10000);
@@ -778,7 +782,7 @@ static zx_status_t brcmf_sdio_htclk(struct brcmf_sdio* bus, bool on, bool pendok
             return ZX_ERR_IO_REFUSED;
         }
         if (!SBSDIO_CLKAV(clkctl, bus->alp_only)) {
-            brcmf_err("HT Avail timeout (%d): clkctl 0x%02x\n", PMU_MAX_TRANSITION_DLY, clkctl);
+            brcmf_err("HT Avail timeout (%d): clkctl 0x%02x\n", PMU_MAX_TRANSITION_DLY_USEC, clkctl);
             return ZX_ERR_SHOULD_WAIT;
         }
 
@@ -1595,7 +1599,7 @@ static uint8_t brcmf_sdio_rxglom(struct brcmf_sdio* bus, uint8_t rxseq) {
 
 static int brcmf_sdio_dcmd_resp_wait(struct brcmf_sdio* bus, uint* condition, bool* pending) {
     DECLARE_WAITQUEUE(wait, current);
-    int timeout = DCMD_RESP_TIMEOUT;
+    int timeout = DCMD_RESP_TIMEOUT_MSEC;
 
     /* Wait until control frame is available */
     add_wait_queue(&bus->dcmd_resp_wait, &wait);
@@ -1694,17 +1698,20 @@ gotpkt:
     brcmf_dbg_hex_dump(BRCMF_BYTES_ON() && BRCMF_CTL_ON(), buf, len, "RxCtrl:\n");
 
     /* Point to valid data and indicate its length */
-    spin_lock_bh(&bus->rxctl_lock);
+    //spin_lock_bh(&bus->rxctl_lock);
+    pthread_mutex_lock(&irq_callback_lock);
     if (bus->rxctl) {
         brcmf_err("last control frame is being processed.\n");
-        spin_unlock_bh(&bus->rxctl_lock);
+        //spin_unlock_bh(&bus->rxctl_lock);
+        pthread_mutex_unlock(&irq_callback_lock);
         vfree(buf);
         goto done;
     }
     bus->rxctl = buf + doff;
     bus->rxctl_orig = buf;
     bus->rxlen = len - doff;
-    spin_unlock_bh(&bus->rxctl_lock);
+    //spin_unlock_bh(&bus->rxctl_lock);
+    pthread_mutex_unlock(&irq_callback_lock);
 
 done:
     /* Awake any waiters */
@@ -2203,7 +2210,8 @@ static uint brcmf_sdio_sendfromq(struct brcmf_sdio* bus, uint maxframes) {
         }
         pkt_num = min_t(uint32_t, pkt_num, brcmu_pktq_mlen(&bus->txq, ~bus->flowcontrol));
         __skb_queue_head_init(&pktq);
-        spin_lock_bh(&bus->txq_lock);
+        //spin_lock_bh(&bus->txq_lock);
+        pthread_mutex_lock(&irq_callback_lock);
         for (i = 0; i < pkt_num; i++) {
             pkt = brcmu_pktq_mdeq(&bus->txq, tx_prec_map, &prec_out);
             if (pkt == NULL) {
@@ -2211,7 +2219,8 @@ static uint brcmf_sdio_sendfromq(struct brcmf_sdio* bus, uint maxframes) {
             }
             __skb_queue_tail(&pktq, pkt);
         }
-        spin_unlock_bh(&bus->txq_lock);
+        //spin_unlock_bh(&bus->txq_lock);
+        pthread_mutex_unlock(&irq_callback_lock);
         if (i == 0) {
             break;
         }
@@ -2364,9 +2373,11 @@ static void brcmf_sdio_bus_stop(struct brcmf_device* dev) {
     brcmf_sdio_free_glom(bus);
 
     /* Clear rx control and wake any waiters */
-    spin_lock_bh(&bus->rxctl_lock);
+    //spin_lock_bh(&bus->rxctl_lock);
+    pthread_mutex_lock(&irq_callback_lock);
     bus->rxlen = 0;
-    spin_unlock_bh(&bus->rxctl_lock);
+    //spin_unlock_bh(&bus->rxctl_lock);
+    pthread_mutex_unlock(&irq_callback_lock);
     brcmf_sdio_dcmd_resp_wake(bus);
 
     /* Reset some F2 state stuff */
@@ -2376,16 +2387,17 @@ static void brcmf_sdio_bus_stop(struct brcmf_device* dev) {
 
 static inline void brcmf_sdio_clrintr(struct brcmf_sdio* bus) {
     struct brcmf_sdio_dev* sdiodev;
-    unsigned long flags;
 
     sdiodev = bus->sdiodev;
     if (sdiodev->oob_irq_requested) {
-        spin_lock_irqsave(&sdiodev->irq_en_lock, flags);
+        //spin_lock_irqsave(&sdiodev->irq_en_lock, flags);
+        pthread_mutex_lock(&irq_callback_lock);
         if (!sdiodev->irq_en && !atomic_read(&bus->ipend)) {
             enable_irq(sdiodev->settings->bus.sdio.oob_irq_nr);
             sdiodev->irq_en = true;
         }
-        spin_unlock_irqrestore(&sdiodev->irq_en_lock, flags);
+        //spin_unlock_irqrestore(&sdiodev->irq_en_lock, flags);
+        pthread_mutex_unlock(&irq_callback_lock);
     }
 }
 
@@ -2644,7 +2656,8 @@ static zx_status_t brcmf_sdio_bus_txdata(struct brcmf_device* dev, struct sk_buf
     bus->sdcnt.fcqueued++;
 
     /* Priority based enq */
-    spin_lock_bh(&bus->txq_lock);
+    //spin_lock_bh(&bus->txq_lock);
+    pthread_mutex_lock(&irq_callback_lock);
     /* reset bus_flags in packet cb */
     *(uint16_t*)(pkt->cb) = 0;
     if (!brcmf_sdio_prec_enq(&bus->txq, pkt, prec)) {
@@ -2659,7 +2672,9 @@ static zx_status_t brcmf_sdio_bus_txdata(struct brcmf_device* dev, struct sk_buf
         bus->txoff = true;
         brcmf_proto_bcdc_txflowblock(dev, true);
     }
-    spin_unlock_bh(&bus->txq_lock);
+    //spin_unlock_bh(&bus->txq_lock);
+    pthread_mutex_unlock(&irq_callback_lock);
+
 
 #ifdef DEBUG
     if (pktq_plen(&bus->txq, prec) > qcount[prec]) {
@@ -2777,7 +2792,7 @@ static zx_status_t brcmf_sdio_bus_txctl(struct brcmf_device* dev, unsigned char*
     bus->ctrl_frame_stat = true;
 
     brcmf_sdio_trigger_dpc(bus);
-    wait_event_interruptible_timeout(bus->ctrl_wait, !bus->ctrl_frame_stat, CTL_DONE_TIMEOUT);
+    wait_event_interruptible_timeout(bus->ctrl_wait, !bus->ctrl_frame_stat, CTL_DONE_TIMEOUT_MSEC);
     ret = ZX_OK;
     if (bus->ctrl_frame_stat) {
         sdio_claim_host(bus->sdiodev->func1);
@@ -3053,14 +3068,16 @@ static zx_status_t brcmf_sdio_bus_rxctl(struct brcmf_device* dev, unsigned char*
     /* Wait until control frame is available */
     timeleft = brcmf_sdio_dcmd_resp_wait(bus, &bus->rxlen, &pending);
 
-    spin_lock_bh(&bus->rxctl_lock);
+    //spin_lock_bh(&bus->rxctl_lock);
+    pthread_mutex_lock(&irq_callback_lock);
     rxlen = bus->rxlen;
     memcpy(msg, bus->rxctl, min(msglen, rxlen));
     bus->rxctl = NULL;
     buf = bus->rxctl_orig;
     bus->rxctl_orig = NULL;
     bus->rxlen = 0;
-    spin_unlock_bh(&bus->rxctl_lock);
+    //spin_unlock_bh(&bus->rxctl_lock);
+    pthread_mutex_unlock(&irq_callback_lock);
     vfree(buf);
 
     if (rxlen) {
@@ -3127,7 +3144,7 @@ static bool brcmf_sdio_verifymemory(struct brcmf_sdio_dev* sdiodev, uint32_t ram
         address += len;
     }
 
-    kfree(ram_cmp);
+    free(ram_cmp);
 
     return ret;
 }
@@ -3442,7 +3459,7 @@ static void brcmf_sdio_bus_watchdog(struct brcmf_sdio* bus) {
 #ifdef DEBUG
     /* Poll for console output periodically */
     if (bus->sdiodev->state == BRCMF_SDIOD_DATA && BRCMF_FWCON_ON() && bus->console_interval != 0) {
-        bus->console.count += jiffies_to_msecs(BRCMF_WD_POLL);
+        bus->console.count += BRCMF_WD_POLL_MSEC;
         if (bus->console.count >= bus->console_interval) {
             bus->console.count -= bus->console_interval;
             sdio_claim_host(bus->sdiodev->func1);
@@ -3588,7 +3605,7 @@ static zx_status_t brcmf_sdio_buscoreprep(void* ctx) {
 
     SPINWAIT(((clkval = brcmf_sdiod_readb(sdiodev, SBSDIO_FUNC1_CHIPCLKCSR, NULL)),
               !SBSDIO_ALPAV(clkval)),
-             PMU_MAX_TRANSITION_DLY);
+             PMU_MAX_TRANSITION_DLY_USEC);
 
     if (!SBSDIO_ALPAV(clkval)) {
         brcmf_err("timeout on ALPAV wait, clkval 0x%02x\n", clkval);
@@ -3597,7 +3614,7 @@ static zx_status_t brcmf_sdio_buscoreprep(void* ctx) {
 
     clkset = SBSDIO_FORCE_HW_CLKREQ_OFF | SBSDIO_FORCE_ALP;
     brcmf_sdiod_writeb(sdiodev, SBSDIO_FUNC1_CHIPCLKCSR, clkset, &err);
-    udelay(65);
+    usleep(65);
 
     /* Also, disable the extra SDIO pull-ups */
     brcmf_sdiod_writeb(sdiodev, SBSDIO_FUNC1_SDIOPULLUP, 0, NULL);
@@ -3818,14 +3835,14 @@ static zx_status_t brcmf_sdio_watchdog_thread(void* data) {
             break;
         }
         brcmf_sdiod_freezer_uncount(bus->sdiodev);
-        wait = wait_for_completion_interruptible(&bus->watchdog_wait);
+        wait = completion_wait(&bus->watchdog_wait, ZX_TIME_INFINITE);
         brcmf_sdiod_freezer_count(bus->sdiodev);
         brcmf_sdiod_try_freeze(bus->sdiodev);
         if (!wait) {
             brcmf_sdio_bus_watchdog(bus);
             /* Count the tick for reference */
             bus->sdcnt.tickcnt++;
-            reinit_completion(&bus->watchdog_wait);
+            completion_reset(&bus->watchdog_wait);
         } else {
             break;
         }
@@ -3834,15 +3851,17 @@ static zx_status_t brcmf_sdio_watchdog_thread(void* data) {
 }
 
 static void brcmf_sdio_watchdog(struct timer_list* t) {
+    pthread_mutex_lock(&irq_callback_lock);
     struct brcmf_sdio* bus = from_timer(bus, t, timer);
 
     if (bus->watchdog_tsk) {
-        complete(&bus->watchdog_wait);
+        completion_signal(&bus->watchdog_wait);
         /* Reschedule the watchdog */
         if (bus->wd_active) {
-            mod_timer(&bus->timer, jiffies + BRCMF_WD_POLL);
+            mod_timer(&bus->timer, zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_MSEC(BRCMF_WD_POLL_MSEC));
         }
     }
+    pthread_mutex_unlock(&irq_callback_lock);
 }
 
 static zx_status_t brcmf_sdio_get_fwname(struct brcmf_device* dev, uint32_t chip, uint32_t chiprev,
@@ -4020,15 +4039,15 @@ struct brcmf_sdio* brcmf_sdio_probe(struct brcmf_sdio_dev* sdiodev) {
         goto fail;
     }
 
-    spin_lock_init(&bus->rxctl_lock);
-    spin_lock_init(&bus->txq_lock);
+    //spin_lock_init(&bus->rxctl_lock);
+    //spin_lock_init(&bus->txq_lock);
     init_waitqueue_head(&bus->ctrl_wait);
     init_waitqueue_head(&bus->dcmd_resp_wait);
 
     /* Set up the watchdog timer */
     timer_setup(&bus->timer, brcmf_sdio_watchdog, 0);
     /* Initialize watchdog thread */
-    init_completion(&bus->watchdog_wait);
+    bus->watchdog_wait = COMPLETION_INIT;
     ret = kthread_run(brcmf_sdio_watchdog_thread, bus, "brcmf_wdog/%s",
                       dev_name(&sdiodev->func1->dev), &bus->watchdog_tsk);
     if (ret != ZX_OK) {
@@ -4150,9 +4169,9 @@ void brcmf_sdio_remove(struct brcmf_sdio* bus) {
             brcmf_release_module_param(bus->sdiodev->settings);
         }
 
-        kfree(bus->rxbuf);
-        kfree(bus->hdrbuf);
-        kfree(bus);
+        free(bus->rxbuf);
+        free(bus->hdrbuf);
+        free(bus);
     }
 
     brcmf_dbg(TRACE, "Disconnected\n");
@@ -4176,12 +4195,12 @@ void brcmf_sdio_wd_timer(struct brcmf_sdio* bus, bool active) {
             /* Create timer again when watchdog period is
                dynamically changed or in the first instance
              */
-            bus->timer.expires = jiffies + BRCMF_WD_POLL;
+            bus->timer.expires = zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_MSEC(BRCMF_WD_POLL_MSEC);
             add_timer(&bus->timer);
             bus->wd_active = true;
         } else {
             /* Re arm the timer, at last watchdog period */
-            mod_timer(&bus->timer, jiffies + BRCMF_WD_POLL);
+            mod_timer(&bus->timer, zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_MSEC(BRCMF_WD_POLL_MSEC));
         }
     }
 }

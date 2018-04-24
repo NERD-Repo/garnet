@@ -8,7 +8,7 @@ import (
 	"log"
 
 	"app/context"
-	"fidl/bindings2"
+	"fidl/bindings"
 
 	"syscall/zx"
 
@@ -23,15 +23,14 @@ func (echo *echoImpl) EchoString(inValue *string) (outValue *string, err error) 
 }
 
 func main() {
-	echoService := &bindings2.BindingSet{}
+	echoService := &echo2.EchoService{}
 	c := context.CreateFromStartupInfo()
 	c.OutgoingService.AddService(echo2.EchoName, func(c zx.Channel) error {
-		return echoService.Add(&echo2.EchoStub{
-			Impl: &echoImpl{},
-		}, c)
+		_, err := echoService.Add(&echoImpl{}, c, nil)
+		return err
 	})
 	c.Serve()
-	go bindings2.Serve()
+	go bindings.Serve()
 
 	select {}
 }

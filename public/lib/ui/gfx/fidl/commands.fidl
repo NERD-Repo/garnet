@@ -5,7 +5,7 @@
 library gfx;
 
 // Commands that are used to modify the state of a |Session|.
-// TODO(MZ-237): reorder Command definitions to match the order in this union.
+// TODO(SCN-237): reorder Command definitions to match the order in this union.
 union Command {
   CreateResourceCommand create_resource;
   ReleaseResourceCommand release_resource;
@@ -264,8 +264,7 @@ struct SetAnchorCommand {
 // Constraints:
 // - |id| refs a resizeable object.
 // - some objects that support this command may have additional constraints
-// (e.g.
-//   in some cases |depth| must be zero).
+//   (e.g. in some cases |depth| must be zero).
 struct SetSizeCommand {
   uint32 id;
   Vector2Value value;
@@ -345,7 +344,7 @@ struct SetHitTestBehaviorCommand {
   HitTestBehavior hit_test_behavior;
 };
 
-// Sets the properties for a SpaceHolder node's attached Space.
+// Sets the properties for a SpaceHolder's attached Space.
 //
 // Constraints:
 // - |space_holder_id| refs a |SpaceHolder|.
@@ -568,8 +567,9 @@ struct SetColorCommand {
 //   - the 3D position occupies bytes 0-11 (3 dimensions * 4 bytes per float32).
 //   - the UV coords occupy bytes 12-19, since no surface normal is provided.
 enum MeshIndexFormat {
-  // TODO(MZ-275): only kUint32 is currently supported.
-  kUint16 = 1; kUint32 = 2;
+  // TODO(SCN-275): only kUint32 is currently supported.
+  kUint16 = 1;
+  kUint32 = 2;
 };
 struct MeshVertexFormat {
   // kVector2 or kVector3.

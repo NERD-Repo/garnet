@@ -13,11 +13,11 @@ State,
   {{ $method.CamelName }}: FnMut(&mut State,
   {{- range $request := $method.Request -}} {{ $request.Type -}},{{- end -}}
   {{- if $method.HasResponse -}}
-  {{- $interface.Name -}}{{- $method.CamelName -}}Response
+  {{- $interface.Name -}}{{- $method.CamelName -}}Responder
   {{- else -}}
   {{ $interface.Name -}}Controller_ask_cramertj_to_fix_naming_now
   {{- end }}) -> {{ $method.CamelName }}Fut,
-  {{ $method.CamelName }}Fut: Future<Item = (), Error = Never>,
+  {{ $method.CamelName }}Fut: Future<Item = (), Error = Never> + Send,
   {{- end }}
 {{- end -}}
 {{- end -}}
@@ -31,6 +31,32 @@ pub struct {{ $interface.Name }}Marker;
 impl fidl::endpoints2::ServiceMarker for {{ $interface.Name }}Marker {
   type Proxy = {{ $interface.Name }}Proxy;
   const NAME: &'static str = "{{ $interface.ServiceName }}";
+}
+
+pub trait {{ $interface.Name }}ProxyInterface: Send + Sync {
+  {{- range $method := $interface.Methods }}
+  {{- if $method.HasResponse }}
+  type {{ $method.CamelName }}ResponseFut: Future<Item = (
+   {{- range $index, $response := $method.Response -}}
+   {{- if (eq $index 0) -}} {{ $response.Type }}
+   {{- else -}}, {{ $response.Type }} {{- end -}}
+   {{- end -}}
+  ), Error = fidl::Error> + Send;
+  {{- end -}}
+
+  {{- if $method.HasRequest }}
+  fn {{ $method.Name }}(&self,
+   {{- range $request := $method.Request }}
+   {{ $request.Name }}: &mut {{ $request.Type }},
+   {{- end }}
+  )
+  {{- if $method.HasResponse -}}
+  -> Self::{{ $method.CamelName }}ResponseFut;
+  {{- else -}}
+  -> Result<(), fidl::Error>;
+  {{- end -}}
+  {{- end -}}
+  {{- end }}
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +88,38 @@ impl {{ $interface.Name }}Proxy {
    {{- else -}}, {{ $response.Type }} {{- end -}}
    {{- end -}}
   )> {
+  {{- else -}}
+  -> Result<(), fidl::Error> {
+  {{- end }}
+	{{ $interface.Name }}ProxyInterface::{{ $method.Name }}(self,
+	 {{- range $request := $method.Request }}
+	 {{ $request.Name }},
+	 {{- end }}
+    )
+  }
+  {{- end -}}
+  {{- end }}
+}
+
+impl {{ $interface.Name}}ProxyInterface for {{ $interface.Name}}Proxy {
+  {{- range $method := $interface.Methods }}
+  {{- if $method.HasResponse }}
+  type {{ $method.CamelName }}ResponseFut = fidl::client2::QueryResponseFut<(
+   {{- range $index, $response := $method.Response -}}
+   {{- if (eq $index 0) -}} {{ $response.Type }}
+   {{- else -}}, {{ $response.Type }} {{- end -}}
+   {{- end -}}
+  )>;
+  {{- end -}}
+
+  {{- if $method.HasRequest }}
+  fn {{ $method.Name }}(&self,
+   {{- range $request := $method.Request }}
+   mut {{ $request.Name }}: &mut {{ $request.Type }},
+   {{- end }}
+  )
+  {{- if $method.HasResponse -}}
+  -> Self::{{ $method.CamelName}}ResponseFut {
    self.client.send_query(&mut (
   {{- else -}}
   -> Result<(), fidl::Error> {
@@ -80,13 +138,13 @@ impl {{ $interface.Name }}Proxy {
 pub trait {{ $interface.Name }} {
   {{- range $method := $interface.Methods }}
   {{- if $method.HasRequest }}
-  type {{ $method.CamelName }}Fut: Future<Item = (), Error = Never>;
+  type {{ $method.CamelName }}Fut: Future<Item = (), Error = Never> + Send;
   fn {{ $method.Name }} (&mut self,
    {{- range $request := $method.Request }}
    {{ $request.Name }}: {{ $request.Type }},
    {{- end }}
    {{- if $method.HasResponse }}
-   response_chan: {{ $interface.Name }}{{ $method.CamelName }}Response,
+   response_chan: {{ $interface.Name }}{{ $method.CamelName }}Responder,
    {{- else }}
    controller: {{ $interface.Name }}Controller_ask_cramertj_to_fix_naming_now
    {{- end }}
@@ -149,7 +207,7 @@ impl<T: {{ $interface.Name }}> futures::Future for {{ $interface.Name }}Server<T
        }
       }
       Err(zx::Status::PEER_CLOSED) => {
-       // TODO(cramertj): propagate to on_closed handler rather than just stopping
+        return Ok(futures::Async::Ready(()));
       }
       Err(e) => return Err(fidl::Error::ServerRequestRead(e)),
     }
@@ -183,7 +241,7 @@ impl<T: {{ $interface.Name }}> futures::Future for {{ $interface.Name }}Server<T
         {{- end -}}
         {{- end -}}
         {{- if $method.HasResponse -}}
-        {{- $interface.Name -}}{{- $method.CamelName -}}Response {
+        {{- $interface.Name -}}{{- $method.CamelName -}}Responder {
           controller,
           tx_id: header.tx_id,
           channel: self.channel.clone(),
@@ -238,7 +296,7 @@ impl<
    {{ $request.Name }}: {{ $request.Type }},
    {{- end }}
    {{- if $method.HasResponse }}
-   response_chan: {{ $interface.Name }}{{ $method.CamelName}}Response
+   response_chan: {{ $interface.Name }}{{ $method.CamelName}}Responder
    {{- else }}
    response_chan: {{ $interface.Name }}Controller_ask_cramertj_to_fix_naming_now
    {{- end }}
@@ -264,13 +322,13 @@ pub struct {{ $interface.Name }}Controller_ask_cramertj_to_fix_naming_now {
 /* beginning of response types */
 {{- range $method := $interface.Methods }}
 {{- if $method.HasResponse }}
-pub struct {{ $interface.Name }}{{ $method.CamelName }}Response {
+pub struct {{ $interface.Name }}{{ $method.CamelName }}Responder {
   controller: {{ $interface.Name }}Controller_ask_cramertj_to_fix_naming_now,
   tx_id: u32,
   channel: ::std::sync::Arc<async::Channel>,
 }
 
-impl {{ $interface.Name }}{{ $method.CamelName }}Response {
+impl {{ $interface.Name }}{{ $method.CamelName }}Responder {
   // TODO(cramertj): add ability to kill channel (w/ optional epitaph), send events
   // (by delegating to self.controller)
 

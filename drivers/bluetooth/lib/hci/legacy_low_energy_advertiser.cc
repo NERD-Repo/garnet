@@ -9,7 +9,6 @@
 #include "garnet/drivers/bluetooth/lib/common/byte_buffer.h"
 #include "garnet/drivers/bluetooth/lib/hci/transport.h"
 #include "garnet/drivers/bluetooth/lib/hci/util.h"
-#include "lib/fsl/tasks/message_loop.h"
 
 namespace btlib {
 namespace hci {
@@ -120,7 +119,7 @@ uint16_t TimeslicesToMilliseconds(uint16_t timeslices) {
 LegacyLowEnergyAdvertiser::LegacyLowEnergyAdvertiser(fxl::RefPtr<Transport> hci)
     : hci_(hci), starting_(false), connect_callback_(nullptr) {
   hci_cmd_runner_ = std::make_unique<SequentialCommandRunner>(
-      fsl::MessageLoop::GetCurrent()->task_runner(), hci_);
+      async_get_default(), hci_);
 }
 
 LegacyLowEnergyAdvertiser::~LegacyLowEnergyAdvertiser() {
@@ -138,7 +137,7 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
     const ConnectionCallback& connect_callback,
     uint32_t interval_ms,
     bool anonymous,
-    const AdvertisingStatusCallback& callback) {
+    AdvertisingStatusCallback callback) {
   FXL_DCHECK(callback);
   FXL_DCHECK(address.type() != common::DeviceAddress::Type::kBREDR);
 
@@ -226,8 +225,9 @@ void LegacyLowEnergyAdvertiser::StartAdvertising(
   // Enable advertising.
   hci_cmd_runner_->QueueCommand(BuildEnablePacket(GenericEnableParam::kEnable));
 
-  hci_cmd_runner_->RunCommands([this, address, interval_slices, callback,
-                                connect_callback](Status status) {
+  hci_cmd_runner_->RunCommands([this, address, interval_slices,
+                                callback = std::move(callback),
+                                connect_callback](Status status) mutable {
     FXL_DCHECK(starting_);
     starting_ = false;
 

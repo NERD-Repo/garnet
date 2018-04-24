@@ -200,10 +200,11 @@ struct BoundingBox {
 
 // Represents the properties for a finite transform (sub)space.
 //
-// Extents specifies the bounding box for the Space itself.  Content contained
-// within the Space is clipped to this bounding box.
-// The insets specify the distances between the space's bounding box and that
-// of its parent Space.
+// |extents| specifies the bounding box for the Space itself.  Content
+// contained within the Space is clipped to this bounding box.
+//
+// |insetsfrom_min| and |insets_from_max| specify the distances between the
+// space's bounding box and that of its parent Space.
 //
 // The parent Space's bounding box extents can be defined as:
 //    { extents.min - inset_from_min, extents.max + inset_from_max }

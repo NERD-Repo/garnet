@@ -10,7 +10,6 @@
 #include <zircon/status.h>
 
 #include "garnet/drivers/bluetooth/lib/common/run_task_sync.h"
-#include "lib/fxl/functional/make_copyable.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/strings/string_printf.h"
 #include "slab_allocators.h"
@@ -36,6 +35,7 @@ ACLDataChannel::ACLDataChannel(Transport* transport,
       channel_wait_(this, channel_.get(), ZX_CHANNEL_READABLE),
       is_initialized_(false),
       event_handler_id_(0u),
+      io_dispatcher_(nullptr),
       rx_dispatcher_(nullptr),
       num_sent_packets_(0u),
       le_num_sent_packets_(0u) {
@@ -70,8 +70,8 @@ void ACLDataChannel::Initialize(const DataBufferInfo& bredr_buffer_info,
     FXL_LOG(INFO) << "hci: ACLDataChannel: started I/O handler";
   };
 
-  io_task_runner_ = transport_->io_task_runner();
-  common::RunTaskSync(setup_handler_task, io_task_runner_);
+  io_dispatcher_ = transport_->io_dispatcher();
+  common::RunTaskSync(setup_handler_task, io_dispatcher_);
 
   // TODO(jamuraa): return whether we successfully initialized?
   if (channel_wait_.object() == ZX_HANDLE_INVALID)
@@ -81,7 +81,7 @@ void ACLDataChannel::Initialize(const DataBufferInfo& bredr_buffer_info,
       kNumberOfCompletedPacketsEventCode,
       std::bind(&ACLDataChannel::NumberOfCompletedPacketsCallback, this,
                 std::placeholders::_1),
-      io_task_runner_);
+      io_dispatcher_);
   FXL_DCHECK(event_handler_id_);
 
   is_initialized_ = true;
@@ -97,7 +97,6 @@ void ACLDataChannel::ShutDown() {
   FXL_LOG(INFO) << "hci: ACLDataChannel: shutting down";
 
   auto handler_cleanup_task = [this] {
-    FXL_DCHECK(fsl::MessageLoop::GetCurrent());
     FXL_LOG(INFO) << "hci: ACLDataChannel: canceling I/O handler";
     zx_status_t status = channel_wait_.Cancel();
     if (status != ZX_OK) {
@@ -106,7 +105,7 @@ void ACLDataChannel::ShutDown() {
     }
   };
 
-  common::RunTaskSync(handler_cleanup_task, io_task_runner_);
+  common::RunTaskSync(handler_cleanup_task, io_dispatcher_);
 
   transport_->command_channel()->RemoveEventHandler(event_handler_id_);
 
@@ -117,7 +116,7 @@ void ACLDataChannel::ShutDown() {
     send_queue_.clear();
   }
 
-  io_task_runner_ = nullptr;
+  io_dispatcher_ = nullptr;
   event_handler_id_ = 0u;
   SetDataRxHandler(nullptr, nullptr);
 }
@@ -201,7 +200,7 @@ size_t ACLDataChannel::GetBufferMTU(Connection::LinkType ll_type) const {
 
 void ACLDataChannel::NumberOfCompletedPacketsCallback(
     const EventPacket& event) {
-  FXL_DCHECK(io_task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(async_get_default() == io_dispatcher_);
   FXL_DCHECK(event.event_code() == kNumberOfCompletedPacketsEventCode);
 
   const auto& payload =
@@ -385,7 +384,7 @@ void ACLDataChannel::OnChannelReady(
     return;
   }
 
-  FXL_DCHECK(io_task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(async_get_default() == io_dispatcher_);
   FXL_DCHECK(signal->observed & ZX_CHANNEL_READABLE);
 
   std::lock_guard<std::mutex> lock(rx_mutex_);

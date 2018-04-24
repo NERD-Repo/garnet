@@ -71,9 +71,8 @@ TEST_F(HCI_ConnectionTest, Close) {
   test_device()->SetTransactionCallback(
       [&callback_called, this] {
         callback_called = true;
-        message_loop()->QuitNow();
       },
-      message_loop()->task_runner());
+      dispatcher());
 
   Connection connection(kTestHandle, kTestRole, kTestAddress, kTestParams,
                         transport());
@@ -82,7 +81,7 @@ TEST_F(HCI_ConnectionTest, Close) {
   connection.Close(StatusCode::kRemoteUserTerminatedConnection);
   EXPECT_FALSE(connection.is_open());
 
-  RunMessageLoop();
+  RunUntilIdle();
   EXPECT_TRUE(callback_called);
 }
 
@@ -113,9 +112,8 @@ TEST_F(HCI_ConnectionTest, CloseError) {
   test_device()->SetTransactionCallback(
       [&callback_called, this] {
         callback_called = true;
-        message_loop()->QuitNow();
       },
-      message_loop()->task_runner());
+      dispatcher());
 
   Connection connection(kTestHandle, kTestRole, kTestAddress, kTestParams,
                         transport());
@@ -124,7 +122,7 @@ TEST_F(HCI_ConnectionTest, CloseError) {
   connection.Close(StatusCode::kRemoteUserTerminatedConnection);
   EXPECT_FALSE(connection.is_open());
 
-  RunMessageLoop();
+  RunUntilIdle();
   EXPECT_TRUE(callback_called);
 }
 

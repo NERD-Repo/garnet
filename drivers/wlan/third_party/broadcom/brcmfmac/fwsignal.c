@@ -25,7 +25,9 @@
 //#include <linux/types.h>
 //#include <net/cfg80211.h>
 
-#include "linuxisms.h"
+#include "fwsignal.h"
+
+#include <threads.h>
 
 #include "brcmu_utils.h"
 #include "brcmu_wifi.h"
@@ -35,10 +37,11 @@
 #include "common.h"
 #include "core.h"
 #include "debug.h"
+#include "device.h"
 #include "fweh.h"
 #include "fwil.h"
 #include "fwil_types.h"
-#include "fwsignal.h"
+#include "linuxisms.h"
 #include "p2p.h"
 #include "proto.h"
 
@@ -310,8 +313,8 @@ struct brcmf_skbuff_cb {
 #define brcmf_txstatus_get_field(txs, field) \
     brcmu_maskget32(txs, BRCMF_FWS_TXSTAT_##field##_MASK, BRCMF_FWS_TXSTAT_##field##_SHIFT)
 
-/* How long to defer borrowing in jiffies */
-#define BRCMF_FWS_BORROW_DEFER_PERIOD (HZ / 10)
+/* How long to defer borrowing in msec */
+#define BRCMF_FWS_BORROW_DEFER_PERIOD_MSEC (100)
 
 /**
  * enum brcmf_fws_fifo - fifo indices used by dongle firmware.
@@ -486,8 +489,7 @@ struct brcmf_fws_stats {
 
 struct brcmf_fws_info {
     struct brcmf_pub* drvr;
-    spinlock_t spinlock;
-    ulong flags;
+    //spinlock_t spinlock;
     struct brcmf_fws_stats stats;
     struct brcmf_fws_hanger hanger;
     enum brcmf_fws_fcmode fcmode;
@@ -502,7 +504,7 @@ struct brcmf_fws_info {
     int deq_node_pos[BRCMF_FWS_FIFO_COUNT];
     uint32_t fifo_credit_map;
     uint32_t fifo_delay_map;
-    unsigned long borrow_defer_timestamp;
+    zx_time_t borrow_defer_timestamp;
     bool bus_flow_blocked;
     bool creditmap_received;
     uint8_t mode;
@@ -547,12 +549,14 @@ static zx_status_t brcmf_fws_get_tlv_len(struct brcmf_fws_info* fws, enum brcmf_
 }
 #undef BRCMF_FWS_TLV_DEF
 
-static void brcmf_fws_lock(struct brcmf_fws_info* fws) __TA_ACQUIRE(&fws->spinlock) {
-    spin_lock_irqsave(&fws->spinlock, fws->flags);
+static void brcmf_fws_lock(struct brcmf_fws_info* fws) { // __TA_ACQUIRE(&fws->spinlock) {
+    //spin_lock_irqsave(&fws->spinlock, fws->flags);
+    pthread_mutex_lock(&irq_callback_lock);
 }
 
-static void brcmf_fws_unlock(struct brcmf_fws_info* fws) __TA_RELEASE(&fws->spinlock) {
-    spin_unlock_irqrestore(&fws->spinlock, fws->flags);
+static void brcmf_fws_unlock(struct brcmf_fws_info* fws) { // __TA_RELEASE(&fws->spinlock) {
+    //spin_unlock_irqrestore(&fws->spinlock, fws->flags);
+    pthread_mutex_unlock(&irq_callback_lock);
 }
 
 static bool brcmf_fws_ifidx_match(struct sk_buff* skb, void* arg) {
@@ -1645,7 +1649,7 @@ void brcmf_fws_rxreorder(struct brcmf_if* ifp, struct sk_buff* pkt) {
         brcmf_rxreorder_get_skb_list(rfi, rfi->exp_idx, rfi->exp_idx, &reorder_list);
         /* add the last packet */
         __skb_queue_tail(&reorder_list, pkt);
-        kfree(rfi);
+        free(rfi);
         ifp->drvr->reorder_flows[flow_id] = NULL;
         goto netif_rx;
     }
@@ -1957,7 +1961,7 @@ static void brcmf_fws_rollback_toq(struct brcmf_fws_info* fws, struct sk_buff* s
 static zx_status_t brcmf_fws_borrow_credit(struct brcmf_fws_info* fws) {
     int lender_ac;
 
-    if (time_after(fws->borrow_defer_timestamp, jiffies)) {
+    if (fws->borrow_defer_timestamp > zx_clock_get(ZX_CLOCK_MONOTONIC)) {
         fws->fifo_credit_map &= ~(1 << BRCMF_FWS_FIFO_AC_BE);
         return ZX_ERR_UNAVAILABLE;
     }
@@ -2062,7 +2066,8 @@ zx_status_t brcmf_fws_process_skb(struct brcmf_if* ifp, struct sk_buff* skb) {
 
     brcmf_fws_lock(fws);
     if (fifo != BRCMF_FWS_FIFO_AC_BE && fifo < BRCMF_FWS_FIFO_BCMC) {
-        fws->borrow_defer_timestamp = jiffies + BRCMF_FWS_BORROW_DEFER_PERIOD;
+        fws->borrow_defer_timestamp = zx_clock_get(ZX_CLOCK_MONOTONIC) +
+                                      ZX_MSEC(BRCMF_FWS_BORROW_DEFER_PERIOD_MSEC);
     }
 
     skcb->mac_status = brcmf_fws_macdesc_find(fws, ifp, eh->h_dest, &skcb->mac);
@@ -2255,7 +2260,7 @@ zx_status_t brcmf_fws_attach(struct brcmf_pub* drvr, struct brcmf_fws_info** fws
         goto fail;
     }
 
-    spin_lock_init(&fws->spinlock);
+    //spin_lock_init(&fws->spinlock);
 
     /* store drvr reference */
     fws->drvr = drvr;
@@ -2358,7 +2363,7 @@ void brcmf_fws_detach(struct brcmf_fws_info* fws) {
     brcmf_fws_unlock(fws);
 
     /* free top structure */
-    kfree(fws);
+    free(fws);
 }
 
 bool brcmf_fws_queue_skbs(struct brcmf_fws_info* fws) {

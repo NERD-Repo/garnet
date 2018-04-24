@@ -29,6 +29,7 @@ check_dep() {
 }
 
 check_dep multistrap
+check_dep qemu-img qemu-utils
 
 while getopts "d:" FLAG; do
   case "${FLAG}" in
@@ -57,16 +58,17 @@ esac
 OUTDIR=./debian-$ARCH
 mkdir -p $OUTDIR
 
-IMAGE_PATH=$OUTDIR/rootfs.img
+RAW_IMAGE_PATH=$OUTDIR/rootfs.img
+QCOW_IMAGE_PATH=$OUTDIR/rootfs.qcow2
 KERNEL_PATH=$OUTDIR/vmlinuz
 INITRD_PATH=$OUTDIR/initrd.img
 MOUNTPOINT=`mktemp -d`
 
 if [[ -z "${DEVICE}" ]]; then
-  truncate -s 2G "${IMAGE_PATH}"
-  mkfs.ext4 -F "${IMAGE_PATH}"
+  truncate -s 2G "${RAW_IMAGE_PATH}"
+  mkfs.ext4 -F "${RAW_IMAGE_PATH}"
   sudo -v -p "[sudo] Enter password to mount image file"
-  sudo mount -o loop "${IMAGE_PATH}" "${MOUNTPOINT}"
+  sudo mount -o loop "${RAW_IMAGE_PATH}" "${MOUNTPOINT}"
 else
   sudo -v -p "[sudo] Enter password to format device ${DEVICE}"
   sudo mkfs.ext4 -F "${DEVICE}"
@@ -101,7 +103,16 @@ else
   echo "WARNING: Unable to locate initrd image"
 fi
 
+# Remove any deleted file data. This allows the sparse image files to be more
+# efficiently compressed.
+sudo fstrim -v "${MOUNTPOINT}"
+
 sudo -v -p "[sudo] Enter password to unmount filesystems"
 sudo umount "${MOUNTPOINT}/proc"
 sudo umount "${MOUNTPOINT}/dev"
+sudo umount "${MOUNTPOINT}/etc/machine-id"
 sudo umount "${MOUNTPOINT}"
+
+if [[ -z "${DEVICE}" ]]; then
+  qemu-img convert -f raw -O qcow2 "${RAW_IMAGE_PATH}" "${QCOW_IMAGE_PATH}"
+fi

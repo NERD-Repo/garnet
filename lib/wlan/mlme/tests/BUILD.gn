@@ -36,9 +36,11 @@ executable("mac_tests") {
   sources = [
     "channel_unittest.cpp",
     "element_unittest.cpp",
+    "energy_unittest.cpp",
     "mac_frame_unittest.cpp",
     "macaddr_unittest.cpp",
     "sequence_unittest.cpp",
+    "tim_unittest.cpp",
   ]
 
   deps = [

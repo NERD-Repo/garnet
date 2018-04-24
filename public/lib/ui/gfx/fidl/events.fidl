@@ -17,9 +17,9 @@ union Event {
   // Events which are always delivered, regardless of mask.
   ImportUnboundEvent import_unbound;
   SpaceDisconnectedEvent space_disconnected;
-  SpaceAddedToSceneEvent space_added_to_scene_event;
-  SpaceRemovedFromSceneEvent space_removed_from_scene_event;
-  SpacePropertiesChangedEvent space_properties_changed_event;
+  SpaceAddedToSceneEvent space_added_to_scene;
+  SpaceRemovedFromSceneEvent space_removed_from_scene;
+  SpacePropertiesChangedEvent space_properties_changed;
 };
 
 // Provides rendering target metrics information about the specified node.
@@ -45,26 +45,37 @@ struct ImportUnboundEvent {
 };
 
 // Delivered when the Space corresponding to the given SpaceHolder is
-// disconnected, or the other side of the connection is destroyed before the
-// it was fully established.
+// disconnected/destroyed, or the other side of the connection is destroyed
+// before it was fully established.
 struct SpaceDisconnectedEvent {
   uint32 space_holder_id;
 };
 
-// Delivered when the parent SpaceHolder for the given Space is added to a
-// scene.
+// Delivered when the parent SpaceHolder for the given Space becomes a part of
+// a Scene.
+//
+// A SpaceHolder is considered to be part of a Scene if there is an unbroken
+// chain of parent-child relationships between the Scene node and the
+// SpaceHolder node.
 struct SpaceAddedToSceneEvent {
   uint32 space_id;
   SpaceProperties properties;
 };
 
-// Delivered when the parent SpaceHolder for the given Space is removed from a
-// scene.
+// Delivered when the parent SpaceHolder for the given Space is no longer part
+// of a scene.
+//
+// This can happen if the SpaceHolder is detached directly from the scene, or
+// if one of its parent nodes is.
+//
+// A SpaceHolder is considered to be part of a Scene if there is an unbroken
+// chain of parent-child relationships between the Scene node and the
+// SpaceHolder node.
 struct SpaceRemovedFromSceneEvent {
   uint32 space_id;
 };
 
-// Delivered when the parent SpaeHolder for the given Space makes a change to
+// Delivered when the parent SpaceHolder for the given Space makes a change to
 // the Space's properties.
 struct SpacePropertiesChangedEvent {
   uint32 space_id;

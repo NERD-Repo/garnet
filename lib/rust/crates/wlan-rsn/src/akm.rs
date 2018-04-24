@@ -4,9 +4,11 @@
 #![allow(dead_code)]
 
 use auth::{config, psk};
+use bytes::Bytes;
 use crypto_utils;
 use futures::Future;
 use integrity;
+use integrity::hmac_sha1::HmacSha1;
 use keywrap;
 use std::fmt;
 use suite_selector;
@@ -37,12 +39,12 @@ pub const EAP_SUITEB_SHA384: u8 = 12;
 pub const FT_EAP_SHA384: u8 = 13;
 // 14-255 - Reserved.
 
-pub struct Akm<'a> {
-    pub oui: &'a [u8],
+pub struct Akm {
+    pub oui: Bytes,
     pub suite_type: u8,
 }
 
-impl<'a> Akm<'a> {
+impl Akm {
     /// Only AKMs specified in IEEE 802.11-2016, 9.4.2.25.4, Table 9-133 have known algorithms.
     fn has_known_algorithm(&self) -> bool {
         if self.is_reserved() || self.is_vendor_specific() {
@@ -54,7 +56,7 @@ impl<'a> Akm<'a> {
 
     pub fn is_vendor_specific(&self) -> bool {
         // IEEE 802.11-2016, 9.4.2.25.4, Table 9-133
-        !self.oui.eq(&suite_selector::OUI)
+        !&self.oui[..].eq(&suite_selector::OUI)
     }
 
     pub fn is_reserved(&self) -> bool {
@@ -111,7 +113,7 @@ impl<'a> Akm<'a> {
 
         // IEEE 802.11-2016, 12.7.3, Table 12-8
         match self.suite_type {
-            1 | 2 => Some(Box::new(integrity::HmacSha1128)),
+            1 | 2 => Some(Box::new(HmacSha1::new())),
             // TODO(hahnr): Add remaining integrity algorithms.
             3...13 => None,
             _ => None,
@@ -162,10 +164,10 @@ impl<'a> Akm<'a> {
     }
 }
 
-impl<'a> suite_selector::Factory<'a> for Akm<'a> {
-    type Suite = Akm<'a>;
+impl suite_selector::Factory for Akm {
+    type Suite = Akm;
 
-    fn new(oui: &'a [u8], suite_type: u8) -> Result<Self::Suite> {
+    fn new(oui: Bytes, suite_type: u8) -> Result<Self::Suite> {
         if oui.len() != 3 {
             Err(Error::InvalidOuiLength(oui.len()))
         } else {
@@ -174,7 +176,7 @@ impl<'a> suite_selector::Factory<'a> for Akm<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Akm<'a> {
+impl fmt::Debug for Akm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,

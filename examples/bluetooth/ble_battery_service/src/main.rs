@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![allow(stable_features)]
-#![feature(conservative_impl_trait)]
 #![deny(warnings)]
 
 extern crate failure;
@@ -62,8 +60,8 @@ struct BluetoothError(bt::Error);
 
 impl fmt::Display for BluetoothError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.0.description {
-            Some(ref msg) => f.write_str(msg),
+        match &self.0.description {
+            Some(msg) => f.write_str(msg),
             None => write!(f, "unknown bluetooth error"),
         }
     }
@@ -240,8 +238,8 @@ fn main() {
 }
 
 fn main_res() -> Result<(), Error> {
-    let listen = match std::env::args().nth(1) {
-        Some(ref flag) => {
+    let listen = &match std::env::args().nth(1) {
+        Some(flag) => {
             match flag.as_ref() {
                 "--listen" => true,
                 "--help" => {

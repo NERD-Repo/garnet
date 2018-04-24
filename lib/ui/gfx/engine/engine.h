@@ -43,6 +43,13 @@ class Engine : public UpdateScheduler, private FrameSchedulerDelegate {
 
   ~Engine() override;
 
+  escher::PaperRenderer* paper_renderer() {
+    return paper_renderer_.get();
+  }
+  escher::ShadowMapRenderer* shadow_renderer() {
+    return shadow_renderer_.get();
+  }
+
   DisplayManager* display_manager() const { return display_manager_; }
   escher::Escher* escher() const { return escher_; }
 
@@ -96,6 +103,7 @@ class Engine : public UpdateScheduler, private FrameSchedulerDelegate {
   // Only used by subclasses used in testing.
   Engine(DisplayManager* display_manager,
          std::unique_ptr<escher::ReleaseFenceSignaller> release_fence_signaller,
+         std::unique_ptr<SessionManager> session_manager,
          escher::Escher* escher);
 
  private:
@@ -121,9 +129,6 @@ class Engine : public UpdateScheduler, private FrameSchedulerDelegate {
                      const ::gfx::Metrics& parent_metrics,
                      std::vector<Node*>* updated_nodes);
 
-  // Allow overriding to support tests.
-  virtual std::unique_ptr<SessionManager> InitializeSessionManager();
-
   // Invoke Escher::Cleanup().  If more work remains afterward, post a delayed
   // task to try again; this is typically because cleanup couldn't finish due to
   // unfinished GPU work.
@@ -134,12 +139,12 @@ class Engine : public UpdateScheduler, private FrameSchedulerDelegate {
   escher::PaperRendererPtr paper_renderer_;
   escher::ShadowMapRendererPtr shadow_renderer_;
 
-  std::unique_ptr<SessionManager> session_manager_;
   ResourceLinker resource_linker_;
   EventTimestamper event_timestamper_;
   std::unique_ptr<escher::SimpleImageFactory> image_factory_;
   std::unique_ptr<escher::RoundedRectFactory> rounded_rect_factory_;
   std::unique_ptr<escher::ReleaseFenceSignaller> release_fence_signaller_;
+  std::unique_ptr<SessionManager> session_manager_;
   std::unique_ptr<FrameScheduler> frame_scheduler_;
   std::set<Compositor*> compositors_;
 

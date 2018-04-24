@@ -14,43 +14,42 @@ namespace hci {
 using common::HostError;
 
 SequentialCommandRunner::SequentialCommandRunner(
-    fxl::RefPtr<fxl::TaskRunner> task_runner,
+    async_t* dispatcher,
     fxl::RefPtr<Transport> transport)
-    : task_runner_(task_runner), transport_(transport), sequence_number_(0u) {
-  FXL_DCHECK(task_runner_);
+    : dispatcher_(dispatcher), transport_(transport), sequence_number_(0u) {
+  FXL_DCHECK(dispatcher_);
   FXL_DCHECK(transport_);
-  FXL_DCHECK(task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
 }
 
 SequentialCommandRunner::~SequentialCommandRunner() {
-  FXL_DCHECK(task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
 }
 
 void SequentialCommandRunner::QueueCommand(
     std::unique_ptr<CommandPacket> command_packet,
     const CommandCompleteCallback& callback) {
   FXL_DCHECK(!status_callback_);
-  FXL_DCHECK(task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
   FXL_DCHECK(sizeof(CommandHeader) <= command_packet->view().size());
 
   command_queue_.push(std::make_pair(std::move(command_packet), callback));
 }
 
-void SequentialCommandRunner::RunCommands(
-    const StatusCallback& status_callback) {
+void SequentialCommandRunner::RunCommands(StatusCallback status_callback) {
   FXL_DCHECK(!status_callback_);
   FXL_DCHECK(status_callback);
   FXL_DCHECK(!command_queue_.empty());
-  FXL_DCHECK(task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
 
-  status_callback_ = status_callback;
+  status_callback_ = std::move(status_callback);
   sequence_number_++;
 
   RunNextQueuedCommand();
 }
 
 bool SequentialCommandRunner::IsReady() const {
-  FXL_DCHECK(task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
   return !status_callback_;
 }
 
@@ -62,7 +61,7 @@ void SequentialCommandRunner::Cancel() {
 }
 
 bool SequentialCommandRunner::HasQueuedCommands() const {
-  FXL_DCHECK(task_runner_->RunsTasksOnCurrentThread());
+  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
   return !command_queue_.empty();
 }
 
@@ -118,7 +117,7 @@ void SequentialCommandRunner::RunNextQueuedCommand() {
       });
 
   if (!transport_->command_channel()->SendCommand(
-          std::move(next.first), task_runner_, command_callback_.callback())) {
+          std::move(next.first), dispatcher_, command_callback_.callback())) {
     NotifyStatusAndReset(Status(HostError::kFailed));
   }
 }
@@ -132,7 +131,7 @@ void SequentialCommandRunner::Reset() {
 
 void SequentialCommandRunner::NotifyStatusAndReset(Status status) {
   FXL_DCHECK(status_callback_);
-  auto status_cb = status_callback_;
+  auto status_cb = std::move(status_callback_);
   Reset();
   status_cb(status);
 }

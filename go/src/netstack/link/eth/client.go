@@ -44,9 +44,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"syscall/zx"
+	"syscall/zx/zxwait"
 	"unsafe"
 
 	"netstack/trace"
@@ -177,22 +179,36 @@ func (c *Client) changeStateLocked(s State) {
 	}()
 }
 
-// Start restarts the interface.
-func (c *Client) Start() {
+// Up enables the interface.
+func (c *Client) Up() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.state != StateStarted {
+		m := syscall.FDIOForFD(int(c.f.Fd()))
+		err := IoctlStart(m)
+		if err != nil {
+			return err
+		}
 		c.changeStateLocked(StateStarted)
 	}
+
+	return nil
 }
 
 // Down disables the interface.
-func (c *Client) Down() {
+func (c *Client) Down() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.state != StateDown {
 		c.changeStateLocked(StateDown)
+
+		m := syscall.FDIOForFD(int(c.f.Fd()))
+		err := IoctlStop(m)
+		if err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // Close closes a Client, releasing any held resources.
@@ -208,7 +224,13 @@ func (c *Client) closeLocked() {
 	}
 
 	m := syscall.FDIOForFD(int(c.f.Fd()))
-	IoctlStop(m)
+	if err := IoctlStop(m); err == nil {
+		if fp, fperr := filepath.Abs(c.f.Name()); fperr != nil {
+			log.Printf("Failed to close ethernet file %s, error: %s", c.f.Name(), err)
+		} else {
+			log.Printf("Failed to close ethernet path %s, error: %s", fp, err)
+		}
+	}
 
 	c.tx.Close()
 	c.rx.Close()
@@ -374,7 +396,7 @@ func (c *Client) WaitSend() error {
 			return err
 		}
 		// Errors from waiting handled in txComplete.
-		c.tx.WaitOne(zx.SignalFIFOReadable|zx.SignalFIFOPeerClosed, zx.TimensecInfinite)
+		zxwait.Wait(c.tx, zx.SignalFIFOReadable|zx.SignalFIFOPeerClosed, zx.TimensecInfinite)
 	}
 }
 
@@ -382,7 +404,7 @@ func (c *Client) WaitSend() error {
 // or the client is closed.
 func (c *Client) WaitRecv() {
 	for {
-		obs, err := c.rx.WaitOne(zx.SignalFIFOReadable|zx.SignalFIFOPeerClosed|ZXSIO_ETH_SIGNAL_STATUS, zx.TimensecInfinite)
+		obs, err := zxwait.Wait(c.rx, zx.SignalFIFOReadable|zx.SignalFIFOPeerClosed|ZXSIO_ETH_SIGNAL_STATUS, zx.TimensecInfinite)
 		if err != nil || obs&zx.SignalFIFOPeerClosed != 0 {
 			c.Close()
 		} else if obs&ZXSIO_ETH_SIGNAL_STATUS != 0 {

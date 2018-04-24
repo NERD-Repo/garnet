@@ -52,7 +52,6 @@ std::ostream& operator<<(std::ostream& stream, const gfx::Command& command) {
     case Command::Tag::kSetHitTestBehavior:
       return stream << "SetHitTestBehavior";
     case Command::Tag::kSetSpaceProperties:
-      FXL_CHECK(false);
       return stream << "SetSpaceProperties";
     case Command::Tag::kSetCamera:
       return stream << "SetCamera";
@@ -162,11 +161,9 @@ std::ostream& operator<<(std::ostream& stream,
       stream << "ShapeNode";
       break;
     case ResourceArgs::Tag::kSpaceNode:
-      FXL_CHECK(false);
       stream << "SpaceNode";
       break;
     case ResourceArgs::Tag::kSpaceHolderNode:
-      FXL_CHECK(false);
       stream << "SpaceHolderNode";
       break;
     case ResourceArgs::Tag::kDisplayCompositor:

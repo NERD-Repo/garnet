@@ -16,7 +16,6 @@
 #include <lib/async/dispatcher.h>
 #include <zircon/compiler.h>
 
-#include "garnet/drivers/bluetooth/lib/common/cancelable_callback.h"
 #include "garnet/drivers/bluetooth/lib/hci/connection.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/sdu.h"
 #include "lib/fxl/functional/closure.h"
@@ -161,6 +160,7 @@ class ChannelImpl : public Channel {
 
   std::mutex mtx_;
 
+  bool active_  __TA_GUARDED(mtx_);
   async_t* dispatcher_ __TA_GUARDED(mtx_);
   RxCallback rx_cb_ __TA_GUARDED(mtx_);
   ClosedCallback closed_cb_ __TA_GUARDED(mtx_);

@@ -17,7 +17,7 @@ library gfx;
 // implementations of the API.
 // - has_children: The node can contain other nodes as children.
 // - has_parent: The node can be a child of another node.  If this is false,
-//   the node can only be a direct descendant of it's containing scene.
+//   the node can only be a direct descendant of its containing scene.
 // - has_parts:  The node can contain other nodes as parts.  All parts must be
 //   from the same session as their parent.
 // - has_clip:  The node can contain a clip node as a child.
@@ -30,6 +30,7 @@ library gfx;
 // - has_shape
 // - has_material
 struct ShapeNodeArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 unused = 0;
 };
 
@@ -38,6 +39,7 @@ struct ShapeNodeArgs {
 // - is_clip
 // - has_parts
 struct ClipNodeArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 unused = 0;
 };
 
@@ -47,31 +49,40 @@ struct ClipNodeArgs {
 // - has_parts
 // - has_clip
 struct EntityNodeArgs {
+  // TODO(SCN-694): Clean up dummy args.
   uint32 unused = 0;
 };
 
-// Represents a transform space which can serve as a container for Nodes.  Each
-// Space is linked to a paired SpaceHolder via a shared token.
+// TODO(SCN-695): Move these into resources.fidl along with the other Node
+// types when they are no longer Nodes.
+// Represents a transform space which serves as a container for Nodes.  The
+// Nodes will have the Spaces' coordinate transform applied to their own, in
+// addition to being clipped to the Spaces' bounding box.
+// See |SpaceProperties|.
 //
-// Usually the Space and SpaceHolder exist in separate processes, allowing a
-// distributed scene graph to be constructed.
+// Each Space is linked to a paired SpaceHolder via a shared token.
+//
+// Usually the Space and its associated SpaceHolder exist in separate processes,
+// allowing a distributed scene graph to be constructed.
 //
 // Characteristics
 // - has_children
-struct SpaceNodeArgs {
+struct SpaceArgs {
   handle<eventpair> token;
   string? debug_name;
 };
 
-// A proxy node which is connected to a corresponding SpaceNode.  Each
-// SpaceHolder is linked to its paired Space via a shared token.
+// Represents a proxy for a Space which can be added to a scene graph in order
+// to embed the Space within it.
 //
-// Usually the SpaceHolder and Space exist in separate processes, allowing a
-// distributed scene graph to be constructed.
+// Each SpaceHolder is linked to a paired Space via a shared token.
+//
+// Usually the SpaceHolder and its associated Space exist in separate processes,
+// allowing a distributed scene graph to be constructed.
 //
 // Characteristics
 // - has_parent
-struct SpaceHolderNodeArgs {
+struct SpaceHolderArgs {
   handle<eventpair> token;
   string? debug_name;
 };
