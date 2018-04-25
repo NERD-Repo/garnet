@@ -12,18 +12,10 @@
   </imports>
   <projects>
     <!-- Third Party -->
-
-    <!-- TODO(SEC-28): move this back to Topaz. -->
-    <project name="dart/root_certificates"
-             path="third_party/root_certificates"
-             remote="https://dart.googlesource.com/root_certificates"
-             gerrithost="https://dart-review.googlesource.com"
-             revision="a4c7c6f23a664a37bc1b6f15a819e3f2a292791a"/>
-
     <project name="external/github.com/catapult-project/catapult"
              path="third_party/catapult"
              remote="https://chromium.googlesource.com/catapult"
-             revision="0d6f84866778579e8d0f5a852857a36cc9bc2951"/>
+             revision="dc970d3e1f7b3da5a2849de70ff253acdb70148f"/>
     <project name="libc-tests"
              path="third_party/libc-tests"
              remote="https://fuchsia.googlesource.com/libc-tests"
@@ -31,7 +23,7 @@
     <project name="third_party/angle"
              path="third_party/angle"
              remote="https://chromium.googlesource.com/angle/angle"
-             revision="f2807385cbc923d71677d43cf846cec630a42551"/>
+             revision="f827123d99457a294c3d9451fe3af69772f0bcc2"/>
     <project name="third_party/asio"
              path="third_party/asio"
              remote="https://fuchsia.googlesource.com/third_party/asio"
