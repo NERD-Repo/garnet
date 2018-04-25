@@ -14,10 +14,15 @@ type APConfig struct {
 	BeaconPeriod int
 	DTIMPeriod   int
 	Active       bool
+	Channel      uint8
 }
 
-func NewAPConfig() *APConfig {
+func NewEmptyAPConfig() *APConfig {
 	return &APConfig{}
+}
+
+func NewAPConfig(ssid string, beaconPeriod int32, dtimPeriod int32, channel uint8) *APConfig {
+	return &APConfig{ssid, int(beaconPeriod), int(dtimPeriod), true, channel}
 }
 
 func ReadAPConfigFromFile(path string) (*APConfig, error) {
@@ -26,7 +31,7 @@ func ReadAPConfigFromFile(path string) (*APConfig, error) {
 		return nil, err
 	}
 
-	cfg := NewAPConfig()
+	cfg := NewEmptyAPConfig()
 	err = json.Unmarshal(cfgBytes, cfg)
 	return cfg, err
 }

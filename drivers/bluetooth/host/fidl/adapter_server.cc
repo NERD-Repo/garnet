@@ -5,6 +5,7 @@
 #include "adapter_server.h"
 
 #include "garnet/drivers/bluetooth/lib/gap/adapter.h"
+#include "garnet/drivers/bluetooth/lib/gap/bredr_discovery_manager.h"
 #include "garnet/drivers/bluetooth/lib/gap/gap.h"
 #include "garnet/drivers/bluetooth/lib/gap/low_energy_discovery_manager.h"
 #include "lib/fxl/logging.h"
@@ -15,22 +16,22 @@ using bluetooth::Bool;
 using bluetooth::ErrorCode;
 using bluetooth::Status;
 
-using bluetooth::control::AdapterDelegate;
-using bluetooth::control::AdapterDelegatePtr;
-using bluetooth::control::AdapterState;
+using bluetooth_control::AdapterState;
+using bluetooth_host::AdapterDelegate;
+using bluetooth_host::AdapterDelegatePtr;
 
 namespace bthost {
 
 AdapterServer::AdapterServer(
     fxl::WeakPtr<::btlib::gap::Adapter> adapter,
-    fidl::InterfaceRequest<bluetooth::control::Adapter> request)
-    : ServerBase(adapter, this, std::move(request)),
+    fidl::InterfaceRequest<bluetooth_host::Adapter> request)
+    : AdapterServerBase(adapter, this, std::move(request)),
       requesting_discovery_(false),
       weak_ptr_factory_(this) {}
 
 AdapterServer::~AdapterServer() {}
 
-void AdapterServer::GetInfo(const GetInfoCallback& callback) {
+void AdapterServer::GetInfo(GetInfoCallback callback) {
   callback(fidl_helpers::NewAdapterInfo(*adapter()));
 }
 
@@ -51,7 +52,6 @@ void AdapterServer::SetDelegate(
       // directly.
       if (le_discovery_session_) {
         le_discovery_session_ = nullptr;
-        NotifyDiscoveringChanged();
       }
     });
   }
@@ -60,75 +60,100 @@ void AdapterServer::SetDelegate(
   // with this AdapterServer.
   if (le_discovery_session_) {
     le_discovery_session_ = nullptr;
-    NotifyDiscoveringChanged();
   }
 }
 
-void AdapterServer::SetLocalName(const fidl::String& local_name,
-                                 const fidl::String& shortened_local_name,
-                                 const SetLocalNameCallback& callback) {
+void AdapterServer::SetLocalName(::fidl::StringPtr local_name,
+                                 SetLocalNameCallback callback) {
   FXL_NOTIMPLEMENTED();
 }
 
-void AdapterServer::SetPowered(bool powered,
-                               const SetPoweredCallback& callback) {
-  FXL_NOTIMPLEMENTED();
-}
-
-void AdapterServer::StartDiscovery(const StartDiscoveryCallback& callback) {
+void AdapterServer::StartDiscovery(StartDiscoveryCallback callback) {
   FXL_VLOG(1) << "Adapter StartDiscovery()";
   FXL_DCHECK(adapter());
 
   if (le_discovery_session_ || requesting_discovery_) {
     FXL_VLOG(1) << "Discovery already in progress";
-    callback(fidl_helpers::NewErrorStatus(ErrorCode::IN_PROGRESS,
-                                          "Discovery already in progress"));
+    callback(fidl_helpers::NewFidlError(ErrorCode::IN_PROGRESS,
+                                        "Discovery already in progress"));
     return;
   }
 
   requesting_discovery_ = true;
-  auto manager = adapter()->le_discovery_manager();
-  manager->StartDiscovery(
-      [self = weak_ptr_factory_.GetWeakPtr(), callback](auto session) {
-        // End the new session if this AdapterServer got destroyed in the mean
-        // time (e.g. because the client disconnected).
-        if (!self)
-          return;
+  auto bredr_manager = adapter()->bredr_discovery_manager();
+  // TODO(jamuraa): start these in parallel instead of sequence
+  bredr_manager->RequestDiscovery([self = weak_ptr_factory_.GetWeakPtr(),
+                                   bredr_manager, callback](
+                                      btlib::hci::Status status, auto session) {
+    if (!self) {
+      callback(
+          fidl_helpers::NewFidlError(ErrorCode::FAILED, "Adapter Shutdown"));
+      return;
+    }
 
+    if (!status || !session) {
+      FXL_VLOG(1) << "Failed to start BR/EDR discovery session";
+      callback(fidl_helpers::StatusToFidl(
+          status, "Failed to start BR/EDR discovery session"));
+      self->requesting_discovery_ = false;
+      return;
+    }
+
+    session->set_result_callback([self](const auto& device) {
+      if (self) {
+        self->OnDiscoveryResult(device);
+      }
+    });
+
+    self->bredr_discovery_session_ = std::move(session);
+
+    auto le_manager = self->adapter()->le_discovery_manager();
+    le_manager->StartDiscovery([self, callback](auto session) {
+      // End the new session if this AdapterServer got destroyed in the mean
+      // time (e.g. because the client disconnected).
+      if (!self) {
+        callback(
+            fidl_helpers::NewFidlError(ErrorCode::FAILED, "Adapter Shutdown"));
+        return;
+      }
+
+      if (!session) {
+        FXL_VLOG(1) << "Failed to start LE discovery session";
+        callback(fidl_helpers::NewFidlError(
+            ErrorCode::FAILED, "Failed to start LE discovery session"));
+        self->bredr_discovery_session_ = nullptr;
         self->requesting_discovery_ = false;
+        return;
+      }
 
-        if (!session) {
-          FXL_VLOG(1) << "Failed to start discovery session";
-          callback(fidl_helpers::NewErrorStatus(
-              ErrorCode::FAILED, "Failed to start discovery session"));
-          return;
+      // Set up a general-discovery filter for connectable devices.
+      session->filter()->set_connectable(true);
+      session->filter()->SetGeneralDiscoveryFlags();
+      session->SetResultCallback([self](const auto& device) {
+        if (self) {
+          self->OnDiscoveryResult(device);
         }
-
-        // Set up a general-discovery filter for connectable devices.
-        session->filter()->set_connectable(true);
-        session->SetResultCallback([self](const auto& device) {
-          if (self)
-            self->OnDiscoveryResult(device);
-        });
-
-        self->le_discovery_session_ = std::move(session);
-        self->NotifyDiscoveringChanged();
-        callback(Status::New());
       });
+
+      self->le_discovery_session_ = std::move(session);
+      self->requesting_discovery_ = false;
+      callback(Status());
+    });
+  });
 }
 
-void AdapterServer::StopDiscovery(const StopDiscoveryCallback& callback) {
+void AdapterServer::StopDiscovery(StopDiscoveryCallback callback) {
   FXL_VLOG(1) << "Adapter StopDiscovery()";
   if (!le_discovery_session_) {
     FXL_VLOG(1) << "No active discovery session";
-    callback(fidl_helpers::NewErrorStatus(ErrorCode::BAD_STATE,
-                                          "No discovery session in progress"));
+    callback(fidl_helpers::NewFidlError(ErrorCode::BAD_STATE,
+                                        "No discovery session in progress"));
     return;
   }
 
+  bredr_discovery_session_ = nullptr;
   le_discovery_session_ = nullptr;
-  NotifyDiscoveringChanged();
-  callback(Status::New());
+  callback(Status());
 }
 
 void AdapterServer::OnDiscoveryResult(
@@ -142,18 +167,7 @@ void AdapterServer::OnDiscoveryResult(
     return;
   }
 
-  delegate_->OnDeviceDiscovered(std::move(fidl_device));
-}
-
-void AdapterServer::NotifyDiscoveringChanged() {
-  if (!delegate_)
-    return;
-
-  auto adapter_state = AdapterState::New();
-  adapter_state->discovering = Bool::New();
-  adapter_state->discovering->value = le_discovery_session_ != nullptr;
-
-  delegate_->OnAdapterStateChanged(std::move(adapter_state));
+  delegate_->OnDeviceDiscovered(std::move(*fidl_device));
 }
 
 }  // namespace bthost

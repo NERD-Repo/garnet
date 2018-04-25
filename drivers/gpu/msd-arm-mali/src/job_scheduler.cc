@@ -5,6 +5,7 @@
 #include "job_scheduler.h"
 
 #include "magma_util/dlog.h"
+#include "platform_trace.h"
 
 JobScheduler::JobScheduler(Owner* owner, uint32_t job_slots)
     : owner_(owner), job_slots_(job_slots), executing_atoms_(job_slots)
@@ -16,46 +17,76 @@ void JobScheduler::EnqueueAtom(std::shared_ptr<MsdArmAtom> atom)
     atoms_.push_back(std::move(atom));
 }
 
+// Use different names for different slots so they'll line up cleanly in the
+// trace viewer.
+static const char* AtomRunningString(uint32_t slot)
+{
+    switch (slot) {
+        case 0:
+            return "Atom running slot 0";
+        case 1:
+            return "Atom running slot 1";
+        case 2:
+            return "Atom running slot 2";
+        default:
+            DASSERT(false);
+            return "Atom running unknown slot";
+    }
+}
+
 void JobScheduler::TryToSchedule()
 {
     while (true) {
         if (atoms_.empty())
-            return;
+            break;
         bool found_atom = false;
         for (auto it = atoms_.begin(); it != atoms_.end(); ++it) {
-            if ((*it)->AreDependenciesFinished()) {
-                auto soft_atom = MsdArmSoftAtom::cast(*it);
+            std::shared_ptr<MsdArmAtom> atom = *it;
+            bool dependencies_finished;
+            atom->UpdateDependencies(&dependencies_finished);
+            if (dependencies_finished) {
+                ArmMaliResultCode dep_status = atom->GetFinalDependencyResult();
+                if (dep_status != kArmMaliResultSuccess) {
+                    owner_->AtomCompleted(it->get(), dep_status);
+                    atoms_.erase(it);
+                    break;
+                }
+
+                auto soft_atom = MsdArmSoftAtom::cast(atom);
                 if (soft_atom) {
                     found_atom = true;
                     atoms_.erase(it);
                     soft_atom->SetExecutionStarted();
                     ProcessSoftAtom(soft_atom);
                     break;
-                } else if ((*it)->IsDependencyOnly()) {
+                } else if (atom->IsDependencyOnly()) {
                     found_atom = true;
                     owner_->AtomCompleted(it->get(), kArmMaliResultSuccess);
                     atoms_.erase(it);
                     break;
 
                 } else {
-                    uint32_t slot = (*it)->slot();
+                    uint32_t slot = atom->slot();
                     DASSERT(slot < executing_atoms_.size());
                     if (!executing_atoms_[slot]) {
                         found_atom = true;
-                        (*it)->SetExecutionStarted();
-                        executing_atoms_[slot] = *it;
+                        atom->SetExecutionStarted();
+                        executing_atoms_[slot] = atom;
                         atoms_.erase(it);
+                        TRACE_ASYNC_BEGIN("magma", AtomRunningString(slot),
+                                          executing_atoms_[slot]->trace_nonce());
                         owner_->RunAtom(executing_atoms_[slot].get());
                         break;
                     }
                 }
             } else {
-                DLOG("Skipping atom %lx due to dependency", (*it)->gpu_address());
+                DLOG("Skipping atom %lx due to dependency", (atom)->gpu_address());
             }
         }
         if (!found_atom)
-            return;
+            break;
     }
+    UpdatePowerManager();
 }
 
 void JobScheduler::CancelAtomsForConnection(std::shared_ptr<MsdArmConnection> connection)
@@ -74,6 +105,7 @@ void JobScheduler::CancelAtomsForConnection(std::shared_ptr<MsdArmConnection> co
 void JobScheduler::JobCompleted(uint64_t slot, ArmMaliResultCode result_code)
 {
     DASSERT(executing_atoms_[slot]);
+    TRACE_ASYNC_END("magma", AtomRunningString(slot), executing_atoms_[slot]->trace_nonce());
     owner_->AtomCompleted(executing_atoms_[slot].get(), result_code);
     executing_atoms_[slot].reset();
     TryToSchedule();
@@ -182,4 +214,14 @@ void JobScheduler::ReleaseMappingsForConnection(std::shared_ptr<MsdArmConnection
             owner_->ReleaseMappingsForAtom(executing_atom.get());
         }
     }
+}
+
+void JobScheduler::UpdatePowerManager()
+{
+    bool active = false;
+    for (std::shared_ptr<MsdArmAtom>& slot : executing_atoms_) {
+        if (slot)
+            active = true;
+    }
+    owner_->UpdateGpuActive(active);
 }

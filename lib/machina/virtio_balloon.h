@@ -8,10 +8,11 @@
 #include <fbl/function.h>
 #include <fbl/mutex.h>
 #include <virtio/balloon.h>
+#include <virtio/virtio_ids.h>
 #include <zircon/compiler.h>
 #include <zircon/types.h>
 
-#include "garnet/lib/machina/virtio.h"
+#include "garnet/lib/machina/virtio_device.h"
 
 #define VIRTIO_BALLOON_Q_INFLATEQ 0
 #define VIRTIO_BALLOON_Q_DEFLATEQ 1
@@ -21,11 +22,13 @@
 namespace machina {
 
 // Virtio memory balloon device.
-class VirtioBalloon : public VirtioDevice {
+class VirtioBalloon : public VirtioDeviceBase<VIRTIO_ID_BALLOON,
+                                              VIRTIO_BALLOON_Q_COUNT,
+                                              virtio_balloon_config_t> {
  public:
   // Per Virtio 1.0 Section 5.5.6, This value is historical, and independent
   // of the guest page size.
-  static const uint32_t kPageSize = 4096;
+  static constexpr uint32_t kPageSize = 4096;
 
   VirtioBalloon(const PhysMem& phys_mem);
   ~VirtioBalloon() override = default;
@@ -63,8 +66,7 @@ class VirtioBalloon : public VirtioDevice {
   void set_deflate_on_demand(bool b) { deflate_on_demand_ = b; }
 
  private:
-  void WaitForStatsBuffer(virtio_queue_t* stats_queue)
-      __TA_REQUIRES(stats_.mutex);
+  void WaitForStatsBuffer(VirtioQueue* stats_queue) __TA_REQUIRES(stats_.mutex);
 
   zx_status_t HandleDescriptor(uint16_t queue_sel);
 
@@ -86,10 +88,6 @@ class VirtioBalloon : public VirtioDevice {
     // Also guards access to other members of this structure.
     fbl::Mutex mutex;
   } stats_;
-
-  virtio_queue_t queues_[VIRTIO_BALLOON_Q_COUNT];
-
-  virtio_balloon_config_t config_ __TA_GUARDED(config_mutex_) = {};
 };
 
 }  // namespace machina

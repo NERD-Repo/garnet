@@ -5,31 +5,35 @@
 package context
 
 import (
-	"svc/svcns"
 	"fidl/bindings"
 	"fmt"
+	"svc/svcns"
 
 	"syscall/zx"
 	"syscall/zx/fdio"
 	"syscall/zx/mxruntime"
 
-	"garnet/public/lib/app/fidl/application_environment"
-	"garnet/public/lib/app/fidl/application_launcher"
-	"garnet/public/lib/app/fidl/service_provider"
+	"fuchsia/go/component"
 )
 
+type Connector struct {
+	serviceRoot zx.Handle
+}
+
 type Context struct {
-	Environment     *application_environment.ApplicationEnvironment_Proxy
+	connector *Connector
+
+	Environment     *component.ApplicationEnvironmentInterface
 	OutgoingService *svcns.Namespace
-	serviceRoot     zx.Handle
-	Launcher        *application_launcher.ApplicationLauncher_Proxy
+	Launcher        *component.ApplicationLauncherInterface
 	appServices     zx.Handle
+	services        bindings.BindingSet
 }
 
 // TODO: define these in syscall/zx/mxruntime
 const (
-	HandleServiceRequest mxruntime.HandleType = 0x3B
-	HandleAppServices    mxruntime.HandleType = 0x43
+	HandleDirectoryRequest mxruntime.HandleType = 0x3B
+	HandleAppServices      mxruntime.HandleType = 0x43
 )
 
 func getServiceRoot() zx.Handle {
@@ -39,76 +43,78 @@ func getServiceRoot() zx.Handle {
 	}
 
 	// TODO: Use "/svc" once that actually works.
-	err = fdio.ServiceConnect("/svc/.", c0.Handle)
+	err = fdio.ServiceConnect("/svc/.", zx.Handle(c0))
 	if err != nil {
 		return zx.HANDLE_INVALID
 	}
-	return c1.Handle
+	return zx.Handle(c1)
 }
 
-func New(serviceRoot, serviceRequest, appServices zx.Handle) *Context {
+func New(serviceRoot, directoryRequest, appServices zx.Handle) *Context {
 	c := &Context{
-		serviceRoot: serviceRoot,
+		connector: &Connector{
+			serviceRoot: serviceRoot,
+		},
 		appServices: appServices,
 	}
 
 	c.OutgoingService = svcns.New()
 
-	r, p := c.Environment.NewRequest(bindings.GetAsyncWaiter())
+	r, p, err := component.NewApplicationEnvironmentInterfaceRequest()
+	if err != nil {
+		panic(err.Error())
+	}
 	c.Environment = p
 	c.ConnectToEnvService(r)
 
-	r2, p2 := c.Launcher.NewRequest(bindings.GetAsyncWaiter())
+	r2, p2, err := component.NewApplicationLauncherInterfaceRequest()
+	if err != nil {
+		panic(err.Error())
+	}
 	c.Launcher = p2
 	c.ConnectToEnvService(r2)
 
-	if serviceRequest.IsValid() {
-		c.OutgoingService.ServeDirectory(serviceRequest)
+	if directoryRequest.IsValid() {
+		c.OutgoingService.ServeDirectory(directoryRequest)
 	}
 
 	return c
 }
 
+func (c *Context) GetConnector() *Connector {
+	return c.connector
+}
+
 func (c *Context) Serve() {
 	if c.appServices.IsValid() {
-		r := service_provider.ServiceProvider_Request{
-			bindings.NewChannelHandleOwner(c.appServices)}
-		s := service_provider.NewStubForServiceProvider(
-			r, c.OutgoingService, bindings.GetAsyncWaiter())
-		go func() {
-			for {
-				if err := s.ServeRequest(); err != nil {
-					break
-				}
-			}
-		}()
+		stub := component.ServiceProviderStub{Impl: c.OutgoingService}
+		c.services.Add(&stub, zx.Channel(c.appServices), nil)
+		go bindings.Serve()
 	}
-
 	if c.OutgoingService.Dispatcher != nil {
 		go c.OutgoingService.Dispatcher.Serve()
 	}
 }
 
-type interfaceRequest interface {
-	Name() string
-	TakeChannel() zx.Handle
+func (c *Context) ConnectToEnvService(r bindings.ServiceRequest) {
+	c.connector.ConnectToEnvService(r)
 }
 
-func (c *Context) ConnectToEnvService(r interfaceRequest) {
-	c.ConnectToEnvServiceAt(r.Name(), r.TakeChannel())
+func (c *Connector) ConnectToEnvService(r bindings.ServiceRequest) {
+	c.ConnectToEnvServiceAt(r.Name(), r.ToChannel())
 }
 
-func (c *Context) ConnectToEnvServiceAt(name string, h zx.Handle) {
-	err := fdio.ServiceConnectAt(c.serviceRoot, name, h)
+func (c *Connector) ConnectToEnvServiceAt(name string, h zx.Channel) {
+	err := fdio.ServiceConnectAt(c.serviceRoot, name, zx.Handle(h))
 	if err != nil {
 		panic(fmt.Sprintf("ConnectToEnvService: %v: %v", name, err))
 	}
 }
 
 func CreateFromStartupInfo() *Context {
-	serviceRequest := mxruntime.GetStartupHandle(
-		mxruntime.HandleInfo{Type: HandleServiceRequest, Arg: 0})
+	directoryRequest := mxruntime.GetStartupHandle(
+		mxruntime.HandleInfo{Type: HandleDirectoryRequest, Arg: 0})
 	appServices := mxruntime.GetStartupHandle(
 		mxruntime.HandleInfo{Type: HandleAppServices, Arg: 0})
-	return New(getServiceRoot(), serviceRequest, appServices)
+	return New(getServiceRoot(), directoryRequest, appServices)
 }

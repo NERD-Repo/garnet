@@ -5,18 +5,18 @@
 #ifndef LIB_APP_CPP_SERVICE_PROVIDER_IMPL_H_
 #define LIB_APP_CPP_SERVICE_PROVIDER_IMPL_H_
 
-#include <zx/channel.h>
+#include <lib/zx/channel.h>
 
 #include <functional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
-#include "lib/app/fidl/service_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 
-namespace app {
+namespace component {
 
 // An implementation of |ServiceProvider|, which can be customized appropriately
 // (to select what services it provides).
@@ -118,7 +118,7 @@ class ServiceProviderImpl : public ServiceProvider {
 
  private:
   // Overridden from |ServiceProvider|:
-  void ConnectToService(const fidl::String& service_name,
+  void ConnectToService(fidl::StringPtr service_name,
                         zx::channel client_handle) override;
 
   fidl::BindingSet<ServiceProvider> bindings_;
@@ -129,6 +129,6 @@ class ServiceProviderImpl : public ServiceProvider {
   FXL_DISALLOW_COPY_AND_ASSIGN(ServiceProviderImpl);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // LIB_APP_CPP_SERVICE_PROVIDER_IMPL_H_

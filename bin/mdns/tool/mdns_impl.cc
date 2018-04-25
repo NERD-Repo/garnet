@@ -7,19 +7,25 @@
 #include <iostream>
 #include <unordered_set>
 
+#include <lib/async-loop/loop.h>
+#include <lib/async/default.h>
+
+#include <fuchsia/cpp/mdns.h>
 #include "garnet/bin/mdns/tool/formatting.h"
 #include "garnet/bin/mdns/tool/mdns_params.h"
-#include "lib/fsl/tasks/message_loop.h"
+#include "lib/fsl/types/type_converters.h"
 #include "lib/fxl/logging.h"
-#include "lib/mdns/fidl/mdns.fidl.h"
+#include "lib/fxl/type_converter.h"
 
 namespace mdns {
 
-MdnsImpl::MdnsImpl(app::ApplicationContext* application_context,
-                   MdnsParams* params)
-    : binding_(this) {
+MdnsImpl::MdnsImpl(component::ApplicationContext* application_context,
+                   MdnsParams* params,
+                   fxl::Closure quit_callback)
+    : quit_callback_(quit_callback), binding_(this) {
   FXL_DCHECK(application_context);
   FXL_DCHECK(params);
+  FXL_DCHECK(quit_callback_);
 
   mdns_service_ =
       application_context->ConnectToEnvironmentService<MdnsService>();
@@ -29,19 +35,19 @@ MdnsImpl::MdnsImpl(app::ApplicationContext* application_context,
     mdns_service_.Unbind();
     subscriber_.Reset();
     std::cout << "mDNS service disconnected unexpectedly\n";
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    quit_callback_();
   });
 
   switch (params->command_verb()) {
     case MdnsParams::CommandVerb::kVerbose:
       std::cout << "verbose: logging mDNS traffic\n";
       mdns_service_->SetVerbose(true);
-      fsl::MessageLoop::GetCurrent()->PostQuitTask();
+      quit_callback_();
       break;
     case MdnsParams::CommandVerb::kQuiet:
       std::cout << "verbose: not logging mDNS traffic\n";
       mdns_service_->SetVerbose(false);
-      fsl::MessageLoop::GetCurrent()->PostQuitTask();
+      quit_callback_();
       break;
     case MdnsParams::CommandVerb::kResolve:
       Resolve(params->host_name(), params->timeout_seconds());
@@ -75,7 +81,7 @@ void MdnsImpl::HandleKeystroke() {
   int c = getc(stdin);
 
   if (c == 27) {
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    quit_callback_();
   }
 
   WaitForKeystroke();
@@ -101,7 +107,7 @@ void MdnsImpl::Resolve(const std::string& host_name, uint32_t timeout_seconds) {
 
         mdns_service_.set_error_handler(nullptr);
         mdns_service_.Unbind();
-        fsl::MessageLoop::GetCurrent()->PostQuitTask();
+        quit_callback_();
       });
 }
 
@@ -111,8 +117,8 @@ void MdnsImpl::Subscribe(const std::string& service_name) {
   MdnsServiceSubscriptionPtr subscription;
   mdns_service_->SubscribeToService(service_name, subscription.NewRequest());
   subscriber_.Init(
-      std::move(subscription),
-      [this](mdns::MdnsServiceInstance* from, mdns::MdnsServiceInstance* to) {
+      std::move(subscription), [this](const mdns::MdnsServiceInstance* from,
+                                      const mdns::MdnsServiceInstance* to) {
         if (from == nullptr) {
           FXL_DCHECK(to != nullptr);
           std::cout << "added:\n" << indent << begl << *to << outdent << "\n";
@@ -134,10 +140,11 @@ void MdnsImpl::Publish(const std::string& service_name,
   std::cout << "publishing instance " << instance_name << " of service "
             << service_name << "\n";
   mdns_service_->PublishServiceInstance(
-      service_name, instance_name, port, fidl::Array<fidl::String>::From(text),
+      service_name, instance_name, port,
+      fxl::To<fidl::VectorPtr<fidl::StringPtr>>(text),
       [this](MdnsResult result) {
         UpdateStatus(result);
-        fsl::MessageLoop::GetCurrent()->PostQuitTask();
+        quit_callback_();
       });
 }
 
@@ -146,7 +153,7 @@ void MdnsImpl::Unpublish(const std::string& service_name,
   std::cout << "unpublishing instance " << instance_name << " of service "
             << service_name << "\n";
   mdns_service_->UnpublishServiceInstance(service_name, instance_name);
-  fsl::MessageLoop::GetCurrent()->PostQuitTask();
+  quit_callback_();
 }
 
 void MdnsImpl::Respond(const std::string& service_name,
@@ -164,7 +171,7 @@ void MdnsImpl::Respond(const std::string& service_name,
     binding_.set_error_handler(nullptr);
     binding_.Unbind();
     std::cout << "mDNS service disconnected from responder unexpectedly\n";
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    quit_callback_();
   });
 
   publication_port_ = port;
@@ -174,8 +181,9 @@ void MdnsImpl::Respond(const std::string& service_name,
                               std::move(responder_handle));
 
   if (!announce.empty()) {
-    mdns_service_->SetSubtypes(service_name, instance_name,
-                               fidl::Array<fidl::String>::From(announce));
+    mdns_service_->SetSubtypes(
+        service_name, instance_name,
+        fxl::To<fidl::VectorPtr<fidl::StringPtr>>(announce));
   }
 
   WaitForKeystroke();
@@ -203,12 +211,12 @@ void MdnsImpl::UpdateStatus(MdnsResult result) {
       // statement will be updated whenever the |MdnsResult| enum is changed.
   }
 
-  fsl::MessageLoop::GetCurrent()->PostQuitTask();
+  quit_callback_();
 }
 
 void MdnsImpl::GetPublication(bool query,
-                              const fidl::String& subtype,
-                              const GetPublicationCallback& callback) {
+                              fidl::StringPtr subtype,
+                              GetPublicationCallback callback) {
   std::cout << (query ? "query" : "initial publication");
   if (subtype) {
     std::cout << " for subtype " << subtype;
@@ -218,7 +226,8 @@ void MdnsImpl::GetPublication(bool query,
 
   auto publication = MdnsPublication::New();
   publication->port = publication_port_;
-  publication->text = fidl::Array<fidl::String>::From(publication_text_);
+  publication->text =
+      fxl::To<fidl::VectorPtr<fidl::StringPtr>>(publication_text_);
 
   callback(std::move(publication));
 }

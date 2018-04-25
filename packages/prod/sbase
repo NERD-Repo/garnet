@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "sbase": "//third_party/sbase"
+    }
+}

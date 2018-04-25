@@ -9,15 +9,15 @@
 #include <string>
 #include <unordered_map>
 
-#include "lib/app/fidl/application_environment.fidl.h"
-#include "lib/app/fidl/application_loader.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include <fuchsia/cpp/component.h>
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_counted.h"
 #include "lib/fxl/strings/string_view.h"
 #include "lib/svc/cpp/service_provider_bridge.h"
 
-namespace app {
+namespace component {
 class JobHolder;
 
 class ApplicationNamespace
@@ -32,20 +32,22 @@ class ApplicationNamespace
   // ApplicationEnvironment implementation:
 
   void CreateNestedEnvironment(
-      fidl::InterfaceHandle<ApplicationEnvironmentHost> host,
+      zx::channel host_directory,
       fidl::InterfaceRequest<ApplicationEnvironment> environment,
       fidl::InterfaceRequest<ApplicationEnvironmentController> controller,
-      const fidl::String& label) override;
+      fidl::StringPtr label) override;
 
   void GetApplicationLauncher(
       fidl::InterfaceRequest<ApplicationLauncher> launcher) override;
 
   void GetServices(fidl::InterfaceRequest<ServiceProvider> services) override;
 
+  void GetDirectory(zx::channel directory_request) override;
+
   // ApplicationLauncher implementation:
 
   void CreateApplication(
-      ApplicationLaunchInfoPtr launch_info,
+      ApplicationLaunchInfo launch_info,
       fidl::InterfaceRequest<ApplicationController> controller) override;
 
  private:
@@ -70,6 +72,6 @@ class ApplicationNamespace
   FXL_DISALLOW_COPY_AND_ASSIGN(ApplicationNamespace);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // GARNET_BIN_APPMGR_APPLICATION_NAMESPACE_H_

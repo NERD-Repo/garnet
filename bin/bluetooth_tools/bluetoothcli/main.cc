@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "lib/fsl/tasks/message_loop.h"
 
+#include <lib/async-loop/cpp/loop.h>
+#include <lib/async/cpp/task.h>
 #include <linenoise/linenoise.h>
 
 #include "app.h"
@@ -22,16 +23,16 @@ void LinenoiseCompletionCallback(const char* buf, linenoiseCompletions* lc) {
 }  // namespace
 
 int main(int argc, char* argv[]) {
-  fsl::MessageLoop message_loop;
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
 
-  bluetoothcli::App app;
+  bluetoothcli::App app(&loop);
   g_app = &app;
 
   linenoiseSetCompletionCallback(LinenoiseCompletionCallback);
 
-  message_loop.task_runner()->PostTask([&app] { app.ReadNextInput(); });
+  async::PostTask(loop.async(), [&app] { app.ReadNextInput(); });
 
-  message_loop.Run();
+  loop.Run();
 
   return EXIT_SUCCESS;
 }

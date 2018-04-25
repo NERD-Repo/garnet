@@ -12,7 +12,7 @@
 
 #include "lib/fsl/vmo/file.h"
 
-namespace app {
+namespace component {
 
 ApplicationRunnerHolder::ApplicationRunnerHolder(
     Services services,
@@ -24,8 +24,8 @@ ApplicationRunnerHolder::ApplicationRunnerHolder(
 ApplicationRunnerHolder::~ApplicationRunnerHolder() = default;
 
 void ApplicationRunnerHolder::StartApplication(
-    ApplicationPackagePtr package,
-    ApplicationStartupInfoPtr startup_info,
+    ApplicationPackage package,
+    ApplicationStartupInfo startup_info,
     std::unique_ptr<archive::FileSystem> file_system,
     fxl::RefPtr<ApplicationNamespace> application_namespace,
     fidl::InterfaceRequest<ApplicationController> controller) {
@@ -35,4 +35,4 @@ void ApplicationRunnerHolder::StartApplication(
                             std::move(controller));
 }
 
-}  // namespace app
+}  // namespace component

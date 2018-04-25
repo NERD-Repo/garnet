@@ -7,16 +7,15 @@
 #include <fcntl.h>
 #include <fdio/util.h>
 #include <fs/service.h>
+#include <lib/async/default.h>
 #include <zircon/device/vfs.h>
 
 #include <utility>
 
-#include "lib/fsl/tasks/message_loop.h"
-
-namespace app {
+namespace component {
 
 ServiceProviderBridge::ServiceProviderBridge()
-    : vfs_(fsl::MessageLoop::GetCurrent()->async()), weak_factory_(this) {
+    : vfs_(async_get_default()), weak_factory_(this) {
   directory_ =
       fbl::AdoptRef(new ServiceProviderDir(weak_factory_.GetWeakPtr()));
 }
@@ -24,7 +23,7 @@ ServiceProviderBridge::ServiceProviderBridge()
 ServiceProviderBridge::~ServiceProviderBridge() = default;
 
 void ServiceProviderBridge::AddBinding(
-    fidl::InterfaceRequest<app::ServiceProvider> request) {
+    fidl::InterfaceRequest<component::ServiceProvider> request) {
   bindings_.AddBinding(this, std::move(request));
 }
 
@@ -58,13 +57,16 @@ int ServiceProviderBridge::OpenAsFileDescriptor() {
   return fdio_bind_to_fd(io, -1, 0);
 }
 
-void ServiceProviderBridge::ConnectToService(const fidl::String& service_name,
+void ServiceProviderBridge::ConnectToService(fidl::StringPtr service_name,
                                              zx::channel channel) {
   auto it = name_to_service_connector_.find(service_name.get());
   if (it != name_to_service_connector_.end())
     it->second(std::move(channel));
-  else
-    backend_->ConnectToService(service_name, std::move(channel));
+  else if (backend_)
+    backend_->ConnectToService(*service_name, std::move(channel));
+  else if (backing_dir_)
+    fdio_service_connect_at(backing_dir_.get(), service_name->c_str(),
+                            channel.release());
 }
 
 ServiceProviderBridge::ServiceProviderDir::ServiceProviderDir(
@@ -76,15 +78,15 @@ ServiceProviderBridge::ServiceProviderDir::~ServiceProviderDir() = default;
 zx_status_t ServiceProviderBridge::ServiceProviderDir::Lookup(
     fbl::RefPtr<fs::Vnode>* out,
     fbl::StringPiece name) {
-  *out = fbl::AdoptRef(new fs::Service([
-    bridge = bridge_, name = fidl::String(name.data(), name.length())
-  ](zx::channel channel) {
-    if (bridge) {
-      bridge->ConnectToService(name, std::move(channel));
-      return ZX_OK;
-    }
-    return ZX_ERR_NOT_FOUND;
-  }));
+  *out = fbl::AdoptRef(new fs::Service(
+      [bridge = bridge_,
+       name = std::string(name.data(), name.length())](zx::channel channel) {
+        if (bridge) {
+          bridge->ConnectToService(name, std::move(channel));
+          return ZX_OK;
+        }
+        return ZX_ERR_NOT_FOUND;
+      }));
   return ZX_OK;
 }
 
@@ -95,4 +97,4 @@ zx_status_t ServiceProviderBridge::ServiceProviderDir::Getattr(vnattr_t* attr) {
   return ZX_OK;
 }
 
-}  // namespace app
+}  // namespace component

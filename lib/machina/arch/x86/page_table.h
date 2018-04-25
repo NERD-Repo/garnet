@@ -7,9 +7,9 @@
 #ifndef GARNET_LIB_MACHINA_ARCH_X86_PAGE_TABLE_H_
 #define GARNET_LIB_MACHINA_ARCH_X86_PAGE_TABLE_H_
 
-class PhysMem;
-
 namespace machina {
+
+class PhysMem;
 
 /**
  * Create an identity-mapped page table.
@@ -18,7 +18,7 @@ namespace machina {
  * @param size The size of guest physical memory.
  * @param end_off The offset to the end of the page table.
  */
-zx_status_t create_page_table(const PhysMem& phys_mem, uintptr_t* end_off);
+zx_status_t create_page_table(const PhysMem& phys_mem);
 
 }  // namespace machina
 

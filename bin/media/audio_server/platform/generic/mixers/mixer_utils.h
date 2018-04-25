@@ -4,7 +4,9 @@
 
 #pragma once
 
+#include <fbl/algorithm.h>
 #include <zircon/compiler.h>
+#include <cmath>
 #include <limits>
 #include <type_traits>
 
@@ -22,9 +24,8 @@ namespace mixers {
 // Enum used to differentiate between different scaling optimization types.
 enum class ScalerType {
   MUTED,     // Massive attenuation.  Just skip data.
-  LT_UNITY,  // Less than unity gain.  Scaling is needed, but clipping is not.
+  NE_UNITY,  // Non-unity non-zero gain.  Scaling is needed, clipping is not.
   EQ_UNITY,  // Unity gain.  Neither scaling nor clipping is needed.
-  GT_UNITY,  // Greater than unity gain.  Scaling and clipping is needed.
 };
 
 // Template to read samples and normalize them into signed 16 bit integers
@@ -38,8 +39,7 @@ class SampleNormalizer<
     typename std::enable_if<std::is_same<SType, uint8_t>::value, void>::type> {
  public:
   static inline int32_t Read(const SType* src) {
-    SType tmp = *src;
-    return (static_cast<int32_t>(tmp) << 8) - 0x8000;
+    return (static_cast<int32_t>(*src) << 8) - 0x8000;
   }
 };
 
@@ -53,8 +53,28 @@ class SampleNormalizer<
   }
 };
 
-// Template used to scale a normalized sample value by the supplied amplitude
-// scaler.
+template <typename SType>
+class SampleNormalizer<
+    SType,
+    typename std::enable_if<std::is_same<SType, float>::value, void>::type> {
+ public:
+  static inline int32_t Read(const SType* src) {
+    // 1. constrain value to [-1.0, +1.0]; 2. scale to fixed-point nominal range
+    // ([-32768, +32768], see below); 3. round; 4. return the int portion.
+    //
+    // Converting audio between float and int is surprisingly controversial.
+    // (blog.bjornroche.com/2009/12/int-float-int-its-jungle-out-there, others).
+    // Admittedly, our method DOES allow an incoming value of +1.0, translating
+    // it to +32768, which is EVENTUALLY clamped on output if not attenuated
+    // earlier. That said, the "practically clipping" +1.0 value is rare in WAV
+    // files; sources should easily be able to reduce their input levels.
+    SType val = fbl::clamp<SType>(*src, -1.0f, 1.0f);
+    val *= (-std::numeric_limits<int16_t>::min());
+    return static_cast<int32_t>(round(val));
+  }
+};
+
+// Template used to scale normalized sample vals by supplied amplitude scalers.
 template <ScalerType ScaleType, typename Enable = void>
 class SampleScaler;
 
@@ -69,12 +89,14 @@ class SampleScaler<
 template <ScalerType ScaleType>
 class SampleScaler<
     ScaleType,
-    typename std::enable_if<(ScaleType == ScalerType::LT_UNITY), void>::type> {
+    typename std::enable_if<(ScaleType == ScalerType::NE_UNITY), void>::type> {
  public:
   static inline int32_t Scale(int32_t val, Gain::AScale scale) {
-    // Round before shifting down
+    // Called extremely frequently: 1 COMPARE, 1 MUL, 1 ADD, 1 SHIFT
+    int64_t rounding_val = (val >= 0 ? Gain::kFractionalRoundValue
+                                     : Gain::kFractionalRoundValue - 1);
     return static_cast<int32_t>(
-        ((static_cast<int64_t>(val) * scale) + Gain::kFractionalRoundValue) >>
+        (static_cast<int64_t>(val) * scale + rounding_val) >>
         Gain::kFractionalScaleBits);
   }
 };
@@ -85,28 +107,6 @@ class SampleScaler<
     typename std::enable_if<(ScaleType == ScalerType::EQ_UNITY), void>::type> {
  public:
   static inline int32_t Scale(int32_t val, Gain::AScale) { return val; }
-};
-
-template <ScalerType ScaleType>
-class SampleScaler<
-    ScaleType,
-    typename std::enable_if<(ScaleType == ScalerType::GT_UNITY), void>::type> {
- public:
-  static inline int32_t Scale(int32_t val, Gain::AScale scale) {
-    using Limit = std::numeric_limits<int16_t>;
-
-    // Round before shifting down
-    val = static_cast<int32_t>(
-        ((static_cast<int64_t>(val) * scale) + Gain::kFractionalRoundValue) >>
-        Gain::kFractionalScaleBits);
-
-    if (unlikely(val > Limit::max())) {
-      return Limit::max();
-    } else if (unlikely(val < Limit::min())) {
-      return Limit::min();
-    }
-    return val;
-  }
 };
 
 // Template to read normalized source samples, and combine channels if required.
@@ -140,9 +140,10 @@ class SrcReader<
  public:
   static constexpr size_t DstPerSrc = 1;
   static inline int32_t Read(const SType* src) {
-    return (SampleNormalizer<SType>::Read(src + 0) +
-            SampleNormalizer<SType>::Read(src + 1)) >>
-           1;
+    // Before shift, add 1 if positive (right-shift truncates asymmetrically).
+    int32_t sum = SampleNormalizer<SType>::Read(src + 0) +
+                  SampleNormalizer<SType>::Read(src + 1);
+    return (sum > 0 ? sum + 1 : sum) >> 1;
   }
 };
 
@@ -171,6 +172,7 @@ class DstMixer<ScaleType,
   static inline constexpr int32_t Mix(int32_t dst,
                                       int32_t sample,
                                       Gain::AScale scale) {
+    // TODO(mpuryear): MTWN-83 Accumulator should clamp to int32.
     return SampleScaler<ScaleType>::Scale(sample, scale) + dst;
   }
 };

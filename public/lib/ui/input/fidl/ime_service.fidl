@@ -2,20 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-module mozart;
-
-import "lib/ui/input/fidl/text_editing.fidl";
-import "lib/ui/input/fidl/text_input.fidl";
-import "lib/ui/input/fidl/input_events.fidl";
+library input;
 
 // The service provided by an IME
 [ServiceName="mozart::ImeService"]
 interface ImeService {
-  GetInputMethodEditor@0(KeyboardType keyboard_type,
+  1: GetInputMethodEditor(KeyboardType keyboard_type,
                          InputMethodAction action,
                          TextInputState initial_state,
                          InputMethodEditorClient client,
-                         InputMethodEditor& editor);
+                         request<InputMethodEditor> editor);
 };
 
 // This is the service a view should expose when it can show and hide a
@@ -24,6 +20,6 @@ interface ImeService {
 // View can use the |OfferServiceProvider| API to expose that service.
 [ServiceName="mozart::SoftKeyboardContainer"]
 interface SoftKeyboardContainer {
-  Show@0() => (bool shown);
-  Hide@1();
+  1: Show() -> (bool shown);
+  2: Hide();
 };

@@ -1,8 +1,0 @@
-{
-    "languages": [
-        "cpp"
-    ],
-    "packages": {
-        "zircon_benchmarks": "//garnet/bin/zircon_benchmarks"
-    }
-}

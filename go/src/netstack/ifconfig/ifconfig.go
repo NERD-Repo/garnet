@@ -6,20 +6,21 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/google/netstack/tcpip"
 
 	"app/context"
-	"fidl/bindings"
 
-	"garnet/public/lib/netstack/fidl/net_address"
-	"garnet/public/lib/netstack/fidl/netstack"
+	"fuchsia/go/netstack"
+	"fuchsia/go/wlan_service"
 )
 
 type netstackClientApp struct {
 	ctx      *context.Context
-	netstack *netstack.Netstack_Proxy
+	netstack *netstack.NetstackInterface
+	wlan     *wlan_service.WlanInterface
 }
 
 func (a *netstackClientApp) printAll() {
@@ -64,6 +65,10 @@ func (a *netstackClientApp) printIface(iface netstack.NetInterface) {
 	}
 	fmt.Printf("\t%s\n", flagsToString(iface.Flags))
 
+	if isWLAN(iface.Features) {
+		fmt.Printf("\tWLAN Status: %s\n", a.wlanStatus())
+	}
+
 	fmt.Printf("\tRX packets:%d\n", stats.Rx.PktsTotal)
 	fmt.Printf("\tTX packets:%d\n", stats.Tx.PktsTotal)
 	fmt.Printf("\tRX bytes:%s  TX bytes:%s\n",
@@ -74,6 +79,152 @@ func (a *netstackClientApp) printIface(iface netstack.NetInterface) {
 
 func (a *netstackClientApp) setStatus(iface netstack.NetInterface, up bool) {
 	a.netstack.SetInterfaceStatus(iface.Id, up)
+}
+
+func (a *netstackClientApp) addIfaceAddress(iface netstack.NetInterface, cidr string) {
+	netAddr, netSubnet, err := net.ParseCIDR(os.Args[3])
+	if err != nil {
+		fmt.Printf("Error parsing CIDR notation: %s, error: %v\n", os.Args[3], err)
+		usage()
+	}
+	prefixLen, _ := netSubnet.Mask.Size()
+	result, _ := a.netstack.SetInterfaceAddress(iface.Id, toNetAddress(netAddr), uint64(prefixLen))
+	if result.Status != netstack.StatusOk {
+		fmt.Printf("Error setting interface address: %s\n", result.Message)
+	}
+}
+
+func (a *netstackClientApp) parseRouteAttribute(in *netstack.RouteTableEntry, args []string) (remaining []string, err error) {
+	if len(args) < 2 {
+		return args, fmt.Errorf("not enough args to make attribute")
+	}
+	var attr, val string
+	switch attr, val, remaining = args[0], args[1], args[2:]; attr {
+	case "gateway":
+		in.Gateway = toNetAddress(net.ParseIP(val))
+	case "iface":
+		iface := a.getIfaceByName(val)
+		if iface == nil {
+			return remaining, fmt.Errorf("no such interface '%s'\n", val)
+		}
+
+		in.Nicid = iface.Id
+	default:
+		return remaining, fmt.Errorf("unknown route attribute: %s %s", attr, val)
+	}
+
+	return remaining, nil
+}
+
+func (a *netstackClientApp) newRouteFromArgs(args []string) (route netstack.RouteTableEntry, err error) {
+	destination, remaining := args[0], args[1:]
+	dstAddr, dstSubnet, err := net.ParseCIDR(destination)
+	if err != nil {
+		return route, fmt.Errorf("invalid destination (destination must be provided in CIDR format): %s", destination)
+	}
+
+	route.Destination = toNetAddress(dstAddr)
+	route.Netmask = toNetAddress(net.IP(dstSubnet.Mask))
+
+	for len(remaining) > 0 {
+		remaining, err = a.parseRouteAttribute(&route, remaining)
+		if err != nil {
+			return route, err
+		}
+	}
+
+	if len(remaining) != 0 {
+		return route, fmt.Errorf("could not parse all route arguments. remaining: %s", remaining)
+	}
+
+	return route, nil
+}
+
+func (a *netstackClientApp) addRoute(r netstack.RouteTableEntry) error {
+	rs, err := a.netstack.GetRouteTable()
+	if err != nil {
+		return fmt.Errorf("Could not get route table from netstack: %s", err)
+	}
+
+	return a.netstack.SetRouteTable(append(rs, r))
+}
+
+func (a *netstackClientApp) bridge(ifNames []string) error {
+	ifs := make([]*netstack.NetInterface, len(ifNames))
+	nicIDs := make([]uint32, len(ifNames))
+	// first, validate that all interfaces exist
+	for i, ifName := range ifNames {
+		iface := a.getIfaceByName(ifName)
+		if iface == nil {
+			return fmt.Errorf("no such interface '%s'\n", ifName)
+		}
+		ifs[i] = iface
+		nicIDs[i] = iface.Id
+	}
+
+	result, _ := a.netstack.BridgeInterfaces(nicIDs)
+	if result.Status != netstack.StatusOk {
+		return fmt.Errorf("error bridging interfaces: %s, result: %s", result, ifs)
+	}
+
+	return nil
+}
+
+func (a *netstackClientApp) setDHCP(iface netstack.NetInterface, startStop string) {
+	switch startStop {
+	case "start":
+		a.netstack.SetDhcpClientStatus(iface.Id, true)
+	case "stop":
+		a.netstack.SetDhcpClientStatus(iface.Id, false)
+	default:
+		usage()
+	}
+}
+
+func (a *netstackClientApp) wlanStatus() string {
+	if a.wlan == nil {
+		return "failed to query (FIDL service unintialized)"
+	}
+	res, err := a.wlan.Status()
+	if err != nil {
+		return fmt.Sprintf("failed to query (error: %v)", err)
+	} else if res.Error.Code != wlan_service.ErrCodeOk {
+		return fmt.Sprintf("failed to query (err: code(%v) desc(%v)", res.Error.Code, res.Error.Description)
+	} else {
+		status := wlanStateToStr(res.State)
+		if res.CurrentAp != nil {
+			ap := res.CurrentAp
+			isSecureStr := ""
+			if ap.IsSecure {
+				isSecureStr = "*"
+			}
+			status += fmt.Sprintf(" BSSID: %x SSID: %q Security: %v RSSI: %d",
+				ap.Bssid, ap.Ssid, isSecureStr, ap.LastRssi)
+		}
+		return status
+	}
+}
+
+func wlanStateToStr(state wlan_service.State) string {
+	switch state {
+	case wlan_service.StateBss:
+		return "starting-bss"
+	case wlan_service.StateQuerying:
+		return "querying"
+	case wlan_service.StateScanning:
+		return "scanning"
+	case wlan_service.StateJoining:
+		return "joining"
+	case wlan_service.StateAuthenticating:
+		return "authenticating"
+	case wlan_service.StateAssociating:
+		return "associating"
+	case wlan_service.StateAssociated:
+		return "associated"
+	default:
+		return "unknown"
+	}
+
 }
 
 func hwAddrToString(hwaddr []uint8) string {
@@ -87,13 +238,13 @@ func hwAddrToString(hwaddr []uint8) string {
 	return str
 }
 
-func netAddrToString(addr net_address.NetAddress) string {
+func netAddrToString(addr netstack.NetAddress) string {
 	switch addr.Family {
-	case net_address.NetAddressFamily_Ipv4:
-		a := tcpip.Address(addr.Ipv4[:])
+	case netstack.NetAddressFamilyIpv4:
+		a := tcpip.Address(addr.Ipv4.Addr[:])
 		return fmt.Sprintf("%s", a)
-	case net_address.NetAddressFamily_Ipv6:
-		a := tcpip.Address(addr.Ipv6[:])
+	case netstack.NetAddressFamilyIpv6:
+		a := tcpip.Address(addr.Ipv6.Addr[:])
 		return fmt.Sprintf("%s", a)
 	}
 	return ""
@@ -105,6 +256,28 @@ func flagsToString(flags uint32) string {
 		str += "UP"
 	}
 	return str
+}
+
+func isIPv4(ip net.IP) bool {
+	return ip.DefaultMask() != nil
+}
+
+func toNetAddress(addr net.IP) netstack.NetAddress {
+	out := netstack.NetAddress{Family: netstack.NetAddressFamilyUnspecified}
+	if isIPv4(addr) {
+		out.Family = netstack.NetAddressFamilyIpv4
+		out.Ipv4 = &netstack.Ipv4Address{Addr: [4]uint8{}}
+		copy(out.Ipv4.Addr[:], addr[len(addr)-4:])
+	} else {
+		out.Family = netstack.NetAddressFamilyIpv6
+		out.Ipv6 = &netstack.Ipv6Address{Addr: [16]uint8{}}
+		copy(out.Ipv6.Addr[:], addr[:])
+	}
+	return out
+}
+
+func isWLAN(features uint32) bool {
+	return features&uint32(netstack.InterfaceFeatureWlan) != 0
 }
 
 // bytesToString returns a human-friendly display of the given byte count.
@@ -137,37 +310,96 @@ func usage() {
 	fmt.Printf("Usage:\n")
 	fmt.Printf("  %s [<interface>]\n", os.Args[0])
 	fmt.Printf("  %s [<interface>] [up|down]\n", os.Args[0])
+	fmt.Printf("  %s [<interface>] [add|del] [<address>]/[<mask>]\n", os.Args[0])
+	fmt.Printf("  %s [<interface>] dhcp [start|stop]\n", os.Args[0])
+	fmt.Printf("  %s route [add|del] [<address>]/[<mask>]\n", os.Args[0])
+	fmt.Printf("  %s bridge [<interface>]+\n", os.Args[0])
+	os.Exit(1)
 }
 
 func main() {
 	a := &netstackClientApp{ctx: context.CreateFromStartupInfo()}
-	r, p := a.netstack.NewRequest(bindings.GetAsyncWaiter())
-	a.netstack = p
+	req, pxy, err := netstack.NewNetstackInterfaceRequest()
+	if err != nil {
+		panic(err.Error())
+	}
+	a.netstack = pxy
 	defer a.netstack.Close()
-	a.ctx.ConnectToEnvService(r)
+	a.ctx.ConnectToEnvService(req)
+
+	reqWlan, pxyWlan, errWlan := wlan_service.NewWlanInterfaceRequest()
+	if errWlan == nil {
+		a.wlan = pxyWlan
+		defer a.wlan.Close()
+		a.ctx.ConnectToEnvService(reqWlan)
+	}
 
 	if len(os.Args) == 1 {
 		a.printAll()
 		return
 	}
 
-	iface := a.getIfaceByName(os.Args[1])
-	if iface == nil {
-		fmt.Printf("ifconfig: no such interface '%s'\n", os.Args[1])
-		return
-	}
+	var iface *netstack.NetInterface
+	switch os.Args[1] {
+	case "route":
+		routeFlags := os.Args[3:]
+		r, err := a.newRouteFromArgs(routeFlags)
+		if err != nil {
+			fmt.Printf("Error parsing route from args: %s, error: %s\n", routeFlags, err)
+		}
 
-	if len(os.Args) == 2 {
-		a.printIface(*iface)
-	} else if len(os.Args) == 3 {
-		if os.Args[2] == "up" {
-			a.setStatus(*iface, true)
-		} else if os.Args[2] == "down" {
-			a.setStatus(*iface, false)
-		} else {
+		switch op := os.Args[2]; op {
+		case "add":
+			err = a.addRoute(r)
+			if err != nil {
+				fmt.Printf("Error adding route to route table: %s", err)
+			}
+		case "del":
+			fmt.Printf("Deleting routes from the route table is not yet supported.\n")
+		default:
+			fmt.Printf("Unknown route operation: %s", op)
 			usage()
 		}
-	} else {
+
+		return
+	case "bridge":
+		ifaces := os.Args[2:]
+		err := a.bridge(ifaces)
+		if err != nil {
+			fmt.Printf("error creating bridge: %s", err)
+		}
+		// fmt.Printf("Created virtual nic %s", bridge)
+		fmt.Printf("Bridged interfaces %s\n", ifaces)
+		return
+	default:
+		iface = a.getIfaceByName(os.Args[1])
+		if iface == nil {
+			fmt.Printf("ifconfig: no such interface '%s'\n", os.Args[1])
+			return
+		}
+	}
+
+	switch len(os.Args) {
+	case 2:
+		a.printIface(*iface)
+	case 3, 4:
+		switch os.Args[2] {
+		case "up":
+			a.setStatus(*iface, true)
+		case "down":
+			a.setStatus(*iface, false)
+		case "add":
+			a.addIfaceAddress(*iface, os.Args[3])
+		case "del":
+			fmt.Printf("Deleting addresses from an interface is not yet supported.\n")
+			usage()
+		case "dhcp":
+			a.setDHCP(*iface, os.Args[3])
+		default:
+			usage()
+		}
+
+	default:
 		usage()
 	}
 }

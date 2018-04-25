@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "thinfs": "//garnet/go/src/thinfs"
+    }
+}

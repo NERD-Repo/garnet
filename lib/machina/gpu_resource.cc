@@ -2,24 +2,35 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <string.h>
-
 #include "garnet/lib/machina/gpu_resource.h"
+
+#include <string.h>
 
 #include "garnet/lib/machina/gpu_scanout.h"
 #include "lib/fxl/logging.h"
+
+static zx_pixel_format_t pixel_format(uint32_t virtio_format) {
+  switch (virtio_format) {
+    case VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM:
+      return ZX_PIXEL_FORMAT_ARGB_8888;
+    case VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM:
+      return ZX_PIXEL_FORMAT_RGB_x888;
+    default:
+      return ZX_PIXEL_FORMAT_NONE;
+  }
+}
 
 namespace machina {
 
 fbl::unique_ptr<GpuResource> GpuResource::Create(
     const virtio_gpu_resource_create_2d_t* request,
     VirtioGpu* gpu) {
-  if (request->format != VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM &&
-      request->format != VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM) {
+  zx_pixel_format_t format = pixel_format(request->format);
+  if (format == ZX_PIXEL_FORMAT_NONE) {
     FXL_LOG(INFO) << "Unsupported GPU format " << request->format;
     return nullptr;
   }
-  GpuBitmap bitmap(request->width, request->height, ZX_PIXEL_FORMAT_ARGB_8888);
+  GpuBitmap bitmap(request->width, request->height, format);
   return fbl::make_unique<GpuResource>(gpu, request->resource_id,
                                        fbl::move(bitmap));
 }
@@ -84,11 +95,11 @@ virtio_gpu_ctrl_type GpuResource::TransferToHost2D(
 virtio_gpu_ctrl_type GpuResource::Flush(
     const virtio_gpu_resource_flush_t* request) {
   GpuScanout* scanout = scanout_;
-  if (scanout == nullptr)
+  if (scanout == nullptr) {
     return VIRTIO_GPU_RESP_OK_NODATA;
+  }
 
-  // TODO: Convert r to scanout coordinates.
-  scanout->FlushRegion(request->r);
+  scanout->DrawScanoutResource(request->r);
   return VIRTIO_GPU_RESP_OK_NODATA;
 }
 
@@ -101,10 +112,8 @@ void GpuResource::CopyBytes(uint64_t offset, uint8_t* dest, size_t size) {
       size_t len = (entry.length + base) - offset;
       len = len > size ? size : len;
 
-      zx_vaddr_t src_vaddr = gpu_->phys_mem().addr() + entry.addr;
-      src_vaddr = src_vaddr + offset - base;
-
-      memcpy(dest, reinterpret_cast<void*>(src_vaddr), len);
+      zx_vaddr_t src_vaddr = entry.addr + offset - base;
+      memcpy(dest, gpu_->phys_mem().as<void>(src_vaddr, len), len);
 
       dest += len;
       offset += len;

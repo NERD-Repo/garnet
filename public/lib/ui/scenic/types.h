@@ -5,7 +5,7 @@
 #ifndef LIB_UI_SCENIC_TYPES_H_
 #define LIB_UI_SCENIC_TYPES_H_
 
-#include "lib/ui/scenic/fidl/session.fidl.h"
+#include <fuchsia/cpp/gfx.h>
 
 namespace scenic {
 

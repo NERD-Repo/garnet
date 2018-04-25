@@ -14,14 +14,14 @@ namespace audio {
 
 constexpr unsigned int Gain::kFractionalScaleBits;
 constexpr Gain::AScale Gain::kUnityScale;
+constexpr Gain::AScale Gain::kMaxScale;
 constexpr float Gain::kMinGain;
 constexpr float Gain::kMaxGain;
 
 Gain::AScale Gain::GetGainScale(float output_db_gain) {
   float db_target_rend_gain = db_target_rend_gain_.load();
 
-  // If nothing has changed, just return the current computed amplitude scale
-  // value.
+  // If nothing changed, return the previously-computed amplitude scale value.
   if ((db_current_rend_gain_ == db_target_rend_gain) &&
       (db_current_output_gain_ == output_db_gain)) {
     return amplitude_scale_;
@@ -29,12 +29,12 @@ Gain::AScale Gain::GetGainScale(float output_db_gain) {
 
   // Update the internal gains, clamping in the process.
   db_current_rend_gain_ = fbl::clamp(db_target_rend_gain, kMinGain, kMaxGain);
-  db_current_output_gain_ = fbl::clamp(output_db_gain, kMinGain, kMaxGain);
+  db_current_output_gain_ = fbl::clamp(output_db_gain, kMinGain, 0.0f);
+
+  float effective_gain = db_current_rend_gain_ + db_current_output_gain_;
 
   // If either the renderer, output, or combined gain is at the force mute
   // point, just zero out the amplitude scale and return that.
-  float effective_gain = db_current_rend_gain_ + db_current_output_gain_;
-
   if ((db_current_rend_gain_ <= kMinGain) ||
       (db_current_output_gain_ <= kMinGain) || (effective_gain <= kMinGain)) {
     amplitude_scale_ = 0u;
@@ -42,11 +42,12 @@ Gain::AScale Gain::GetGainScale(float output_db_gain) {
     // Compute the amplitude scale factor as a double and sanity check before
     // converting to the fixed point representation.
     double amp_scale = pow(10.0, effective_gain / 20.0);
-    FXL_DCHECK(amp_scale <
-               (1u << ((sizeof(AScale) * 8) - kFractionalScaleBits)));
+    static_assert((kMaxScale) < (std::numeric_limits<uint32_t>::max()),
+                  "kMaxScale exceeds the capacity of our AScale container!");
 
     amp_scale *= static_cast<double>(kUnityScale);
-    amplitude_scale_ = static_cast<AScale>(amp_scale);
+    amplitude_scale_ = static_cast<AScale>(round(amp_scale));
+    FXL_DCHECK(amplitude_scale_ <= kMaxScale);
   }
 
   return amplitude_scale_;

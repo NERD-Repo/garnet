@@ -164,6 +164,7 @@ enum ath10k_pci_irq_mode {
 struct ath10k_pci {
     pci_protocol_t pdev;
     zx_device_t* dev;
+    zx_handle_t btih;
     struct ath10k* ar;
     void* mem;
     uint64_t mem_len;
@@ -183,8 +184,9 @@ struct ath10k_pci {
 
     /* Map CE id to ce_state */
     struct ath10k_ce_pipe ce_states[CE_COUNT_MAX];
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     struct timer_list rx_post_retry;
+#endif // NEEDS PORTING
 
     /* Due to HW quirks it is recommended to disable ASPM during device
      * bootup. To do that the original PCI-E Link Control is stored before
@@ -193,7 +195,7 @@ struct ath10k_pci {
     uint16_t link_ctl;
 
     /* Protects ps_awake and ps_wake_refcount */
-    spinlock_t ps_lock;
+    mtx_t ps_lock;
 
     /* The device has a special powersave-oriented register. When device is
      * considered asleep it drains less power and driver is forbidden from
@@ -203,6 +205,7 @@ struct ath10k_pci {
      */
     unsigned long ps_wake_refcount;
 
+#if 0 // NEEDS PORTING
     /* Waking up takes some time (up to 2ms in some cases) so it can be bad
      * for latency. To mitigate this the device isn't immediately allowed
      * to sleep after all references are undone - instead there's a grace
@@ -212,6 +215,7 @@ struct ath10k_pci {
      * Also see comments on ATH10K_PCI_SLEEP_GRACE_PERIOD_MSEC.
      */
     struct timer_list ps_timer;
+#endif // NEEDS PORTING
 
     /* MMIO registers are used to communicate with the device. With
      * intensive traffic accessing powersave register would be a bit
@@ -220,7 +224,6 @@ struct ath10k_pci {
      * powersave register state changes.
      */
     bool ps_awake;
-#endif // TODO
 
     /* pci power save, disable for QCA988X and QCA99X0.
      * Writing 'false' to this variable avoids frequent locking
@@ -231,15 +234,15 @@ struct ath10k_pci {
     const struct ath10k_bus_ops* bus_ops;
 
     /* Chip specific pci reset routine used to do a safe reset */
-    int (*pci_soft_reset)(struct ath10k* ar);
+    zx_status_t (*pci_soft_reset)(struct ath10k* ar);
 
     /* Chip specific pci full reset function */
-    int (*pci_hard_reset)(struct ath10k* ar);
+    zx_status_t (*pci_hard_reset)(struct ath10k* ar);
 
     /* chip specific methods for converting target CPU virtual address
      * space to CE address space
      */
-    uint32_t (*targ_cpu_to_ce_addr)(struct ath10k* ar, uint32_t addr);
+    zx_status_t (*targ_cpu_to_ce_addr)(struct ath10k* ar, uint32_t addr, uint32_t* ce_addr);
 };
 
 static inline struct ath10k_pci* ath10k_pci_priv(struct ath10k* ar) {
@@ -267,50 +270,38 @@ uint32_t ath10k_pci_read32(struct ath10k* ar, uint32_t offset);
 uint32_t ath10k_pci_soc_read32(struct ath10k* ar, uint32_t addr);
 uint32_t ath10k_pci_reg_read32(struct ath10k* ar, uint32_t addr);
 
-#if 0 // TODO
-int ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
-                         struct ath10k_hif_sg_item* items, int n_items);
-int ath10k_pci_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
-                             size_t buf_len);
-#endif // TODO
+zx_status_t ath10k_pci_hif_tx_sg(struct ath10k* ar, uint8_t pipe_id,
+                                 struct ath10k_hif_sg_item* items, int n_items);
+zx_status_t ath10k_pci_hif_diag_read(struct ath10k* ar, uint32_t address, void* buf,
+                                     size_t buf_len);
 zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
                                       const void* data, int nbytes);
-#if 0 // TODO
-int ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar, void* req, uint32_t req_len,
-                                    void* resp, uint32_t* resp_len);
-int ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
-                                       uint8_t* ul_pipe, uint8_t* dl_pipe);
+zx_status_t ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar, void* req, uint32_t req_len,
+                                            void* resp, uint32_t* resp_len);
+zx_status_t ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
+                                               uint8_t* ul_pipe, uint8_t* dl_pipe);
 void ath10k_pci_hif_get_default_pipe(struct ath10k* ar, uint8_t* ul_pipe,
                                      uint8_t* dl_pipe);
 void ath10k_pci_hif_send_complete_check(struct ath10k* ar, uint8_t pipe,
                                         int force);
 uint16_t ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, uint8_t pipe);
 void ath10k_pci_hif_power_down(struct ath10k* ar);
-int ath10k_pci_alloc_pipes(struct ath10k* ar);
-#endif // TODO
+zx_status_t ath10k_pci_alloc_pipes(struct ath10k* ar);
 void ath10k_pci_free_pipes(struct ath10k* ar);
-#if 0 // TODO
 void ath10k_pci_rx_replenish_retry(unsigned long ptr);
 void ath10k_pci_ce_deinit(struct ath10k* ar);
 void ath10k_pci_init_napi(struct ath10k* ar);
-int ath10k_pci_init_pipes(struct ath10k* ar);
-#endif // TODO
+zx_status_t ath10k_pci_init_pipes(struct ath10k* ar);
 zx_status_t ath10k_pci_init_config(struct ath10k* ar);
-#if 0 // TODO
 void ath10k_pci_rx_post(struct ath10k* ar);
 void ath10k_pci_flush(struct ath10k* ar);
-#endif // TODO
 void ath10k_pci_enable_legacy_irq(struct ath10k* ar);
-#if 0 // TODO
 bool ath10k_pci_irq_pending(struct ath10k* ar);
-#endif // TODO
 void ath10k_pci_disable_and_clear_legacy_irq(struct ath10k* ar);
 void ath10k_pci_irq_msi_fw_mask(struct ath10k* ar);
 zx_status_t ath10k_pci_wait_for_target_init(struct ath10k* ar);
-#if 0 // TODO
-int ath10k_pci_setup_resource(struct ath10k* ar);
+zx_status_t ath10k_pci_setup_resource(struct ath10k* ar);
 void ath10k_pci_release_resource(struct ath10k* ar);
-#endif // TODO
 
 /* QCA6174 is known to have Tx/Rx issues when SOC_WAKE register is poked too
  * frequently. To avoid this put SoC to sleep after a very conservative grace

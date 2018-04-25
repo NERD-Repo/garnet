@@ -6,13 +6,13 @@
 
 #include <memory>
 
+#include <lib/async/cpp/task.h>
+
 #include "garnet/drivers/bluetooth/lib/hci/acl_data_channel.h"
 #include "garnet/drivers/bluetooth/lib/hci/acl_data_packet.h"
 #include "garnet/drivers/bluetooth/lib/hci/device_wrapper.h"
 #include "garnet/drivers/bluetooth/lib/hci/transport.h"
 #include "garnet/drivers/bluetooth/lib/testing/test_base.h"
-#include "lib/fsl/tasks/message_loop.h"
-#include "lib/fxl/functional/make_copyable.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/macros.h"
 
@@ -44,21 +44,24 @@ class FakeControllerTest : public TestBase {
  protected:
   // TestBase overrides:
   void SetUp() override {
-    SetUpTransport();
-    transport_->Initialize();
+    transport_ = hci::Transport::Create(
+        FakeControllerTest<FakeControllerType>::SetUpTestDevice());
+    transport_->Initialize(dispatcher());
   }
 
   void TearDown() override {
+    if (!transport_)
+      return;
+
+    if (transport_->IsInitialized()) {
+      transport_->ShutDown();
+    }
+
+    RunUntilIdle();
+
     transport_ = nullptr;
     test_device_ = nullptr;
-  }
-
-  // Creates a hci::Transport without directly initializing it (unlike SetUp(),
-  // which initializes the CommandChannel).
-  void SetUpTransport() {
-    transport_ = hci::Transport::Create(
-        FakeControllerTest<FakeControllerType>::SetUpTestDevice());
-  }
+ }
 
   // Directly initializes the ACL data channel and wires up its data rx
   // callback. It is OK to override the data rx callback after this is called.
@@ -71,14 +74,15 @@ class FakeControllerTest : public TestBase {
 
     transport_->acl_data_channel()->SetDataRxHandler(
         std::bind(&FakeControllerTest<FakeControllerType>::OnDataReceived, this,
-                  std::placeholders::_1));
+                  std::placeholders::_1),
+        TestBase::dispatcher());
 
     return true;
   }
 
   // Sets a callback which will be invoked when we receive packets from the test
-  // controller. |callback| will be posted on the test main loop (i.e.
-  // TestBase::message_loop_), thus no locking is necessary within the callback.
+  // controller. |callback| will be posted on the test loop, thus no locking is
+  // necessary within the callback.
   //
   // InitializeACLDataChannel() must be called once and its data rx handler must
   // not be overridden by tests for |callback| to work.
@@ -100,24 +104,29 @@ class FakeControllerTest : public TestBase {
 
   // Getters for internal fields frequently used by tests.
   FakeControllerType* test_device() const { return test_device_.get(); }
+  zx::channel test_cmd_chan() { return std::move(cmd1_); }
+  zx::channel test_acl_chan() { return std::move(acl1_); }
 
  private:
+  // Channels to be moved to the tests
+  zx::channel cmd1_;
+  zx::channel acl1_;
+
   // Initializes |test_device_| and returns the DeviceWrapper endpoint which can
   // be passed to classes that are under test.
   std::unique_ptr<hci::DeviceWrapper> SetUpTestDevice() {
-    zx::channel cmd0, cmd1;
-    zx::channel acl0, acl1;
+    zx::channel cmd0;
+    zx::channel acl0;
 
-    zx_status_t status = zx::channel::create(0, &cmd0, &cmd1);
+    zx_status_t status = zx::channel::create(0, &cmd0, &cmd1_);
     FXL_DCHECK(ZX_OK == status);
 
-    status = zx::channel::create(0, &acl0, &acl1);
+    status = zx::channel::create(0, &acl0, &acl1_);
     FXL_DCHECK(ZX_OK == status);
 
     auto hci_dev = std::make_unique<hci::DummyDeviceWrapper>(std::move(cmd0),
                                                              std::move(acl0));
-    test_device_ =
-        std::make_unique<FakeControllerType>(std::move(cmd1), std::move(acl1));
+    test_device_ = std::make_unique<FakeControllerType>();
 
     return hci_dev;
   }
@@ -128,10 +137,10 @@ class FakeControllerTest : public TestBase {
     if (!data_received_callback_)
       return;
 
-    TestBase::message_loop()->task_runner()->PostTask(
-        fxl::MakeCopyable([this, packet = std::move(data_packet)]() mutable {
-          data_received_callback_(std::move(packet));
-        }));
+    async::PostTask(TestBase::dispatcher(),
+                    [this, packet = std::move(data_packet)]() mutable {
+                      data_received_callback_(std::move(packet));
+                    });
   }
 
   std::unique_ptr<FakeControllerType> test_device_;

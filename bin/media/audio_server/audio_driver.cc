@@ -6,8 +6,8 @@
 
 #include <audio-proto-utils/format-utils.h>
 
-#include "garnet/bin/media/audio/driver_utils.h"
-#include "garnet/bin/media/fidl/fidl_type_conversions.h"
+#include "garnet/bin/media/audio_server/driver_utils.h"
+#include "lib/fidl/cpp/clone.h"
 #include "lib/fxl/logging.h"
 
 namespace media {
@@ -87,7 +87,7 @@ zx_status_t AudioDriver::Init(zx::channel stream_channel) {
 void AudioDriver::Cleanup() {
   fbl::RefPtr<DriverRingBuffer> ring_buffer;
   {
-    fxl::MutexLocker lock(&ring_buffer_state_lock_);
+    std::lock_guard<std::mutex> lock(ring_buffer_state_lock_);
     ring_buffer = std::move(ring_buffer_);
     clock_mono_to_ring_pos_bytes_ = TimelineFunction();
     ring_buffer_state_gen_.Next();
@@ -101,7 +101,7 @@ void AudioDriver::Cleanup() {
 
 void AudioDriver::SnapshotRingBuffer(RingBufferSnapshot* snapshot) const {
   FXL_DCHECK(snapshot);
-  fxl::MutexLocker lock(&ring_buffer_state_lock_);
+  std::lock_guard<std::mutex> lock(ring_buffer_state_lock_);
 
   snapshot->ring_buffer = ring_buffer_;
   snapshot->clock_mono_to_ring_pos_bytes = clock_mono_to_ring_pos_bytes_;
@@ -112,12 +112,14 @@ void AudioDriver::SnapshotRingBuffer(RingBufferSnapshot* snapshot) const {
 }
 
 AudioMediaTypeDetailsPtr AudioDriver::GetSourceFormat() const {
-  fxl::MutexLocker lock(&configured_format_lock_);
+  std::lock_guard<std::mutex> lock(configured_format_lock_);
 
-  if (configured_format_.is_null())
+  if (!configured_format_)
     return nullptr;
 
-  return configured_format_.Clone();
+  AudioMediaTypeDetailsPtr result;
+  fidl::Clone(configured_format_, &result);
+  return result;
 }
 
 zx_status_t AudioDriver::GetSupportedFormats() {
@@ -167,8 +169,8 @@ zx_status_t AudioDriver::Configure(uint32_t frames_per_second,
 
   // Sanity check arguments.
   audio_sample_format_t driver_format;
-  if (!driver_utils::SampleFormatToDriverSampleFormat(Convert(fmt),
-                                                      &driver_format)) {
+  if (!driver_utils::AudioSampleFormatToDriverSampleFormat(fmt,
+                                                           &driver_format)) {
     FXL_LOG(ERROR) << "Failed to convert Fmt 0x" << std::hex
                    << static_cast<uint32_t>(fmt) << " to driver format.";
     return ZX_ERR_INVALID_ARGS;
@@ -228,7 +230,7 @@ zx_status_t AudioDriver::Configure(uint32_t frames_per_second,
   req.sample_format = sample_format_;
 
   {
-    fxl::MutexLocker lock(&configured_format_lock_);
+    std::lock_guard<std::mutex> lock(configured_format_lock_);
     configured_format_ = AudioMediaTypeDetails::New();
     configured_format_->sample_format = fmt;
     configured_format_->channels = channels;
@@ -303,7 +305,7 @@ zx_status_t AudioDriver::Stop() {
   // Invalidate our timeline transformation here.  To outside observers, we are
   // now stopped.
   {
-    fxl::MutexLocker lock(&ring_buffer_state_lock_);
+    std::lock_guard<std::mutex> lock(ring_buffer_state_lock_);
     clock_mono_to_ring_pos_bytes_ = TimelineFunction();
     ring_buffer_state_gen_.Next();
   }
@@ -742,7 +744,7 @@ zx_status_t AudioDriver::ProcessGetBufferResponse(
   }
 
   {
-    fxl::MutexLocker lock(&ring_buffer_state_lock_);
+    std::lock_guard<std::mutex> lock(ring_buffer_state_lock_);
 
     ring_buffer_ = DriverRingBuffer::Create(fbl::move(rb_vmo), bytes_per_frame_,
                                             resp.num_ring_buffer_frames,
@@ -780,10 +782,10 @@ zx_status_t AudioDriver::ProcessStartResponse(
   // Now that we have started up, compute the transformation from clock
   // monotonic to the ring buffer position (in bytes) Then update the ring
   // buffer state's transformation and bump the generation counter.
-  TimelineFunction func(resp.start_time, 0, ZX_SEC(1),
-                        frames_per_sec_ * bytes_per_frame_);
+  TimelineFunction func(0, resp.start_time, frames_per_sec_ * bytes_per_frame_,
+                        ZX_SEC(1));
   {
-    fxl::MutexLocker lock(&ring_buffer_state_lock_);
+    std::lock_guard<std::mutex> lock(ring_buffer_state_lock_);
     FXL_DCHECK(!clock_mono_to_ring_pos_bytes_.invertable());
     FXL_DCHECK(ring_buffer_ != nullptr);
     clock_mono_to_ring_pos_bytes_ = func;

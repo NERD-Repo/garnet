@@ -394,6 +394,48 @@ const struct ath10k_hw_clk_params qca6174_clk[ATH10K_HW_REFCLK_COUNT] = {
     },
 };
 
+#if 0 // NEEDS PORTING
+void ath10k_hw_fill_survey_time(struct ath10k* ar, struct survey_info* survey,
+                                uint32_t cc, uint32_t rcc, uint32_t cc_prev, uint32_t rcc_prev) {
+    uint32_t cc_fix = 0;
+    uint32_t rcc_fix = 0;
+    enum ath10k_hw_cc_wraparound_type wraparound_type;
+
+    survey->filled |= SURVEY_INFO_TIME |
+                      SURVEY_INFO_TIME_BUSY;
+
+    wraparound_type = ar->hw_params.cc_wraparound_type;
+
+    if (cc < cc_prev || rcc < rcc_prev) {
+        switch (wraparound_type) {
+        case ATH10K_HW_CC_WRAP_SHIFTED_ALL:
+            if (cc < cc_prev) {
+                cc_fix = 0x7fffffff;
+                survey->filled &= ~SURVEY_INFO_TIME_BUSY;
+            }
+            break;
+        case ATH10K_HW_CC_WRAP_SHIFTED_EACH:
+            if (cc < cc_prev) {
+                cc_fix = 0x7fffffff;
+            }
+
+            if (rcc < rcc_prev) {
+                rcc_fix = 0x7fffffff;
+            }
+            break;
+        case ATH10K_HW_CC_WRAP_DISABLED:
+            break;
+        }
+    }
+
+    cc -= cc_prev - cc_fix;
+    rcc -= rcc_prev - rcc_fix;
+
+    survey->time = CCNT_TO_MSEC(ar, cc);
+    survey->time_busy = CCNT_TO_MSEC(ar, rcc);
+}
+#endif // NEEDS PORTING
+
 /* The firmware does not support setting the coverage class. Instead this
  * function monitors and modifies the corresponding MAC registers.
  */
@@ -411,7 +453,7 @@ static void ath10k_hw_qca988x_set_coverage_class(struct ath10k* ar,
     uint64_t fw_dbglog_mask;
     uint32_t fw_dbglog_level;
 
-    mutex_lock(&ar->conf_mutex);
+    mtx_lock(&ar->conf_mutex);
 
     /* Only modify registers if the core is started. */
     if ((ar->state != ATH10K_STATE_ON) &&
@@ -523,15 +565,15 @@ static void ath10k_hw_qca988x_set_coverage_class(struct ath10k* ar,
 
 store_regs:
     /* After an error we will not retry setting the coverage class. */
-    spin_lock_bh(&ar->data_lock);
+    mtx_lock(&ar->data_lock);
     ar->fw_coverage.coverage_class = value;
-    spin_unlock_bh(&ar->data_lock);
+    mtx_unlock(&ar->data_lock);
 
     ar->fw_coverage.reg_slottime_conf = slottime_reg;
     ar->fw_coverage.reg_ack_cts_timeout_conf = timeout_reg;
 
 unlock:
-    mutex_unlock(&ar->conf_mutex);
+    mtx_unlock(&ar->conf_mutex);
 #endif // TODO
 }
 

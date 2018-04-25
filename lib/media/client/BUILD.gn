@@ -2,7 +2,6 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//garnet/public/build/test.gni")
 import("//build/package.gni")
 
 source_set("client") {
@@ -20,10 +19,14 @@ source_set("client") {
   ]
 
   public_deps = [
-    "//garnet/public/lib/fidl/cpp/bindings",
+    "//garnet/public/lib/fidl/cpp",
     "//garnet/public/lib/fsl",
     "//garnet/public/lib/fxl",
     "//garnet/public/lib/media/fidl",
     "//garnet/public/lib/media/transport",
+  ]
+
+  deps = [
+    "//garnet/public/lib/media/timeline",
   ]
 }

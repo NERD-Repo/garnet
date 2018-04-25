@@ -11,21 +11,21 @@
 #include <thread>
 #include <utility>
 
+#include <fuchsia/cpp/cobalt.h>
+#include <lib/async/cpp/task.h>
+
 #include "config/cobalt_config.pb.h"
-#include "config/encodings.pb.h"
-#include "config/metrics.pb.h"
+#include "garnet/bin/cobalt/product_hack.h"
+#include "garnet/bin/cobalt/timer_manager.h"
 #include "grpc++/grpc++.h"
 #include "lib/app/cpp/application_context.h"
-#include "lib/cobalt/fidl/cobalt.fidl.h"
-#include "lib/cobalt/fidl/cobalt_controller.fidl.h"
-#include "lib/fidl/cpp/bindings/binding.h"
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/log_settings_command_line.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/macros.h"
-#include "third_party/cobalt/config/metric_config.h"
-#include "third_party/cobalt/config/report_config.h"
+#include "third_party/cobalt/config/client_config.h"
 #include "third_party/cobalt/encoder/client_secret.h"
 #include "third_party/cobalt/encoder/encoder.h"
 #include "third_party/cobalt/encoder/project_context.h"
@@ -35,15 +35,17 @@
 
 namespace {
 
+using cobalt::BucketDistributionEntry;
 using cobalt::CobaltController;
 using cobalt::CobaltEncoder;
 using cobalt::CobaltEncoderFactory;
 using cobalt::EncryptedMessage;
-using cobalt::ObservationValuePtr;
+using cobalt::ObservationValue;
 using cobalt::Status;
+using cobalt::TimerManager;
+using cobalt::TimerVal;
 using cobalt::Value;
-using cobalt::config::EncodingRegistry;
-using cobalt::config::MetricRegistry;
+using cobalt::config::ClientConfig;
 using cobalt::encoder::ClientSecret;
 using cobalt::encoder::Encoder;
 using cobalt::encoder::ProjectContext;
@@ -111,10 +113,13 @@ cobalt::Status ToCobaltStatus(ShippingManager::Status s) {
 
 class CobaltEncoderImpl : public CobaltEncoder {
  public:
-  // Does not take ownership of |shipping_manager|.
+  // Does not take ownership of |timer_manager|, |shipping_manager| or
+  // |system_data|.
   CobaltEncoderImpl(std::unique_ptr<ProjectContext> project_context,
                     ClientSecret client_secret,
-                    ShippingManager* shipping_manager);
+                    ShippingManager* shipping_manager,
+                    const SystemData* system_data,
+                    TimerManager* timer_manager);
 
  private:
   template <class CB>
@@ -123,38 +128,72 @@ class CobaltEncoderImpl : public CobaltEncoder {
   void AddStringObservation(
       uint32_t metric_id,
       uint32_t encoding_id,
-      const fidl::String& observation,
-      const AddStringObservationCallback& callback) override;
+      fidl::StringPtr observation,
+      AddStringObservationCallback callback) override;
 
   void AddIntObservation(uint32_t metric_id,
                          uint32_t encoding_id,
                          const int64_t observation,
-                         const AddIntObservationCallback& callback) override;
+                         AddIntObservationCallback callback) override;
 
   void AddDoubleObservation(
-      uint32_t metric_id, uint32_t encoding_id, const double observation,
-      const AddDoubleObservationCallback& callback) override;
+      uint32_t metric_id,
+      uint32_t encoding_id,
+      const double observation,
+      AddDoubleObservationCallback callback) override;
 
   void AddIndexObservation(
       uint32_t metric_id,
       uint32_t encoding_id,
       uint32_t index,
-      const AddIndexObservationCallback& callback) override;
+      AddIndexObservationCallback callback) override;
+
+  void AddObservation(uint32_t metric_id,
+                      uint32_t encoding_id,
+                      Value observation,
+                      AddObservationCallback callback) override;
 
   void AddMultipartObservation(
       uint32_t metric_id,
-      fidl::Array<ObservationValuePtr> observation,
-      const AddMultipartObservationCallback& callback) override;
+      fidl::VectorPtr<ObservationValue> observation,
+      AddMultipartObservationCallback callback) override;
 
   void AddIntBucketDistribution(
-      uint32_t metric_id, uint32_t encoding_id,
-      fidl::Map<uint32_t, uint64_t> distribution,
-      const AddIntBucketDistributionCallback& callback) override;
+      uint32_t metric_id,
+      uint32_t encoding_id,
+      fidl::VectorPtr<BucketDistributionEntry> distribution,
+      AddIntBucketDistributionCallback callback) override;
 
-  void SendObservations(const SendObservationsCallback& callback) override;
+  template <class CB>
+  void AddTimerObservationIfReady(const TimerVal& timer_val, CB callback);
+
+  void StartTimer(
+      uint32_t metric_id,
+      uint32_t encoding_id,
+      fidl::StringPtr timer_id,
+      uint64_t timestamp,
+      uint32_t timeout_s,
+      StartTimerCallback callback) override;
+
+  void EndTimer(
+      fidl::StringPtr timer_id,
+      uint64_t timestamp,
+      uint32_t timeout_s,
+      EndTimerCallback callback) override;
+
+  void EndTimerMultiPart(
+      fidl::StringPtr timer_id,
+      uint64_t timestamp,
+      fidl::StringPtr part_name,
+      fidl::VectorPtr<ObservationValue> observation,
+      uint32_t timeout_s,
+      EndTimerMultiPartCallback callback) override;
+
+  void SendObservations(SendObservationsCallback callback) override;
 
   Encoder encoder_;
   ShippingManager* shipping_manager_;  // not owned
+  TimerManager* timer_manager_; // not owned
 
   FXL_DISALLOW_COPY_AND_ASSIGN(CobaltEncoderImpl);
 };
@@ -162,9 +201,14 @@ class CobaltEncoderImpl : public CobaltEncoder {
 CobaltEncoderImpl::CobaltEncoderImpl(
     std::unique_ptr<ProjectContext> project_context,
     ClientSecret client_secret,
-    ShippingManager* shipping_manager)
-    : encoder_(std::move(project_context), std::move(client_secret)),
-      shipping_manager_(shipping_manager) {}
+    ShippingManager* shipping_manager,
+    const SystemData* system_data,
+    TimerManager* timer_manager)
+    : encoder_(std::move(project_context),
+               std::move(client_secret),
+               system_data),
+      shipping_manager_(shipping_manager),
+      timer_manager_(timer_manager) {}
 
 template <class CB>
 void CobaltEncoderImpl::AddEncodedObservation(Encoder::Result* result,
@@ -189,8 +233,8 @@ void CobaltEncoderImpl::AddEncodedObservation(Encoder::Result* result,
 void CobaltEncoderImpl::AddStringObservation(
     uint32_t metric_id,
     uint32_t encoding_id,
-    const fidl::String& observation,
-    const AddStringObservationCallback& callback) {
+    fidl::StringPtr observation,
+    AddStringObservationCallback callback) {
   auto result = encoder_.EncodeString(metric_id, encoding_id, observation);
   AddEncodedObservation(&result, callback);
 }
@@ -199,14 +243,16 @@ void CobaltEncoderImpl::AddIntObservation(
     uint32_t metric_id,
     uint32_t encoding_id,
     const int64_t observation,
-    const AddIntObservationCallback& callback) {
+    AddIntObservationCallback callback) {
   auto result = encoder_.EncodeInt(metric_id, encoding_id, observation);
   AddEncodedObservation(&result, callback);
 }
 
 void CobaltEncoderImpl::AddDoubleObservation(
-    uint32_t metric_id, uint32_t encoding_id, const double observation,
-    const AddDoubleObservationCallback& callback) {
+    uint32_t metric_id,
+    uint32_t encoding_id,
+    const double observation,
+    AddDoubleObservationCallback callback) {
   auto result = encoder_.EncodeDouble(metric_id, encoding_id, observation);
   AddEncodedObservation(&result, callback);
 }
@@ -215,43 +261,91 @@ void CobaltEncoderImpl::AddIndexObservation(
     uint32_t metric_id,
     uint32_t encoding_id,
     uint32_t index,
-    const AddIndexObservationCallback& callback) {
+    AddIndexObservationCallback callback) {
   auto result = encoder_.EncodeIndex(metric_id, encoding_id, index);
   AddEncodedObservation(&result, callback);
 }
 
+void CobaltEncoderImpl::AddObservation(uint32_t metric_id,
+                                       uint32_t encoding_id,
+                                       Value observation,
+                                       AddObservationCallback callback) {
+  switch (observation.Which()) {
+    case Value::Tag::kStringValue: {
+      AddStringObservation(metric_id, encoding_id,
+                           observation.string_value(), callback);
+      break;
+    }
+    case Value::Tag::kIntValue: {
+      AddIntObservation(metric_id, encoding_id, observation.int_value(),
+                        callback);
+      break;
+    }
+    case Value::Tag::kDoubleValue: {
+      AddDoubleObservation(metric_id, encoding_id,
+                           observation.double_value(), callback);
+      break;
+    }
+    case Value::Tag::kIndexValue: {
+      AddIndexObservation(metric_id, encoding_id,
+                          observation.index_value(), callback);
+      break;
+    }
+    case Value::Tag::kIntBucketDistribution: {
+      AddIntBucketDistribution(
+          metric_id, encoding_id,
+          std::move(observation.int_bucket_distribution()), callback);
+      break;
+    }
+    default:
+      callback(Status::INVALID_ARGUMENTS);
+      FXL_LOG(ERROR) << "Cobalt: Unrecognized value type in observation.";
+      return;
+  }
+}
+
 void CobaltEncoderImpl::AddMultipartObservation(
     uint32_t metric_id,
-    fidl::Array<ObservationValuePtr> observation,
-    const AddMultipartObservationCallback& callback) {
+    fidl::VectorPtr<ObservationValue> observation,
+    AddMultipartObservationCallback callback) {
   Encoder::Value value;
-  for (const auto& obs_val : observation) {
-    switch (obs_val->value->which()) {
-      case Value::Tag::STRING_VALUE: {
-        value.AddStringPart(obs_val->encoding_id, obs_val->name,
-                            obs_val->value->get_string_value());
+  for (const auto& obs_val : *observation) {
+    switch (obs_val.value.Which()) {
+      case Value::Tag::kStringValue: {
+        value.AddStringPart(obs_val.encoding_id, obs_val.name,
+                            obs_val.value.string_value());
         break;
       }
-      case Value::Tag::INT_VALUE: {
-        value.AddIntPart(obs_val->encoding_id, obs_val->name,
-                         obs_val->value->get_int_value());
+      case Value::Tag::kIntValue: {
+        value.AddIntPart(obs_val.encoding_id, obs_val.name,
+                         obs_val.value.int_value());
         break;
       }
-      case Value::Tag::DOUBLE_VALUE: {
-        value.AddDoublePart(obs_val->encoding_id, obs_val->name,
-                            obs_val->value->get_double_value());
+      case Value::Tag::kDoubleValue: {
+        value.AddDoublePart(obs_val.encoding_id, obs_val.name,
+                            obs_val.value.double_value());
         break;
       }
-      case Value::Tag::INDEX_VALUE: {
-        value.AddIndexPart(obs_val->encoding_id, obs_val->name,
-                           obs_val->value->get_index_value());
+      case Value::Tag::kIndexValue: {
+        value.AddIndexPart(obs_val.encoding_id, obs_val.name,
+                           obs_val.value.index_value());
+        break;
+      }
+      case Value::Tag::kIntBucketDistribution: {
+        std::map<uint32_t, uint64_t> distribution_map;
+        for (auto it = obs_val.value.int_bucket_distribution()->begin();
+             obs_val.value.int_bucket_distribution()->end() != it; it++) {
+          distribution_map[(*it).index] = (*it).count;
+        }
+        value.AddIntBucketDistributionPart(obs_val.encoding_id, obs_val.name,
+                                           distribution_map);
         break;
       }
       default:
         callback(Status::INVALID_ARGUMENTS);
         FXL_LOG(ERROR)
             << "Cobalt: Unrecognized value type for observation part "
-            << obs_val->name;
+            << obs_val.name;
         return;
     }
   }
@@ -260,15 +354,108 @@ void CobaltEncoderImpl::AddMultipartObservation(
 }
 
 void CobaltEncoderImpl::AddIntBucketDistribution(
-    uint32_t metric_id, uint32_t encoding_id,
-    fidl::Map<uint32_t, uint64_t> distribution,
-    const AddIntBucketDistributionCallback& callback) {
-  FXL_LOG(ERROR) << "AddIntBucketDistribution not implemented yet!";
-  callback(Status::INTERNAL_ERROR);
+    uint32_t metric_id,
+    uint32_t encoding_id,
+    fidl::VectorPtr<BucketDistributionEntry> distribution,
+    AddIntBucketDistributionCallback callback) {
+  std::map<uint32_t, uint64_t> distribution_map;
+  for (auto it = distribution->begin(); distribution->end() != it; it++) {
+    distribution_map[(*it).index] = (*it).count;
+  }
+  auto result = encoder_.EncodeIntBucketDistribution(metric_id, encoding_id,
+                                                     distribution_map);
+  AddEncodedObservation(&result, callback);
 }
 
-void CobaltEncoderImpl::SendObservations(
-    const SendObservationsCallback& callback) {
+template <class CB>
+void CobaltEncoderImpl::AddTimerObservationIfReady(const TimerVal& timer_val,
+                                                   CB callback){
+  if (!TimerManager::isReady(timer_val)) {
+    // TimerManager has not received both StartTimer and EndTimer calls. Return
+    // OK status and wait for the other call.
+    callback(Status::OK);
+    return;
+  }
+
+  if(TimerManager::isMultipart(timer_val)){
+    // TODO(ninai) Add a Multipart Observation
+  } else {
+    AddIntObservation(timer_val.metric_id, timer_val.encoding_id,
+                      timer_val.end_timestamp - timer_val.start_timestamp,
+                      callback);
+  }
+}
+
+
+void CobaltEncoderImpl::StartTimer(
+    uint32_t metric_id,
+    uint32_t encoding_id,
+    fidl::StringPtr timer_id,
+    uint64_t timestamp,
+    uint32_t timeout_s,
+    StartTimerCallback callback) {
+  if (!TimerManager::isValidTimerArguments(timer_id, timeout_s)) {
+    callback(Status::INVALID_ARGUMENTS);
+    return;
+  }
+
+  TimerVal timer_val;
+  if(timer_manager_->GetTimerValWithStart(metric_id, encoding_id,
+                     timer_id.get(),timestamp, timeout_s, &timer_val)
+    != Status::OK){
+    callback(Status::FAILED_PRECONDITION);
+    return;
+  }
+
+  AddTimerObservationIfReady(timer_val, callback);
+}
+
+void CobaltEncoderImpl::EndTimer(
+    fidl::StringPtr timer_id,
+    uint64_t timestamp,
+    uint32_t timeout_s,
+    EndTimerCallback callback) {
+  if (!TimerManager::isValidTimerArguments(timer_id, timeout_s)) {
+    callback(Status::INVALID_ARGUMENTS);
+    return;
+  }
+
+  TimerVal timer_val;
+  if(timer_manager_->GetTimerValWithEnd(timer_id.get(), timestamp, timeout_s,
+                                &timer_val)
+     != Status::OK){
+    callback(Status::FAILED_PRECONDITION);
+    return;
+  }
+
+  AddTimerObservationIfReady(timer_val, callback);
+}
+
+void CobaltEncoderImpl::EndTimerMultiPart(
+    fidl::StringPtr timer_id,
+    uint64_t timestamp,
+    fidl::StringPtr part_name,
+    fidl::VectorPtr<ObservationValue> observation,
+    uint32_t timeout_s,
+    EndTimerMultiPartCallback callback) {
+  if (!TimerManager::isValidTimerArguments(timer_id, timeout_s) ||
+      part_name.is_null()) {
+    callback(Status::INVALID_ARGUMENTS);
+    return;
+  }
+
+  TimerVal timer_val;
+  if(timer_manager_->GetTimerValWithEnd(timer_id.get(), timestamp, timeout_s,
+                              part_name.get(),  std::move(observation),
+                              &timer_val) != Status::OK){
+    callback(Status::FAILED_PRECONDITION);
+    return;
+  }
+
+  AddTimerObservationIfReady(timer_val, callback);
+}
+
+void CobaltEncoderImpl::SendObservations(SendObservationsCallback callback) {
   callback(Status::OK);
 }
 
@@ -278,54 +465,49 @@ void CobaltEncoderImpl::SendObservations(
 class CobaltControllerImpl : public CobaltController {
  public:
   // Does not take ownerhsip of |shipping_manager|.
-  CobaltControllerImpl(fxl::RefPtr<fxl::TaskRunner> task_runner,
-                       ShippingManager* shipping_manager);
+  CobaltControllerImpl(async_t* async, ShippingManager* shipping_manager);
 
  private:
-  void RequestSendSoon(const RequestSendSoonCallback& callback);
+  void RequestSendSoon(RequestSendSoonCallback callback) override;
 
   void BlockUntilEmpty(uint32_t max_wait_seconds,
-                       const BlockUntilEmptyCallback& callback);
+                       BlockUntilEmptyCallback callback) override;
 
-  void NumSendAttempts(const NumSendAttemptsCallback& callback);
+  void NumSendAttempts(NumSendAttemptsCallback callback) override;
 
-  void FailedSendAttempts(const FailedSendAttemptsCallback& callback);
+  void FailedSendAttempts(FailedSendAttemptsCallback callback) override;
 
-  fxl::RefPtr<fxl::TaskRunner> task_runner_;
+  async_t* const async_;
   ShippingManager* shipping_manager_;  // not owned
 
   FXL_DISALLOW_COPY_AND_ASSIGN(CobaltControllerImpl);
 };
 
 CobaltControllerImpl::CobaltControllerImpl(
-    fxl::RefPtr<fxl::TaskRunner> task_runner,
+    async_t* async,
     ShippingManager* shipping_manager)
-    : task_runner_(std::move(task_runner)),
-      shipping_manager_(shipping_manager) {}
+    : async_(async), shipping_manager_(shipping_manager) {}
 
-void CobaltControllerImpl::RequestSendSoon(
-    const RequestSendSoonCallback& callback) {
+void CobaltControllerImpl::RequestSendSoon(RequestSendSoonCallback callback) {
   // callback_adapter invokes |callback| on the main thread.
   std::function<void(bool)> callback_adapter = [this, callback](bool success) {
-    task_runner_->PostTask([callback, success]() { callback(success); });
+    async::PostTask(async_, [callback, success]() { callback(success); });
   };
   shipping_manager_->RequestSendSoon(callback_adapter);
 }
 
-void CobaltControllerImpl::BlockUntilEmpty(
-    uint32_t max_wait_seconds,
-    const BlockUntilEmptyCallback& callback) {
+void CobaltControllerImpl::BlockUntilEmpty(uint32_t max_wait_seconds,
+                                           BlockUntilEmptyCallback callback) {
   shipping_manager_->WaitUntilIdle(std::chrono::seconds(max_wait_seconds));
   callback();
 }
 
-void CobaltControllerImpl::NumSendAttempts(
-    const NumSendAttemptsCallback& callback) {
+void CobaltControllerImpl::NumSendAttempts(NumSendAttemptsCallback callback) {
   callback(shipping_manager_->num_send_attempts());
 }
 
 void CobaltControllerImpl::FailedSendAttempts(
-    const FailedSendAttemptsCallback& callback) {
+    FailedSendAttemptsCallback callback) {
   callback(shipping_manager_->num_failed_attempts());
 }
 
@@ -335,44 +517,50 @@ void CobaltControllerImpl::FailedSendAttempts(
 
 class CobaltEncoderFactoryImpl : public CobaltEncoderFactory {
  public:
-  // Does not take ownerhsip of |shipping_manager|.
-  CobaltEncoderFactoryImpl(std::shared_ptr<MetricRegistry> metric_registry,
-                           std::shared_ptr<EncodingRegistry> encoding_registry,
+  // Does not take ownerhsip of |timer_manager|, |shipping_manager| or
+  // |system_data|.
+  CobaltEncoderFactoryImpl(std::shared_ptr<ClientConfig> client_config,
                            ClientSecret client_secret,
-                           ShippingManager* shipping_manager);
+                           ShippingManager* shipping_manager,
+                           const SystemData* system_data,
+                           TimerManager* timer_manager);
 
  private:
   void GetEncoder(int32_t project_id,
                   fidl::InterfaceRequest<CobaltEncoder> request);
 
-  std::shared_ptr<MetricRegistry> metric_registry_;
-  std::shared_ptr<EncodingRegistry> encoding_registry_;
+  std::shared_ptr<ClientConfig> client_config_;
   ClientSecret client_secret_;
   fidl::BindingSet<CobaltEncoder, std::unique_ptr<CobaltEncoder>>
       cobalt_encoder_bindings_;
   ShippingManager* shipping_manager_;  // not owned
+  const SystemData* system_data_;      // not owned
+  TimerManager* timer_manager_;                       // not owned
 
   FXL_DISALLOW_COPY_AND_ASSIGN(CobaltEncoderFactoryImpl);
 };
 
 CobaltEncoderFactoryImpl::CobaltEncoderFactoryImpl(
-    std::shared_ptr<MetricRegistry> metric_registry,
-    std::shared_ptr<EncodingRegistry> encoding_registry,
+    std::shared_ptr<ClientConfig> client_config,
     ClientSecret client_secret,
-    ShippingManager* shipping_manager)
-    : metric_registry_(metric_registry),
-      encoding_registry_(encoding_registry),
+    ShippingManager* shipping_manager,
+    const SystemData* system_data,
+    TimerManager* timer_manager)
+    : client_config_(client_config),
       client_secret_(std::move(client_secret)),
-      shipping_manager_(shipping_manager) {}
+      shipping_manager_(shipping_manager),
+      system_data_(system_data),
+      timer_manager_(timer_manager) {}
 
 void CobaltEncoderFactoryImpl::GetEncoder(
     int32_t project_id,
     fidl::InterfaceRequest<CobaltEncoder> request) {
-  std::unique_ptr<ProjectContext> project_context(new ProjectContext(
-      kFuchsiaCustomerId, project_id, metric_registry_, encoding_registry_));
+  std::unique_ptr<ProjectContext> project_context(
+      new ProjectContext(kFuchsiaCustomerId, project_id, client_config_));
 
-  std::unique_ptr<CobaltEncoderImpl> cobalt_encoder_impl(new CobaltEncoderImpl(
-      std::move(project_context), client_secret_, shipping_manager_));
+  std::unique_ptr<CobaltEncoderImpl> cobalt_encoder_impl(
+      new CobaltEncoderImpl(std::move(project_context), client_secret_,
+                            shipping_manager_, system_data_, timer_manager_));
   cobalt_encoder_bindings_.AddBinding(std::move(cobalt_encoder_impl),
                                       std::move(request));
 }
@@ -383,23 +571,24 @@ void CobaltEncoderFactoryImpl::GetEncoder(
 
 class CobaltApp {
  public:
-  CobaltApp(fxl::RefPtr<fxl::TaskRunner> task_runner,
+  CobaltApp(async_t* async,
             std::chrono::seconds schedule_interval,
-            std::chrono::seconds min_interval);
+            std::chrono::seconds min_interval,
+            const std::string& product_name);
 
  private:
   static ClientSecret getClientSecret();
 
   SystemData system_data_;
 
-  std::unique_ptr<app::ApplicationContext> context_;
+  std::unique_ptr<component::ApplicationContext> context_;
 
   ShufflerClient shuffler_client_;
   SendRetryer send_retryer_;
   ShippingManager shipping_manager_;
+  TimerManager timer_manager_;
 
-  std::shared_ptr<MetricRegistry> metric_registry_;
-  std::shared_ptr<EncodingRegistry> encoding_registry_;
+  std::shared_ptr<ClientConfig> client_config_;
 
   std::unique_ptr<CobaltController> controller_impl_;
   fidl::BindingSet<CobaltController> controller_bindings_;
@@ -410,65 +599,51 @@ class CobaltApp {
   FXL_DISALLOW_COPY_AND_ASSIGN(CobaltApp);
 };
 
-CobaltApp::CobaltApp(fxl::RefPtr<fxl::TaskRunner> task_runner,
+CobaltApp::CobaltApp(async_t* async,
                      std::chrono::seconds schedule_interval,
-                     std::chrono::seconds min_interval)
-    : context_(app::ApplicationContext::CreateFromStartupInfo()),
+                     std::chrono::seconds min_interval,
+                     const std::string& product_name)
+    : system_data_(product_name),
+      context_(component::ApplicationContext::CreateFromStartupInfo()),
       shuffler_client_(kCloudShufflerUri, true),
       send_retryer_(&shuffler_client_),
       shipping_manager_(
           ShippingManager::SizeParams(cobalt::kMaxBytesPerObservation,
-                                      kMaxBytesPerEnvelope,
-                                      kMaxBytesTotal,
+                                      kMaxBytesPerEnvelope, kMaxBytesTotal,
                                       kMinEnvelopeSendSize),
           ShippingManager::ScheduleParams(schedule_interval, min_interval),
           // TODO(rudominer): Enable encryption.
-          ShippingManager::EnvelopeMakerParams(&system_data_,
-                                               "",
-                                               EncryptedMessage::NONE,
-                                               "",
+          ShippingManager::EnvelopeMakerParams("", EncryptedMessage::NONE, "",
                                                EncryptedMessage::NONE),
           ShippingManager::SendRetryerParams(kInitialRpcDeadline,
                                              kDeadlinePerSendAttempt),
           &send_retryer_),
-      controller_impl_(new CobaltControllerImpl(std::move(task_runner),
-                                                &shipping_manager_)) {
+      controller_impl_(new CobaltControllerImpl(async, &shipping_manager_)) {
   shipping_manager_.Start();
+  timer_manager_.Start();
 
   // Open the cobalt config file.
   std::ifstream config_file_stream;
   config_file_stream.open(kConfigBinProtoPath);
-  FXL_CHECK(config_file_stream)
-      << "Could not open cobalt config proto file: " << kConfigBinProtoPath;
+  FXL_CHECK(config_file_stream && config_file_stream.good())
+      << "Could not open the Cobalt config file: " << kConfigBinProtoPath;
+  std::string cobalt_config_bytes;
+  cobalt_config_bytes.assign(
+      (std::istreambuf_iterator<char>(config_file_stream)),
+      std::istreambuf_iterator<char>());
+  FXL_CHECK(!cobalt_config_bytes.empty())
+      << "Could not read the Cobalt config file: " << kConfigBinProtoPath;
 
-  // Parse the cobalt config file.
-  cobalt::CobaltConfig cobalt_config;
-  FXL_CHECK(cobalt_config.ParseFromIstream(&config_file_stream))
-      << "Could not parse the cobalt config proto file: "
-      << kConfigBinProtoPath;
+  // Parse the data as a CobaltConfig, then extract the metric and encoding
+  // configs and construct a ClientConfig to house them.
+  client_config_.reset(
+      ClientConfig::CreateFromCobaltConfigBytes(cobalt_config_bytes).release());
+  FXL_CHECK(client_config_)
+      << "Could not parse the Cobalt config file: " << kConfigBinProtoPath;
 
-  // Parse the metric config string
-  cobalt::RegisteredMetrics registered_metrics;
-  registered_metrics.mutable_element()->Swap(
-      cobalt_config.mutable_metric_configs());
-  auto metric_parse_result =
-      MetricRegistry::FromProto(&registered_metrics, nullptr);
-  // TODO(rudominer) Checkfailing is probably not the right thing to do.
-  FXL_CHECK(cobalt::config::kOK == metric_parse_result.second);
-  metric_registry_.reset(metric_parse_result.first.release());
-
-  // Parse the encoding config string
-  cobalt::RegisteredEncodings registered_encodings;
-  registered_encodings.mutable_element()->Swap(
-      cobalt_config.mutable_encoding_configs());
-  auto encoding_parse_result =
-      EncodingRegistry::FromProto(&registered_encodings, nullptr);
-  FXL_CHECK(cobalt::config::kOK == encoding_parse_result.second);
-  encoding_registry_.reset(encoding_parse_result.first.release());
-
-  factory_impl_.reset(
-      new CobaltEncoderFactoryImpl(metric_registry_, encoding_registry_,
-                                   getClientSecret(), &shipping_manager_));
+  factory_impl_.reset(new CobaltEncoderFactoryImpl(
+      client_config_, getClientSecret(), &shipping_manager_, &system_data_,
+      &timer_manager_));
 
   context_->outgoing_services()->AddService<CobaltEncoderFactory>(
       [this](fidl::InterfaceRequest<CobaltEncoderFactory> request) {
@@ -491,8 +666,7 @@ ClientSecret CobaltApp::getClientSecret() {
 }  // namespace
 
 int main(int argc, const char** argv) {
-  setenv("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH", "/system/data/boringssl/cert.pem",
-         1);
+  setenv("GRPC_DEFAULT_SSL_ROOTS_FILE_PATH", "/config/ssl/cert.pem", 1);
 
   // Parse the flags.
   const auto command_line = fxl::CommandLineFromArgcArgv(argc, argv);
@@ -531,7 +705,8 @@ int main(int argc, const char** argv) {
                 << " seconds.";
 
   fsl::MessageLoop loop;
-  CobaltApp app(loop.task_runner(), schedule_interval, min_interval);
+  CobaltApp app(loop.async(), schedule_interval, min_interval,
+                cobalt::hack::GetLayer());
   loop.Run();
   return 0;
 }

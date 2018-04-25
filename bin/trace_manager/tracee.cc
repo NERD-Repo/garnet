@@ -4,7 +4,7 @@
 
 #include "garnet/bin/trace_manager/tracee.h"
 
-#include <async/default.h>
+#include <lib/async/default.h>
 #include <trace-engine/fields.h>
 #include <trace-provider/provider.h>
 
@@ -60,7 +60,7 @@ Tracee::Tracee(TraceProviderBundle* bundle)
 
 Tracee::~Tracee() {
   if (async_) {
-    wait_.Cancel(async_);
+    wait_.Cancel();
     wait_.set_object(ZX_HANDLE_INVALID);
     async_ = nullptr;
   }
@@ -71,7 +71,7 @@ bool Tracee::operator==(TraceProviderBundle* bundle) const {
 }
 
 bool Tracee::Start(size_t buffer_size,
-                   fidl::Array<fidl::String> categories,
+                   fidl::VectorPtr<fidl::StringPtr> categories,
                    fxl::Closure started_callback,
                    fxl::Closure stopped_callback) {
   FXL_DCHECK(state_ == State::kReady);
@@ -88,9 +88,8 @@ bool Tracee::Start(size_t buffer_size,
   }
 
   zx::vmo buffer_vmo_for_provider;
-  status =
-      buffer_vmo.duplicate(ZX_RIGHTS_BASIC | ZX_RIGHTS_IO | ZX_RIGHT_MAP,
-                           &buffer_vmo_for_provider);
+  status = buffer_vmo.duplicate(ZX_RIGHTS_BASIC | ZX_RIGHTS_IO | ZX_RIGHT_MAP,
+                                &buffer_vmo_for_provider);
   if (status != ZX_OK) {
     FXL_LOG(ERROR) << *bundle_
                    << ": Failed to duplicate trace buffer for provider: status="
@@ -107,9 +106,9 @@ bool Tracee::Start(size_t buffer_size,
     return false;
   }
 
-  bundle_->provider->Start(
-      std::move(buffer_vmo_for_provider), std::move(fence_for_provider),
-      std::move(categories));
+  bundle_->provider->Start(std::move(buffer_vmo_for_provider),
+                           std::move(fence_for_provider),
+                           std::move(categories));
 
   buffer_vmo_ = std::move(buffer_vmo);
   buffer_vmo_size_ = buffer_size;
@@ -135,33 +134,26 @@ void Tracee::Stop() {
 }
 
 void Tracee::TransitionToState(State new_state) {
-  FXL_VLOG(2) << *bundle_ << ": Transitioning from " << state_
-              << " to " << new_state;
+  FXL_VLOG(2) << *bundle_ << ": Transitioning from " << state_ << " to "
+              << new_state;
   state_ = new_state;
 }
 
-async_wait_result_t Tracee::OnHandleReady(async_t* async,
-                                          zx_status_t status,
-                                          const zx_packet_signal_t* signal) {
+void Tracee::OnHandleReady(async_t* async,
+                           async::WaitBase* wait,
+                           zx_status_t status,
+                          const zx_packet_signal_t* signal) {
   if (status != ZX_OK) {
-    FXL_VLOG(2) << *bundle_ << ": error=" << status;
-    FXL_DCHECK(status == ZX_ERR_CANCELED);
-    FXL_DCHECK(state_ == State::kStartPending ||
-              state_ == State::kStarted ||
-              state_ == State::kStopping);
-    wait_.set_object(ZX_HANDLE_INVALID);
-    async_ = nullptr;
-    TransitionToState(State::kStopped);
-    return ASYNC_WAIT_FINISHED;
+    OnHandleError(status);
+    return;
   }
 
   zx_signals_t pending = signal->observed;
   FXL_VLOG(2) << *bundle_ << ": pending=0x" << std::hex << pending;
-  FXL_DCHECK(pending & (TRACE_PROVIDER_SIGNAL_STARTED |
-                        TRACE_PROVIDER_SIGNAL_BUFFER_OVERFLOW |
-                        ZX_EPAIR_PEER_CLOSED));
-  FXL_DCHECK(state_ == State::kStartPending ||
-             state_ == State::kStarted ||
+  FXL_DCHECK(pending &
+             (TRACE_PROVIDER_SIGNAL_STARTED |
+              TRACE_PROVIDER_SIGNAL_BUFFER_OVERFLOW | ZX_EPAIR_PEER_CLOSED));
+  FXL_DCHECK(state_ == State::kStartPending || state_ == State::kStarted ||
              state_ == State::kStopping);
 
   // Handle this before BUFFER_OVERFLOW so that if they arrive together we'll
@@ -190,13 +182,15 @@ async_wait_result_t Tracee::OnHandleReady(async_t* async,
     // The signal remains set until we clear it.
     zx_object_signal(wait_.object(), TRACE_PROVIDER_SIGNAL_BUFFER_OVERFLOW, 0u);
     if (state_ == State::kStarted || state_ == State::kStopping) {
-      FXL_LOG(WARNING) << *bundle_
-                       << ": Records got dropped, probably due to buffer overflow";
+      FXL_LOG(WARNING)
+          << *bundle_
+          << ": Records got dropped, probably due to buffer overflow";
       buffer_overflow_ = true;
     } else {
-      FXL_LOG(WARNING) << *bundle_
-                       << ": Received TRACE_PROVIDER_SIGNAL_BUFFER_OVERFLOW in state "
-                       << state_;
+      FXL_LOG(WARNING)
+          << *bundle_
+          << ": Received TRACE_PROVIDER_SIGNAL_BUFFER_OVERFLOW in state "
+          << state_;
     }
   }
 
@@ -207,10 +201,22 @@ async_wait_result_t Tracee::OnHandleReady(async_t* async,
     fxl::Closure stopped_callback = std::move(stopped_callback_);
     FXL_DCHECK(stopped_callback);
     stopped_callback();
-    return ASYNC_WAIT_FINISHED;
+    return;
   }
 
-  return ASYNC_WAIT_AGAIN;
+  status = wait->Begin(async);
+  if (status != ZX_OK)
+    OnHandleError(status);
+}
+
+void Tracee::OnHandleError(zx_status_t status) {
+  FXL_VLOG(2) << *bundle_ << ": error=" << status;
+  FXL_DCHECK(status == ZX_ERR_CANCELED);
+  FXL_DCHECK(state_ == State::kStartPending || state_ == State::kStarted ||
+             state_ == State::kStopping);
+  wait_.set_object(ZX_HANDLE_INVALID);
+  async_ = nullptr;
+  TransitionToState(State::kStopped);
 }
 
 Tracee::TransferStatus Tracee::TransferRecords(const zx::socket& socket) const {
@@ -238,13 +244,9 @@ Tracee::TransferStatus Tracee::TransferRecords(const zx::socket& socket) const {
 
   std::vector<uint8_t> buffer(buffer_vmo_size_);
 
-  size_t actual = 0;
-  if ((buffer_vmo_.read(buffer.data(), 0, buffer_vmo_size_, &actual) !=
-       ZX_OK) ||
-      (actual != buffer_vmo_size_)) {
+  if (buffer_vmo_.read(buffer.data(), 0, buffer_vmo_size_) != ZX_OK) {
     FXL_LOG(WARNING) << *bundle_ << ": Failed to read data from buffer_vmo: "
-                     << "actual size=" << actual
-                     << ", expected size=" << buffer_vmo_size_;
+                     << "expected size=" << buffer_vmo_size_;
   }
 
   const uint64_t* start = reinterpret_cast<const uint64_t*>(buffer.data());
@@ -266,11 +268,9 @@ Tracee::TransferStatus Tracee::TransferRecords(const zx::socket& socket) const {
 
 Tracee::TransferStatus Tracee::WriteProviderInfoRecord(
     const zx::socket& socket) const {
-  FXL_DCHECK(bundle_->label.size() <=
-             trace::ProviderInfoMetadataRecordFields::kMaxNameLength);
-
-  size_t num_words =
-      1u + trace::BytesToWords(trace::Pad(bundle_->label.size()));
+  std::string label("");  // TODO(ZX-1875): Provide meaningful labels or remove
+                          // labels from the trace wire format altogether.
+  size_t num_words = 1u + trace::BytesToWords(trace::Pad(label.size()));
   std::vector<uint64_t> record(num_words);
   record[0] =
       trace::ProviderInfoMetadataRecordFields::Type::Make(
@@ -279,9 +279,8 @@ Tracee::TransferStatus Tracee::WriteProviderInfoRecord(
       trace::ProviderInfoMetadataRecordFields::MetadataType::Make(
           trace::ToUnderlyingType(trace::MetadataType::kProviderInfo)) |
       trace::ProviderInfoMetadataRecordFields::Id::Make(bundle_->id) |
-      trace::ProviderInfoMetadataRecordFields::NameLength::Make(
-          bundle_->label.size());
-  memcpy(&record[1], bundle_->label.c_str(), bundle_->label.size());
+      trace::ProviderInfoMetadataRecordFields::NameLength::Make(label.size());
+  memcpy(&record[1], label.c_str(), label.size());
   return WriteBufferToSocket(reinterpret_cast<uint8_t*>(record.data()),
                              trace::WordsToBytes(num_words), socket);
 }

@@ -5,10 +5,10 @@
 #ifndef GARNET_BIN_ICU_DATA_ICU_DATA_PROVIDER_IMPL_H_
 #define GARNET_BIN_ICU_DATA_ICU_DATA_PROVIDER_IMPL_H_
 
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include <fuchsia/cpp/icu_data.h>
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fsl/vmo/sized_vmo.h"
 #include "lib/fxl/macros.h"
-#include "lib/icu_data/fidl/icu_data.fidl.h"
 
 namespace icu_data {
 
@@ -24,8 +24,8 @@ class ICUDataProviderImpl : public ICUDataProvider {
 
  private:
   // |ICUData| implementation:
-  void ICUDataWithSha1(const fidl::String& request,
-                       const ICUDataWithSha1Callback& callback) override;
+  void ICUDataWithSha1(fidl::StringPtr request,
+                       ICUDataWithSha1Callback callback) override;
 
   fidl::BindingSet<ICUDataProvider> bindings_;
 

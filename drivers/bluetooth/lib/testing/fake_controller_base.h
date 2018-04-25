@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_DRIVERS_BLUETOOTH_LIB_TESTING_FAKE_CONTROLLER_BASE_H_
+#define GARNET_DRIVERS_BLUETOOTH_LIB_TESTING_FAKE_CONTROLLER_BASE_H_
 
-#include <async/cpp/wait.h>
-#include <zx/channel.h>
+#include <lib/async/cpp/wait.h>
+#include <lib/zx/channel.h>
 
 #include "garnet/drivers/bluetooth/lib/common/byte_buffer.h"
 #include "garnet/drivers/bluetooth/lib/common/packet_view.h"
 #include "garnet/drivers/bluetooth/lib/hci/hci.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/macros.h"
 
 namespace btlib {
@@ -21,22 +21,20 @@ namespace testing {
 // data packets to subclass implementations.
 class FakeControllerBase {
  public:
-  FakeControllerBase(zx::channel cmd_channel, zx::channel acl_data_channel);
+  FakeControllerBase();
   virtual ~FakeControllerBase();
-
-  // Kicks off the FakeController thread and message loop and starts processing
-  // transactions. |debug_name| will be assigned as the name of the thread.
-  void Start();
 
   // Stops the message loop and thread.
   void Stop();
 
   // Sends the given packet over this FakeController's command channel endpoint.
-  void SendCommandChannelPacket(const common::ByteBuffer& packet);
+  // Retuns the result of the write operation on the command channel.
+  zx_status_t SendCommandChannelPacket(const common::ByteBuffer& packet);
 
   // Sends the given packet over this FakeController's ACL data channel
   // endpoint.
-  void SendACLDataChannelPacket(const common::ByteBuffer& packet);
+  // Retuns the result of the write operation on the channel.
+  zx_status_t SendACLDataChannelPacket(const common::ByteBuffer& packet);
 
   // Immediately closes the command channel endpoint.
   void CloseCommandChannel();
@@ -44,9 +42,13 @@ class FakeControllerBase {
   // Immediately closes the ACL data channel endpoint.
   void CloseACLDataChannel();
 
-  bool IsStarted() const {
-    return cmd_channel_wait_.object() != ZX_HANDLE_INVALID;
-  }
+  // Starts listening for command/event packets on the given channel.
+  // Returns false if already listening on a command channel
+  bool StartCmdChannel(zx::channel chan);
+
+  // Starts listening for acl packets on the given channel.
+  // Returns false if already listening on a acl channel
+  bool StartAclChannel(zx::channel chan);
 
  protected:
   // Getters for our channel endpoints.
@@ -63,21 +65,29 @@ class FakeControllerBase {
 
  private:
   // Read and handle packets received over the channels.
-  async_wait_result_t HandleCommandPacket(async_t* async,
-                                          zx_status_t wait_status,
-                                          const zx_packet_signal_t* signal);
-  async_wait_result_t HandleACLPacket(async_t* async,
-                                      zx_status_t wait_status,
-                                      const zx_packet_signal_t* signal);
+  void HandleCommandPacket(async_t* async,
+                           async::WaitBase* wait,
+                           zx_status_t wait_status,
+                           const zx_packet_signal_t* signal);
+  void HandleACLPacket(async_t* async,
+                       async::WaitBase* wait,
+                       zx_status_t wait_status,
+                       const zx_packet_signal_t* signal);
 
   zx::channel cmd_channel_;
   zx::channel acl_channel_;
 
-  async::Wait cmd_channel_wait_;
-  async::Wait acl_channel_wait_;
+  async::WaitMethod<FakeControllerBase,
+                    &FakeControllerBase::HandleCommandPacket>
+                    cmd_channel_wait_{this};
+  async::WaitMethod<FakeControllerBase,
+                    &FakeControllerBase::HandleACLPacket>
+                    acl_channel_wait_{this};
 
   FXL_DISALLOW_COPY_AND_ASSIGN(FakeControllerBase);
 };
 
 }  // namespace testing
 }  // namespace btlib
+
+#endif  // GARNET_DRIVERS_BLUETOOTH_LIB_TESTING_FAKE_CONTROLLER_BASE_H_

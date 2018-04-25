@@ -2,9 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/cpp/sdk_source_set.gni")
-
-sdk_source_set("tasks") {
+source_set("tasks") {
   visibility = [ "//garnet/public/lib/fsl/*" ]
 
   sources = [
@@ -14,8 +12,6 @@ sdk_source_set("tasks") {
     "incoming_task_queue.h",
     "message_loop.cc",
     "message_loop.h",
-    "message_loop_handler.cc",
-    "message_loop_handler.h",
   ]
   libs = [
     "zircon",

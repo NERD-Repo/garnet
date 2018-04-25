@@ -7,36 +7,38 @@
 #include <limits>
 #include <vector>
 
+#include "garnet/bin/media/audio_server/audio_renderer1_impl.h"
 #include "garnet/bin/media/audio_server/audio_renderer_format_info.h"
-#include "garnet/bin/media/audio_server/audio_renderer_impl.h"
 #include "garnet/bin/media/audio_server/audio_server_impl.h"
 #include "garnet/bin/media/audio_server/constants.h"
 
 namespace media {
 namespace audio {
 
-AudioPipe::AudioPacketRef::AudioPacketRef(SuppliedPacketPtr supplied_packet,
-                                          AudioServerImpl* server,
-                                          uint32_t frac_frame_len,
-                                          int64_t start_pts,
-                                          int64_t end_pts,
-                                          uint32_t frame_count)
-    : supplied_packet_(std::move(supplied_packet)),
-      server_(server),
-      frac_frame_len_(frac_frame_len),
-      start_pts_(start_pts),
-      end_pts_(end_pts),
-      frame_count_(frame_count) {
+AudioPipe::AudioPacketRefV1::AudioPacketRefV1(
+    std::unique_ptr<MediaPacketConsumerBase::SuppliedPacket> supplied_packet,
+    AudioServerImpl* server,
+    uint32_t frac_frame_len,
+    int64_t start_pts)
+    : AudioPacketRef(server, frac_frame_len, start_pts),
+      supplied_packet_(std::move(supplied_packet)) {
   FXL_DCHECK(supplied_packet_);
-  FXL_DCHECK(server_);
 }
 
-AudioPipe::AudioPacketRef::~AudioPacketRef() {
-  FXL_DCHECK(server_);
-  server_->SchedulePacketCleanup(std::move(supplied_packet_));
+void AudioPipe::AudioPacketRefV1::Cleanup() {
+  FXL_DCHECK(supplied_packet_ != nullptr);
+  supplied_packet_.reset();
 }
 
-AudioPipe::AudioPipe(AudioRendererImpl* owner, AudioServerImpl* server)
+void* AudioPipe::AudioPacketRefV1::payload() {
+  return supplied_packet_->payload();
+}
+
+uint32_t AudioPipe::AudioPacketRefV1::flags() {
+  return supplied_packet_->packet().flags;
+}
+
+AudioPipe::AudioPipe(AudioRenderer1Impl* owner, AudioServerImpl* server)
     : owner_(owner), server_(server) {
   FXL_DCHECK(owner_);
   FXL_DCHECK(server_);
@@ -63,7 +65,7 @@ void AudioPipe::UpdateMinPts(int64_t min_pts) {
 }
 
 void AudioPipe::PrimeRequested(
-    const MediaTimelineControlPoint::PrimeCallback& cbk) {
+    MediaTimelineControlPoint::PrimeCallback cbk) {
   if (prime_callback_) {
     // Prime was already requested. Complete the old one and warn.
     FXL_LOG(WARNING) << "multiple prime requests received";
@@ -88,7 +90,8 @@ void AudioPipe::PrimeRequested(
   // TODO(dalesat): Implement better demand strategy.
 }
 
-void AudioPipe::OnPacketSupplied(SuppliedPacketPtr supplied_packet) {
+void AudioPipe::OnPacketSupplied(
+    std::unique_ptr<MediaPacketConsumerBase::SuppliedPacket> supplied_packet) {
   FXL_DCHECK(supplied_packet);
   FXL_DCHECK(owner_);
 
@@ -103,9 +106,9 @@ void AudioPipe::OnPacketSupplied(SuppliedPacketPtr supplied_packet) {
     FXL_DCHECK(!min_pts_dirty_);
   }
 
-  FXL_DCHECK(supplied_packet->packet()->pts_rate_ticks ==
-             owner_->format_info()->format()->frames_per_second);
-  FXL_DCHECK(supplied_packet->packet()->pts_rate_seconds == 1);
+  FXL_DCHECK(supplied_packet->packet().pts_rate_ticks ==
+             owner_->format_info()->format().frames_per_second);
+  FXL_DCHECK(supplied_packet->packet().pts_rate_seconds == 1);
 
   // Start by making sure that the region we are receiving is made from an
   // integral number of audio frames.  Count the total number of frames in the
@@ -135,10 +138,10 @@ void AudioPipe::OnPacketSupplied(SuppliedPacketPtr supplied_packet) {
 
   // Figure out the starting PTS.
   int64_t start_pts;
-  if (supplied_packet->packet()->pts != MediaPacket::kNoTimestamp) {
+  if (supplied_packet->packet().pts != kNoTimestamp) {
     // The user provided an explicit PTS for this audio.  Transform it into
     // units of fractional frames.
-    start_pts = supplied_packet->packet()->pts *
+    start_pts = supplied_packet->packet().pts *
                 owner_->format_info()->frame_to_media_ratio();
   } else {
     // No PTS was provided.  Use the end time of the last audio packet, if
@@ -152,13 +155,14 @@ void AudioPipe::OnPacketSupplied(SuppliedPacketPtr supplied_packet) {
   next_pts_ = start_pts + pts_delta;
   next_pts_known_ = true;
 
-  bool end_of_stream = supplied_packet->packet()->flags & MediaPacket::kFlagEos;
+  bool end_of_stream = supplied_packet->packet().flags & kFlagEos;
 
   // Send the packet along unless it falls outside the program range.
   if (next_pts_ >= min_pts_) {
-    owner_->OnPacketReceived(AudioPacketRefPtr(new AudioPacketRef(
-        std::move(supplied_packet), server_, frame_count << kPtsFractionalBits,
-        start_pts, next_pts_, frame_count)));
+    auto packet = fbl::AdoptRef<AudioPacketRef>(
+        new AudioPacketRefV1(std::move(supplied_packet), server_,
+                             frame_count << kPtsFractionalBits, start_pts));
+    owner_->OnPacketReceived(std::move(packet));
   }
 
   if (prime_callback_ && (end_of_stream || supplied_packets_outstanding() >=
@@ -170,7 +174,7 @@ void AudioPipe::OnPacketSupplied(SuppliedPacketPtr supplied_packet) {
   }
 }
 
-void AudioPipe::OnFlushRequested(bool hold_frame, const FlushCallback& cbk) {
+void AudioPipe::OnFlushRequested(bool hold_frame, FlushCallback cbk) {
   FXL_DCHECK(owner_);
   next_pts_known_ = false;
   owner_->OnFlushRequested(cbk);

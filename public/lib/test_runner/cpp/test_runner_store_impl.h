@@ -8,9 +8,9 @@
 #include <map>
 #include <queue>
 
-#include "lib/test_runner/fidl/test_runner.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
-#include "lib/fidl/cpp/bindings/string.h"
+#include <fuchsia/cpp/test_runner.h>
+#include "lib/fidl/cpp/binding_set.h"
+#include "lib/fidl/cpp/string.h"
 #include "lib/fxl/macros.h"
 
 namespace test_runner {
@@ -22,16 +22,16 @@ class TestRunnerStoreImpl : public TestRunnerStore {
 
  private:
   // |TestRunnerStore|
-  void Get(const fidl::String& key, const GetCallback& cb) override;
+  void Get(fidl::StringPtr key, GetCallback cb) override;
   // |TestRunnerStore|
-  void Put(const fidl::String& key,
-           const fidl::String& value,
-           const PutCallback& cb) override;
+  void Put(fidl::StringPtr key,
+           fidl::StringPtr value,
+           PutCallback cb) override;
 
   void MaybeNotify(const std::string& key);
 
-  std::map<fidl::String, std::queue<GetCallback>> get_queue_;
-  std::map<fidl::String, std::queue<std::string>> store_;
+  std::map<fidl::StringPtr, std::queue<GetCallback>> get_queue_;
+  std::map<fidl::StringPtr, std::queue<std::string>> store_;
   fidl::BindingSet<TestRunnerStore> binding_set_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(TestRunnerStoreImpl);

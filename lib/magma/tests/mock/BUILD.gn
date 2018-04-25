@@ -12,6 +12,7 @@ source_set("msd") {
     "$magma_build_root/src/magma_util",
     "$magma_build_root/src/magma_util:command_buffer",
     "$magma_build_root/src/magma_util/platform:buffer",
+    "$magma_build_root/src/magma_util/platform:semaphore",
   ]
 
   sources = [
@@ -31,6 +32,14 @@ source_set("mmio") {
   sources = [
     "mock_mmio.cc",
     "mock_mmio.h",
+  ]
+}
+
+source_set("bus_mapper") {
+  public_configs = [ "$magma_build_root:magma_tests_include_config" ]
+
+  sources = [
+    "mock_bus_mapper.h",
   ]
 }
 

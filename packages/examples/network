@@ -1,0 +1,9 @@
+{
+    "imports": [
+        "garnet/packages/prod/network"
+    ],
+    "packages": {
+        "postfile": "//garnet/examples/network/postfile",
+        "wget": "//garnet/examples/network/wget"
+    }
+}

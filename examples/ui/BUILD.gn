@@ -6,26 +6,57 @@ import("//build/package.gni")
 
 group("ui") {
   public_deps = [
-    "hello_scene_manager",
+    "hello_pose_buffer",
+    "hello_scenic",
+    "hello_spaces",
     "shadertoy/client",
     "shadertoy/service",
     "shapes",
     "sketchy",
     "spinning_square",
     "tile",
+    "video_display",
   ]
 }
 
-package("hello_scene_manager") {
-  system_image = true
+package("hello_scenic") {
+  deprecated_system_image = true
 
   deps = [
-    "hello_scene_manager",
+    "hello_scenic",
   ]
 
-  binaries = [ {
-        name = "hello_scene_manager"
-      } ]
+  binaries = [
+    {
+      name = "hello_scenic"
+    },
+  ]
+}
+
+package("hello_spaces") {
+  deprecated_system_image = true
+
+  deps = [
+    "hello_spaces",
+  ]
+
+  binaries = [
+    {
+      name = "hello_spaces"
+    },
+  ]
+}
+package("hello_pose_buffer") {
+  deprecated_system_image = true
+  deps = [
+    "hello_pose_buffer",
+  ]
+
+  binaries = [
+    {
+      name = "hello_pose_buffer"
+    },
+  ]
 }
 
 package("shadertoy_client") {
@@ -43,10 +74,12 @@ package("shadertoy_service") {
 
   binary = "shadertoy_service"
 
-  meta = [ {
-        path = rebase_path("shadertoy/service/meta/sandbox")
-        dest = "sandbox"
-      } ]
+  meta = [
+    {
+      path = rebase_path("shadertoy/service/meta/sandbox")
+      dest = "sandbox"
+    },
+  ]
 }
 
 package("shapes_view") {
@@ -58,7 +91,7 @@ package("shapes_view") {
 }
 
 package("sketchy_client") {
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
     "sketchy",
@@ -85,4 +118,18 @@ package("tile_view") {
   ]
 
   binary = "tile_view"
+}
+
+package("video_display") {
+
+  deps = [
+    "video_display",
+  ]
+
+  binary = "video_display"
+
+  meta = [ {
+        path = rebase_path("video_display/meta/sandbox")
+        dest = "sandbox"
+      } ]
 }

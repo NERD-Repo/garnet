@@ -4,30 +4,32 @@
 
 #include "lib/ui/scenic/client/session.h"
 
-#include "lib/ui/scenic/fidl_helpers.h"
 #include "lib/fxl/logging.h"
+#include "lib/ui/scenic/fidl_helpers.h"
 
 namespace scenic_lib {
 
-Session::Session(
-    scenic::SessionPtr session,
-    fidl::InterfaceRequest<scenic::SessionListener> session_listener)
+constexpr size_t kCommandsPerMessage =
+    (ZX_CHANNEL_MAX_MSG_BYTES - sizeof(fidl_message_header_t)
+                              - sizeof(fidl_vector_t)) / sizeof(ui::Command);
+
+Session::Session(ui::SessionPtr session,
+                 fidl::InterfaceRequest<ui::SessionListener> session_listener)
     : session_(std::move(session)), session_listener_binding_(this) {
   FXL_DCHECK(session_);
   if (session_listener.is_valid())
     session_listener_binding_.Bind(std::move(session_listener));
 }
 
-Session::Session(scenic::SceneManager* scene_manager)
-    : session_listener_binding_(this) {
-  FXL_DCHECK(scene_manager);
-  scene_manager->CreateSession(session_.NewRequest(),
-                               session_listener_binding_.NewBinding());
+Session::Session(ui::Scenic* mozart) : session_listener_binding_(this) {
+  FXL_DCHECK(mozart);
+  mozart->CreateSession(session_.NewRequest(),
+                        session_listener_binding_.NewBinding());
 }
 
 Session::~Session() {
-  FXL_DCHECK(resource_count_ == 0) << "Some resources outlived the session: "
-                                   << resource_count_;
+  FXL_DCHECK(resource_count_ == 0)
+      << "Some resources outlived the session: " << resource_count_;
 }
 
 uint32_t Session::AllocResourceId() {
@@ -39,12 +41,13 @@ uint32_t Session::AllocResourceId() {
 
 void Session::ReleaseResource(uint32_t resource_id) {
   resource_count_--;
-  Enqueue(NewReleaseResourceOp(resource_id));
+  Enqueue(NewReleaseResourceCommand(resource_id));
 }
 
-void Session::Enqueue(scenic::OpPtr op) {
-  FXL_DCHECK(op);
-  ops_.push_back(std::move(op));
+void Session::Enqueue(gfx::Command command) {
+  commands_.push_back(NewCommand(std::move(command)));
+  if (commands_->size() >= kCommandsPerMessage)
+    Flush();
 }
 
 void Session::EnqueueAcquireFence(zx::event fence) {
@@ -58,8 +61,8 @@ void Session::EnqueueReleaseFence(zx::event fence) {
 }
 
 void Session::Flush() {
-  if (!ops_.empty())
-    session_->Enqueue(std::move(ops_));
+  if (!commands_->empty())
+    session_->Enqueue(std::move(commands_));
 }
 
 void Session::Present(uint64_t presentation_time, PresentCallback callback) {
@@ -77,15 +80,15 @@ void Session::HitTest(uint32_t node_id,
                       const float ray_origin[3],
                       const float ray_direction[3],
                       HitTestCallback callback) {
-  auto ray_origin_vec = scenic::vec3::New();
-  ray_origin_vec->x = ray_origin[0];
-  ray_origin_vec->y = ray_origin[1];
-  ray_origin_vec->z = ray_origin[2];
+  gfx::vec3 ray_origin_vec;
+  ray_origin_vec.x = ray_origin[0];
+  ray_origin_vec.y = ray_origin[1];
+  ray_origin_vec.z = ray_origin[2];
 
-  auto ray_direction_vec = scenic::vec3::New();
-  ray_direction_vec->x = ray_direction[0];
-  ray_direction_vec->y = ray_direction[1];
-  ray_direction_vec->z = ray_direction[2];
+  gfx::vec3 ray_direction_vec;
+  ray_direction_vec.x = ray_direction[0];
+  ray_direction_vec.y = ray_direction[1];
+  ray_direction_vec.z = ray_direction[2];
 
   session_->HitTest(node_id, std::move(ray_origin_vec),
                     std::move(ray_direction_vec), std::move(callback));
@@ -94,26 +97,26 @@ void Session::HitTest(uint32_t node_id,
 void Session::HitTestDeviceRay(
     const float ray_origin[3],
     const float ray_direction[3],
-    const scenic::Session::HitTestDeviceRayCallback& callback) {
-  auto ray_origin_vec = scenic::vec3::New();
-  ray_origin_vec->x = ray_origin[0];
-  ray_origin_vec->y = ray_origin[1];
-  ray_origin_vec->z = ray_origin[2];
+    const ui::Session::HitTestDeviceRayCallback& callback) {
+  gfx::vec3 ray_origin_vec;
+  ray_origin_vec.x = ray_origin[0];
+  ray_origin_vec.y = ray_origin[1];
+  ray_origin_vec.z = ray_origin[2];
 
-  auto ray_direction_vec = scenic::vec3::New();
-  ray_direction_vec->x = ray_direction[0];
-  ray_direction_vec->y = ray_direction[1];
-  ray_direction_vec->z = ray_direction[2];
+  gfx::vec3 ray_direction_vec;
+  ray_direction_vec.x = ray_direction[0];
+  ray_direction_vec.y = ray_direction[1];
+  ray_direction_vec.z = ray_direction[2];
 
   session_->HitTestDeviceRay(std::move(ray_origin_vec),
                              std::move(ray_direction_vec), callback);
 }
 
-void Session::OnError(const fidl::String& error) {
+void Session::OnError(fidl::StringPtr error) {
   FXL_LOG(ERROR) << "Session error: " << error;
 }
 
-void Session::OnEvent(fidl::Array<scenic::EventPtr> events) {
+void Session::OnEvent(fidl::VectorPtr<ui::Event> events) {
   if (event_handler_)
     event_handler_(std::move(events));
 }

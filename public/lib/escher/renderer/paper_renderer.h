@@ -16,6 +16,7 @@ enum class PaperRendererShadowType {
   kNone,
   kSsdo,
   kShadowMap,
+  kMomentShadowMap,
 };
 
 class PaperRenderer : public Renderer {
@@ -87,6 +88,14 @@ class PaperRenderer : public Renderer {
                                      const ShadowMapPtr& shadow_map,
                                      const Model* overlay_model);
 
+  void DrawFrameWithMomentShadowMapShadows(const FramePtr& frame,
+                                           const Stage& stage,
+                                           const Model& model,
+                                           const Camera& camera,
+                                           const ImagePtr& color_image_out,
+                                           const ShadowMapPtr& shadow_map,
+                                           const Model* overlay_model);
+
   // Render pass that generates a depth buffer, but no color fragments.  The
   // resulting depth buffer is used by DrawSsdoPasses() in order to compute
   // per-pixel occlusion, and by DrawLightingPass().
@@ -146,6 +155,7 @@ class PaperRenderer : public Renderer {
   impl::ModelRenderPassPtr no_shadow_lighting_pass_;
   impl::ModelRenderPassPtr ssdo_lighting_pass_;
   impl::ModelRenderPassPtr shadow_map_lighting_pass_;
+  impl::ModelRenderPassPtr moment_shadow_map_lighting_pass_;
   vk::Format depth_format_;
   impl::ModelDataPtr model_data_;
   impl::ModelRendererPtr model_renderer_;

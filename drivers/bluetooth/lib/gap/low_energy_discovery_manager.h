@@ -8,6 +8,9 @@
 #include <queue>
 #include <unordered_set>
 
+#include <fbl/function.h>
+#include <lib/async/dispatcher.h>
+
 #include "garnet/drivers/bluetooth/lib/common/byte_buffer.h"
 #include "garnet/drivers/bluetooth/lib/common/device_address.h"
 #include "garnet/drivers/bluetooth/lib/gap/discovery_filter.h"
@@ -17,7 +20,6 @@
 #include "lib/fxl/memory/ref_ptr.h"
 #include "lib/fxl/memory/weak_ptr.h"
 #include "lib/fxl/synchronization/thread_checker.h"
-#include "lib/fxl/tasks/task_runner.h"
 
 namespace btlib {
 
@@ -71,7 +73,7 @@ class RemoteDeviceCache;
 // EXAMPLE:
 //     btlib::gap::LowEnergyDiscoveryManager discovery_manager(
 //         btlib::gap::LowEnergyDiscoveryManager::Mode::kLegacy,
-//         transport, task_runner);
+//         transport, dispatcher);
 //     ...
 //
 //     std::unique_ptr<btlib::gap::LowEnergyDiscoverySession> session;
@@ -94,7 +96,7 @@ class RemoteDeviceCache;
 //
 // NOTE: These classes are not thread-safe. An instance of
 // LowEnergyDiscoveryManager is bound to its creation thread and the associated
-// TaskRunner and must be accessed and destroyed on the same thread.
+// dispatcher and must be accessed and destroyed on the same thread.
 
 // Represents a LE device discovery session initiated via
 // LowEnergyDiscoveryManager::StartDiscovery(). Instances cannot be created
@@ -120,10 +122,17 @@ class LowEnergyDiscoverySession final {
   using DeviceFoundCallback = std::function<void(const RemoteDevice& device)>;
   void SetResultCallback(const DeviceFoundCallback& callback);
 
+  // Sets a callback to get notified when the session becomes inactive due to an
+  // internal error.
+  void set_error_callback(fbl::Closure callback) {
+    error_callback_ = std::move(callback);
+  }
+
   // Returns the filter that belongs to this session. The caller may modify the
-  // filter as desired. By default the filter is configured to match
-  // discoverable devices (i.e. limited and general discoverable) based on their
-  // "Flags" field.
+  // filter as desired. By default no devices are filtered.
+  //
+  // NOTE: The client is responsible for setting up the filter's "flags" field
+  // for discovery procedures.
   DiscoveryFilter* filter() { return &filter_; }
 
   // Ends this session. This instance will stop receiving notifications for
@@ -133,10 +142,6 @@ class LowEnergyDiscoverySession final {
   // Returns true if this session is active. A session is considered inactive
   // after a call to Stop().
   bool active() const { return active_; }
-
-  // Resets the filter values to its defaults, which will match all connectable
-  // and limited & general discoverable devices.
-  void ResetToDefault();
 
  private:
   friend class LowEnergyDiscoveryManager;
@@ -148,14 +153,12 @@ class LowEnergyDiscoverySession final {
   // Called by LowEnergyDiscoveryManager on newly discovered scan results.
   void NotifyDiscoveryResult(const RemoteDevice& device) const;
 
-  inline void SetGeneralDiscoverableFlags() {
-    filter_.set_flags(
-        static_cast<uint8_t>(AdvFlag::kLELimitedDiscoverableMode) |
-        static_cast<uint8_t>(AdvFlag::kLEGeneralDiscoverableMode));
-  }
+  // Marks this session as inactive and notifies the error handler.
+  void NotifyError();
 
   bool active_;
   fxl::WeakPtr<LowEnergyDiscoveryManager> manager_;
+  fbl::Closure error_callback_;
   DeviceFoundCallback device_found_callback_;
   DiscoveryFilter filter_;
   fxl::ThreadChecker thread_checker_;
@@ -180,11 +183,14 @@ class LowEnergyDiscoveryManager final : public hci::LowEnergyScanner::Delegate {
   // TODO(armansito): Implement option to disable duplicate filtering. Would
   // this require software filtering for clients that did not request it?
   using SessionCallback =
-      std::function<void(std::unique_ptr<LowEnergyDiscoverySession>)>;
-  void StartDiscovery(const SessionCallback& callback);
+      fbl::Function<void(std::unique_ptr<LowEnergyDiscoverySession>)>;
+  void StartDiscovery(SessionCallback callback);
 
   // Sets a new scan period to any future and ongoing discovery procedures.
   void set_scan_period(int64_t period_ms) { scan_period_ = period_ms; }
+
+  // Returns whether there is an active discovery session.
+  bool discovering() const { return !sessions_.empty(); }
 
  private:
   friend class LowEnergyDiscoverySession;
@@ -207,13 +213,13 @@ class LowEnergyDiscoveryManager final : public hci::LowEnergyScanner::Delegate {
                      const common::ByteBuffer& data) override;
 
   // Called by hci::LowEnergyScanner
-  void OnScanStatus(hci::LowEnergyScanner::Status status);
+  void OnScanStatus(hci::LowEnergyScanner::ScanStatus status);
 
   // Tells the scanner to start scanning.
   void StartScan();
 
-  // The task runner that we use for invoking callbacks asynchronously.
-  fxl::RefPtr<fxl::TaskRunner> task_runner_;
+  // The dispatcher that we use for invoking callbacks asynchronously.
+  async_t* dispatcher_;
 
   // The device cache that we use for storing and looking up scan results. We
   // hold a raw pointer as we expect this to out-live us.
@@ -244,6 +250,8 @@ class LowEnergyDiscoveryManager final : public hci::LowEnergyScanner::Delegate {
 
   // The scanner that performs the HCI procedures.
   std::unique_ptr<hci::LowEnergyScanner> scanner_;
+
+  fxl::ThreadChecker thread_checker_;
 
   // Keep this as the last member to make sure that all weak pointers are
   // invalidated before other members get destroyed.

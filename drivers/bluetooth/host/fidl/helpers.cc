@@ -12,64 +12,95 @@
 #include "garnet/drivers/bluetooth/lib/gap/advertising_data.h"
 #include "garnet/drivers/bluetooth/lib/gap/discovery_filter.h"
 
-// Make the FIDL namespace explicit.
-namespace btfidl = ::bluetooth;
+using bluetooth::Bool;
+using bluetooth::Error;
+using bluetooth::ErrorCode;
+using bluetooth::Int8;
+using bluetooth::Status;
+using bluetooth_control::AdapterInfo;
+using bluetooth_control::AdapterState;
+using bluetooth_control::Appearance;
+using bluetooth_control::TechnologyType;
+
+namespace ble = bluetooth_low_energy;
 
 namespace bthost {
 namespace fidl_helpers {
 namespace {
 
-::btfidl::control::TechnologyType TechnologyTypeToFidl(
+::bluetooth_control::TechnologyType TechnologyTypeToFidl(
     ::btlib::gap::TechnologyType type) {
   switch (type) {
     case ::btlib::gap::TechnologyType::kLowEnergy:
-      return ::btfidl::control::TechnologyType::LOW_ENERGY;
+      return ::bluetooth_control::TechnologyType::LOW_ENERGY;
     case ::btlib::gap::TechnologyType::kClassic:
-      return ::btfidl::control::TechnologyType::CLASSIC;
+      return ::bluetooth_control::TechnologyType::CLASSIC;
     case ::btlib::gap::TechnologyType::kDualMode:
-      return ::btfidl::control::TechnologyType::DUAL_MODE;
+      return ::bluetooth_control::TechnologyType::DUAL_MODE;
     default:
       FXL_NOTREACHED();
       break;
   }
 
   // This should never execute.
-  return ::btfidl::control::TechnologyType::DUAL_MODE;
+  return ::bluetooth_control::TechnologyType::DUAL_MODE;
 }
 
 }  // namespace
 
-::btfidl::StatusPtr NewErrorStatus(::bluetooth::ErrorCode error_code,
-                                   const std::string& description) {
-  auto status = ::btfidl::Status::New();
-  status->error = ::btfidl::Error::New();
-  status->error->error_code = error_code;
-  status->error->description = description;
+::bluetooth::ErrorCode HostErrorToFidl(::btlib::common::HostError host_error) {
+  switch (host_error) {
+    case ::btlib::common::HostError::kFailed:
+      return ::bluetooth::ErrorCode::FAILED;
+    case ::btlib::common::HostError::kTimedOut:
+      return ::bluetooth::ErrorCode::TIMED_OUT;
+    case ::btlib::common::HostError::kInvalidParameters:
+      return ::bluetooth::ErrorCode::INVALID_ARGUMENTS;
+    case ::btlib::common::HostError::kCanceled:
+      return ::bluetooth::ErrorCode::CANCELED;
+    case ::btlib::common::HostError::kInProgress:
+      return ::bluetooth::ErrorCode::IN_PROGRESS;
+    case ::btlib::common::HostError::kNotSupported:
+      return ::bluetooth::ErrorCode::NOT_SUPPORTED;
+    case ::btlib::common::HostError::kNotFound:
+      return ::bluetooth::ErrorCode::NOT_FOUND;
+    case ::btlib::common::HostError::kProtocolError:
+      return ::bluetooth::ErrorCode::PROTOCOL_ERROR;
+    default:
+      break;
+  }
 
+  return ::bluetooth::ErrorCode::FAILED;
+}
+
+Status NewFidlError(::bluetooth::ErrorCode error_code,
+                    std::string description) {
+  Status status;
+  status.error = Error::New();
+  status.error->error_code = error_code;
+  status.error->description = description;
   return status;
 }
 
-::btfidl::control::AdapterInfoPtr NewAdapterInfo(
+::bluetooth_control::AdapterInfo NewAdapterInfo(
     const ::btlib::gap::Adapter& adapter) {
-  auto adapter_info = ::btfidl::control::AdapterInfo::New();
-  adapter_info->state = ::btfidl::control::AdapterState::New();
+  ::bluetooth_control::AdapterInfo adapter_info;
+  adapter_info.state = ::bluetooth_control::AdapterState::New();
 
-  // TODO(armansito): Most of these fields have not been implemented yet. Assign
-  // the correct values when they are supported.
-  adapter_info->state->powered = ::btfidl::Bool::New();
-  adapter_info->state->powered->value = true;
-  adapter_info->state->discovering = ::btfidl::Bool::New();
-  adapter_info->state->discoverable = ::btfidl::Bool::New();
+  adapter_info.state->discoverable = Bool::New();
+  adapter_info.state->discoverable->value = false;
+  adapter_info.state->discovering = Bool::New();
+  adapter_info.state->discovering->value = adapter.IsDiscovering();
 
-  adapter_info->identifier = adapter.identifier();
-  adapter_info->address = adapter.state().controller_address().ToString();
+  adapter_info.identifier = adapter.identifier();
+  adapter_info.address = adapter.state().controller_address().ToString();
 
   return adapter_info;
 }
 
-::btfidl::control::RemoteDevicePtr NewRemoteDevice(
+::bluetooth_control::RemoteDevicePtr NewRemoteDevice(
     const ::btlib::gap::RemoteDevice& device) {
-  auto fidl_device = ::btfidl::control::RemoteDevice::New();
+  auto fidl_device = ::bluetooth_control::RemoteDevice::New();
   fidl_device->identifier = device.identifier();
   fidl_device->address = device.address().value().ToString();
   fidl_device->technology = TechnologyTypeToFidl(device.technology());
@@ -79,19 +110,21 @@ namespace {
   fidl_device->bonded = false;
 
   // Set default value for device appearance.
-  fidl_device->appearance = ::btfidl::control::Appearance::UNKNOWN;
+  fidl_device->appearance = ::bluetooth_control::Appearance::UNKNOWN;
 
   if (device.rssi() != ::btlib::hci::kRSSIInvalid) {
-    fidl_device->rssi = ::btfidl::Int8::New();
+    fidl_device->rssi = Int8::New();
     fidl_device->rssi->value = device.rssi();
   }
 
   ::btlib::gap::AdvertisingData adv_data;
   if (!::btlib::gap::AdvertisingData::FromBytes(device.advertising_data(),
-                                                &adv_data))
-    return nullptr;
+                                                &adv_data)) {
+    fidl_device->service_uuids.resize(0);
+    return fidl_device;
+  }
 
-  std::unordered_set<::btlib::common::UUID> uuids = adv_data.service_uuids();
+  const auto& uuids = adv_data.service_uuids();
 
   // |service_uuids| is not a nullable field, so we need to assign something to
   // it.
@@ -106,11 +139,11 @@ namespace {
   if (adv_data.local_name())
     fidl_device->name = *adv_data.local_name();
   if (adv_data.appearance()) {
-    fidl_device->appearance = static_cast<::btfidl::control::Appearance>(
+    fidl_device->appearance = static_cast<::bluetooth_control::Appearance>(
         le16toh(*adv_data.appearance()));
   }
   if (adv_data.tx_power()) {
-    auto fidl_tx_power = ::btfidl::Int8::New();
+    auto fidl_tx_power = Int8::New();
     fidl_tx_power->value = *adv_data.tx_power();
     fidl_device->tx_power = std::move(fidl_tx_power);
   }
@@ -118,10 +151,10 @@ namespace {
   return fidl_device;
 }
 
-::btfidl::low_energy::RemoteDevicePtr NewLERemoteDevice(
+ble::RemoteDevicePtr NewLERemoteDevice(
     const ::btlib::gap::RemoteDevice& device) {
   ::btlib::gap::AdvertisingData ad;
-  auto fidl_device = ::btfidl::low_energy::RemoteDevice::New();
+  auto fidl_device = ble::RemoteDevice::New();
   fidl_device->identifier = device.identifier();
   fidl_device->connectable = device.connectable();
 
@@ -136,20 +169,20 @@ namespace {
   }
 
   if (device.rssi() != ::btlib::hci::kRSSIInvalid) {
-    fidl_device->rssi = ::btfidl::Int8::New();
+    fidl_device->rssi = Int8::New();
     fidl_device->rssi->value = device.rssi();
   }
 
   return fidl_device;
 }
 
-bool IsScanFilterValid(const ::btfidl::low_energy::ScanFilter& fidl_filter) {
+bool IsScanFilterValid(const ble::ScanFilter& fidl_filter) {
   // |service_uuids| is the only field that can potentially contain invalid
   // data, since they are represented as strings.
   if (!fidl_filter.service_uuids)
     return true;
 
-  for (const auto& uuid_str : fidl_filter.service_uuids) {
+  for (const auto& uuid_str : *fidl_filter.service_uuids) {
     if (!::btlib::common::IsStringValidUuid(uuid_str))
       return false;
   }
@@ -157,14 +190,13 @@ bool IsScanFilterValid(const ::btfidl::low_energy::ScanFilter& fidl_filter) {
   return true;
 }
 
-bool PopulateDiscoveryFilter(
-    const ::btfidl::low_energy::ScanFilter& fidl_filter,
-    ::btlib::gap::DiscoveryFilter* out_filter) {
+bool PopulateDiscoveryFilter(const ble::ScanFilter& fidl_filter,
+                             ::btlib::gap::DiscoveryFilter* out_filter) {
   FXL_DCHECK(out_filter);
 
   if (fidl_filter.service_uuids) {
     std::vector<::btlib::common::UUID> uuids;
-    for (const auto& uuid_str : fidl_filter.service_uuids) {
+    for (const auto& uuid_str : *fidl_filter.service_uuids) {
       ::btlib::common::UUID uuid;
       if (!::btlib::common::StringToUuid(uuid_str, &uuid)) {
         FXL_VLOG(1) << "Invalid parameters given to scan filter";
@@ -200,16 +232,12 @@ bool PopulateDiscoveryFilter(
 }  // namespace fidl_helpers
 }  // namespace bthost
 
-namespace fidl {
-
 // static
-Array<uint8_t>
-TypeConverter<Array<uint8_t>, ::btlib::common::ByteBuffer>::Convert(
+fidl::VectorPtr<uint8_t>
+fxl::TypeConverter<fidl::VectorPtr<uint8_t>, ::btlib::common::ByteBuffer>::Convert(
     const ::btlib::common::ByteBuffer& from) {
-  auto to = Array<uint8_t>::New(from.size());
-  ::btlib::common::MutableBufferView view(to.data(), to.size());
+  auto to = fidl::VectorPtr<uint8_t>::New(from.size());
+  ::btlib::common::MutableBufferView view(to->data(), to->size());
   view.Write(from);
   return to;
 }
-
-}  // namespace fidl

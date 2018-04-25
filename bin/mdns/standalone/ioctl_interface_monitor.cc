@@ -7,8 +7,11 @@
 #include <errno.h>
 #include <sys/socket.h>
 
+#include <lib/async/cpp/task.h>
+#include <lib/async/default.h>
+#include <zx/time.h>
+
 #include "garnet/bin/mdns/service/ip_address.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/files/unique_fd.h"
 #include "lib/fxl/logging.h"
 #include "lib/netstack/c/netconfig.h"
@@ -16,7 +19,7 @@
 namespace mdns {
 namespace {
 
-constexpr fxl::TimeDelta kPollInterval = fxl::TimeDelta::FromSeconds(60);
+constexpr zx::duration kPollInterval = zx::min(1);
 
 }  // namespace
 
@@ -28,8 +31,8 @@ std::unique_ptr<InterfaceMonitor> IoctlInterfaceMonitor::Create() {
 IoctlInterfaceMonitor::IoctlInterfaceMonitor()
     : poll_closure_([this]() { Poll(); }) {
   CheckInterfaces();
-  fsl::MessageLoop::GetCurrent()->task_runner()->PostDelayedTask(
-      poll_closure_.callback(), kPollInterval);
+  async::PostDelayedTask(async_get_default(), poll_closure_.callback(),
+                         kPollInterval);
 }
 
 IoctlInterfaceMonitor::~IoctlInterfaceMonitor() {}
@@ -49,8 +52,8 @@ void IoctlInterfaceMonitor::Poll() {
     link_change_callback_();
   }
 
-  fsl::MessageLoop::GetCurrent()->task_runner()->PostDelayedTask(
-      poll_closure_.callback(), kPollInterval);
+  async::PostDelayedTask(async_get_default(), poll_closure_.callback(),
+                         kPollInterval);
 }
 
 bool IoctlInterfaceMonitor::CheckInterfaces() {

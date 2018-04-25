@@ -6,7 +6,7 @@
 #define GARNET_DRIVERS_WLAN_TESTING_IFACE_DEVICE_H
 
 #include <ddk/device.h>
-#include <ddk/protocol/wlan.h>
+#include <wlan/protocol/mac.h>
 #include <zircon/types.h>
 
 #include <mutex>
@@ -16,21 +16,18 @@ namespace testing {
 
 class IfaceDevice {
    public:
-    IfaceDevice(zx_device_t* device);
+    IfaceDevice(zx_device_t* device, uint16_t role);
+
+    zx_device_t* zxdev() { return zxdev_; }
 
     zx_status_t Bind();
-
     void Unbind();
     void Release();
 
     zx_status_t Query(uint32_t options, wlanmac_info_t* info);
     void Stop();
     zx_status_t Start(wlanmac_ifc_t* ifc, void* cookie);
-    zx_status_t QueueTx(uint32_t options, wlan_tx_packet_t* pkt);
     zx_status_t SetChannel(uint32_t options, wlan_channel_t* chan);
-    zx_status_t SetBss(uint32_t options, const uint8_t mac[6], uint8_t type);
-    zx_status_t ConfigureBss(uint32_t options, wlan_bss_config_t* config);
-    zx_status_t SetKey(uint32_t options, wlan_key_config_t* key_config);
 
    private:
     zx_device_t* zxdev_;
@@ -39,6 +36,9 @@ class IfaceDevice {
     std::mutex lock_;
     wlanmac_ifc_t* ifc_ = nullptr;
     void* ifc_cookie_ = nullptr;
+
+    // One of the WLAN_MAC_ROLE_* constants from lib/wlan/protocol/mac.h
+    uint16_t role_;
 };
 
 }  // namespace testing

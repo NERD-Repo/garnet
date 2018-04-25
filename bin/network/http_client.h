@@ -7,6 +7,8 @@
 
 #include <zircon/status.h>
 
+#include <set>
+
 #include "garnet/bin/network/net_errors.h"
 #include "garnet/bin/network/upload_element_reader.h"
 #include "lib/fsl/vmo/sized_vmo.h"
@@ -72,7 +74,7 @@ class URLLoaderImpl::HTTPClient {
   void OnStreamBody(const asio::error_code& err);
   void OnBufferBody(const asio::error_code& err);
 
-  void SendResponse(URLResponsePtr response);
+  void SendResponse(URLResponse response);
   void SendError(int error_code);
 
  public:
@@ -93,7 +95,7 @@ class URLLoaderImpl::HTTPClient {
   std::string http_version_;
   std::string status_message_;
 
-  URLResponsePtr response_;          // used for buffered responses
+  URLResponse response_;             // used for buffered responses
   zx::socket response_body_stream_;  // used for streamed responses (default)
 };
 
@@ -389,24 +391,29 @@ zx_status_t URLLoaderImpl::HTTPClient<T>::SendStreamedBody() {
       size_t todo = std::min(sizeof(buffer), size - done);
       FXL_DCHECK(todo > 0);
       response_stream.read(buffer, todo);
-      size_t written;
-      zx_status_t result =
-          response_body_stream_.write(0, buffer, todo, &written);
-      if (result == ZX_ERR_SHOULD_WAIT) {
-        result = response_body_stream_.wait_one(
+      size_t offset = 0;
+      do {
+        size_t written = 0;
+        zx_status_t result =
+          response_body_stream_.write(0, buffer + offset, todo - offset, &written);
+        if (result == ZX_ERR_SHOULD_WAIT) {
+          result = response_body_stream_.wait_one(
             ZX_SOCKET_WRITABLE | ZX_SOCKET_PEER_CLOSED, zx::time::infinite(),
             nullptr);
-        if (result == ZX_OK)
-          continue;  // retry now that the socket is ready
-      }
-      if (result != ZX_OK) {
-        // If the other end closes the socket, ZX_ERR_PEER_CLOSED
-        // can happen.
-        if (result != ZX_ERR_PEER_CLOSED)
-          FXL_VLOG(1) << "SendStreamedBody: result=" << result;
-        return result;
-      }
-      done += written;
+          if (result == ZX_OK)
+            continue;  // retry now that the socket is ready
+        }
+        if (result != ZX_OK) {
+          // If the other end closes the socket, ZX_ERR_PEER_CLOSED
+          // can happen.
+          if (result != ZX_ERR_PEER_CLOSED)
+            FXL_VLOG(1) << "SendStreamedBody: result=" << result;
+          return result;
+        }
+        offset += written;
+      } while (offset < todo);
+      FXL_DCHECK(offset == todo);
+      done += todo;
     } while (done < size);
   }
   return ZX_OK;
@@ -436,25 +443,20 @@ zx_status_t URLLoaderImpl::HTTPClient<T>::SendBufferedBody() {
       size_t todo = std::min(sizeof(buffer), size - done);
       FXL_DCHECK(todo > 0);
       response_stream.read(buffer, todo);
-      size_t written;
-      result = vmo.write(buffer, done, todo, &written);
+      result = vmo.write(buffer, done, todo);
       if (result != ZX_OK) {
         FXL_VLOG(1) << "SendBufferedBody: result=" << result;
         return result;
       }
-      if (written < todo) {
-        FXL_VLOG(1) << "zx::vmo::write wrote " << written
-                    << " bytes instead of " << todo << " bytes.";
-      }
-
-      done += written;
+      done += todo;
     } while (done < size);
 
-    if (loader_->response_body_mode_ == URLRequest::ResponseBodyMode::BUFFER) {
-    response_->body->set_buffer(std::move(vmo));
+    if (loader_->response_body_mode_ == ResponseBodyMode::BUFFER) {
+      response_.body->set_buffer(std::move(vmo));
     } else {
-      FXL_DCHECK(loader_->response_body_mode_ == URLRequest::ResponseBodyMode::SIZED_BUFFER);
-      response_->body->set_sized_buffer(
+      FXL_DCHECK(loader_->response_body_mode_ ==
+                 ResponseBodyMode::SIZED_BUFFER);
+      response_.body->set_sized_buffer(
           fsl::SizedVmo(std::move(vmo), size).ToTransport());
     }
   }
@@ -495,35 +497,34 @@ void URLLoaderImpl::HTTPClient<T>::OnReadHeaders(const asio::error_code& err) {
         }
       }
     } else {
-      URLResponsePtr response = URLResponse::New();
-
-      response->status_code = status_code_;
-      response->status_line =
+      URLResponse response;
+      response.status_code = status_code_;
+      response.status_line =
           http_version_ + " " + std::to_string(status_code_) + status_message_;
-      response->url = loader_->current_url_.spec();
+      response.url = loader_->current_url_.spec();
 
       while (std::getline(response_stream, header) && header != "\r") {
-        HttpHeaderPtr hdr = HttpHeader::New();
+        HttpHeader hdr;
         std::string name, value;
         ParseHeaderField(header, &name, &value);
-        hdr->name = name;
-        hdr->value = value;
-        response->headers.push_back(std::move(hdr));
+        hdr.name = std::move(name);
+        hdr.value = std::move(value);
+        response.headers.push_back(std::move(hdr));
       }
 
-      response->body = network::URLBody::New();
+      response.body = std::make_unique<network::URLBody>();
 
       switch (loader_->response_body_mode_) {
-        case URLRequest::ResponseBodyMode::BUFFER:
-        case URLRequest::ResponseBodyMode::SIZED_BUFFER:
+        case ResponseBodyMode::BUFFER:
+        case ResponseBodyMode::SIZED_BUFFER:
           response_ = std::move(response);
 
           asio::async_read(socket_, response_buf_,
                            std::bind(&HTTPClient<T>::OnBufferBody, this,
                                      std::placeholders::_1));
           break;
-        case URLRequest::ResponseBodyMode::STREAM:
-        case URLRequest::ResponseBodyMode::BUFFER_OR_STREAM:
+        case ResponseBodyMode::STREAM:
+        case ResponseBodyMode::BUFFER_OR_STREAM:
           zx::socket consumer;
           zx::socket producer;
           zx_status_t status = zx::socket::create(0u, &producer, &consumer);
@@ -533,7 +534,7 @@ void URLLoaderImpl::HTTPClient<T>::OnReadHeaders(const asio::error_code& err) {
             return;
           }
           response_body_stream_ = std::move(producer);
-          response->body->set_stream(std::move(consumer));
+          response.body->set_stream(std::move(consumer));
 
           loader_->SendResponse(std::move(response));
 
@@ -555,7 +556,11 @@ void URLLoaderImpl::HTTPClient<T>::OnReadHeaders(const asio::error_code& err) {
 
 template <typename T>
 void URLLoaderImpl::HTTPClient<T>::OnBufferBody(const asio::error_code& err) {
-  if (err && err != asio::ssl::error::stream_truncated) {
+  // asio::error::eof happens if the other side closed their connection.
+  if (err && err != asio::ssl::error::stream_truncated &&
+      err != asio::error::eof) {
+    // TODO: if EOF, should probably confirm we read all of the bytes (see
+    // Content-Length header).
     FXL_VLOG(1) << "OnBufferBody: " << err.message() << " (" << err << ")";
     // TODO(somebody who knows asio/network errors): real translation
     SendError(network::NETWORK_ERR_FAILED);
@@ -580,7 +585,7 @@ void URLLoaderImpl::HTTPClient<T>::OnStreamBody(const asio::error_code& err) {
 }
 
 template <typename T>
-void URLLoaderImpl::HTTPClient<T>::SendResponse(URLResponsePtr response) {
+void URLLoaderImpl::HTTPClient<T>::SendResponse(URLResponse response) {
   loader_->SendResponse(std::move(response));
 }
 

@@ -1,32 +1,25 @@
-# Copyright 2017 The Fuchsia Authors. All rights reserved.
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//garnet/public/lib/fidl/fidl.gni")
+import("//garnet/public/lib/fidl/build/fidl/fidl.gni")
 
 fidl("fidl") {
+  name = "ui"
+
+  sdk_candidate = true
+
   sources = [
-    "display_info.fidl",
+    "commands.fidl",
     "events.fidl",
-    "nodes.fidl",
-    "ops.fidl",
-    "renderer.fidl",
-    "resources.fidl",
-    "scene_manager.fidl",
+    "scenic.fidl",
     "session.fidl",
-    "shapes.fidl",
-    "types.fidl",
   ]
 
   public_deps = [
-    ":presentation_info",
     "//garnet/public/lib/images/fidl",
-    "//garnet/public/lib/ui/geometry/fidl",
-  ]
-}
-
-fidl("presentation_info") {
-  sources = [
-    "presentation_info.fidl",
+    "//garnet/public/lib/ui/gfx/fidl",
+    "//garnet/public/lib/ui/scenic/fidl/dummy_system:fidl",
+    "//garnet/public/lib/ui/views/fidl:v2",
   ]
 }

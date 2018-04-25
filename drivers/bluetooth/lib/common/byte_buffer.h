@@ -81,11 +81,19 @@ class ByteBuffer {
     return data()[pos];
   }
 
-  // Converts the underlying buffer to the given type with bounds checking.
+  // Converts the underlying buffer to the given type with bounds checking. The
+  // buffer is allowed to be larger than T.
   template <typename T>
   const T& As() const {
-    FXL_CHECK(size() == sizeof(T));
+    FXL_CHECK(size() >= sizeof(T));
     return *reinterpret_cast<const T*>(data());
+  }
+
+  bool operator==(const ByteBuffer& other) const {
+    if (size() != other.size()) {
+      return false;
+    }
+    return (memcmp(data(), other.data(), size()) == 0);
   }
 
   // Returns the contents of this buffer as a C++ string-like object without

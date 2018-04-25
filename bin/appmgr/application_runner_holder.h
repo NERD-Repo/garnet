@@ -5,18 +5,18 @@
 #ifndef GARNET_BIN_APPMGR_APPLICATION_RUNNER_HOLDER_H_
 #define GARNET_BIN_APPMGR_APPLICATION_RUNNER_HOLDER_H_
 
-#include <zx/vmo.h>
+#include <lib/zx/vmo.h>
 
 #include "garnet/bin/appmgr/application_namespace.h"
 #include "garnet/lib/farfs/file_system.h"
-#include "lib/app/fidl/application_controller.fidl.h"
-#include "lib/app/fidl/application_runner.fidl.h"
+#include <fuchsia/cpp/component.h>
+#include <fuchsia/cpp/component.h>
 #include "lib/fxl/files/unique_fd.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_ptr.h"
 #include "lib/svc/cpp/services.h"
 
-namespace app {
+namespace component {
 
 class ApplicationRunnerHolder {
  public:
@@ -25,8 +25,8 @@ class ApplicationRunnerHolder {
   ~ApplicationRunnerHolder();
 
   void StartApplication(
-      ApplicationPackagePtr package,
-      ApplicationStartupInfoPtr startup_info,
+      ApplicationPackage package,
+      ApplicationStartupInfo startup_info,
       std::unique_ptr<archive::FileSystem> file_system,
       fxl::RefPtr<ApplicationNamespace> application_namespace,
       fidl::InterfaceRequest<ApplicationController> controller);
@@ -44,6 +44,6 @@ class ApplicationRunnerHolder {
   FXL_DISALLOW_COPY_AND_ASSIGN(ApplicationRunnerHolder);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // GARNET_BIN_APPMGR_APPLICATION_RUNNER_HOLDER_H_

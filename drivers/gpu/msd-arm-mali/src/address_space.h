@@ -11,6 +11,7 @@
 
 #include "magma_util/macros.h"
 #include "platform_buffer.h"
+#include "platform_bus_mapper.h"
 #include "types.h"
 
 #ifndef PAGE_SHIFT
@@ -46,7 +47,11 @@ public:
     virtual void FlushAddressMappingRange(AddressSpace* address_space, uint64_t start,
                                           uint64_t length, bool synchronous) = 0;
 
-    virtual void ReleaseSpaceMappings(AddressSpace* address_space) = 0;
+    // Tells the GPU to retry any memory lookup using this address space. Also
+    // happens implicitly upon flush.
+    virtual void UnlockAddressSpace(AddressSpace* address_space) = 0;
+
+    virtual void ReleaseSpaceMappings(const AddressSpace* address_space) = 0;
 };
 
 // This should only be accessed on the connection thread (for now).
@@ -57,6 +62,7 @@ public:
         virtual ~Owner() = 0;
         virtual AddressSpaceObserver* GetAddressSpaceObserver() = 0;
         virtual std::shared_ptr<Owner> GetSharedPtr() = 0;
+        virtual magma::PlatformBusMapper* GetBusMapper() = 0;
     };
 
     static constexpr uint32_t kVirtualAddressSize = 48;
@@ -69,10 +75,11 @@ public:
 
     ~AddressSpace();
 
-    bool Insert(gpu_addr_t addr, magma::PlatformBuffer* buffer, uint64_t offset, uint64_t length,
-                uint64_t flags);
+    bool Insert(gpu_addr_t addr, magma::PlatformBusMapper::BusMapping* bus_mapping, uint64_t offset,
+                uint64_t length, uint64_t flags);
 
     bool Clear(gpu_addr_t start, uint64_t length);
+    void Unlock() { owner_->GetAddressSpaceObserver()->UnlockAddressSpace(this); }
 
     bool ReadPteForTesting(gpu_addr_t addr, mali_pte_t* entry);
 
@@ -97,7 +104,7 @@ private:
 
     class PageTable {
     public:
-        static std::unique_ptr<PageTable> Create(uint32_t level, bool cache_coherent);
+        static std::unique_ptr<PageTable> Create(Owner* owner, uint32_t level, bool cache_coherent);
 
         PageTableGpu* gpu() { return gpu_; }
 
@@ -107,7 +114,7 @@ private:
 
         void WritePte(uint64_t page_index, mali_pte_t pte);
 
-        uint64_t page_bus_address() const { return page_bus_address_; }
+        uint64_t page_bus_address() const { return bus_mapping_->Get()[0]; }
 
         // Collect empty page tables that are in the path to page_number, and
         // put them in |empty_tables|. |is_empty| is set if the page table is
@@ -118,16 +125,17 @@ private:
     private:
         static mali_pte_t get_directory_entry(uint64_t physical_address);
 
-        PageTable(uint32_t level, bool cache_coherent,
+        PageTable(Owner* owner, uint32_t level, bool cache_coherent,
                   std::unique_ptr<magma::PlatformBuffer> buffer, PageTableGpu* gpu,
-                  uint64_t page_bus_address);
+                  std::unique_ptr<magma::PlatformBusMapper::BusMapping> bus_mapping);
 
         // The root page table has level 3, and the leaves have level 0.
+        Owner* owner_;
         const uint32_t level_;
         const bool cache_coherent_;
         std::unique_ptr<magma::PlatformBuffer> buffer_;
         PageTableGpu* gpu_;
-        uint64_t page_bus_address_;
+        std::unique_ptr<magma::PlatformBusMapper::BusMapping> bus_mapping_;
         std::vector<std::unique_ptr<PageTable>> next_levels_;
 
         friend class TestAddressSpace;

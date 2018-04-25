@@ -8,7 +8,7 @@
 
 #include "lib/fxl/functional/make_copyable.h"
 
-namespace app {
+namespace component {
 
 ServiceProviderImpl::ServiceProviderImpl() {}
 
@@ -41,7 +41,7 @@ void ServiceProviderImpl::RemoveServiceForName(
     name_to_service_connector_.erase(it);
 }
 
-void ServiceProviderImpl::ConnectToService(const fidl::String& service_name,
+void ServiceProviderImpl::ConnectToService(fidl::StringPtr service_name,
                                            zx::channel client_handle) {
   auto it = name_to_service_connector_.find(service_name);
   if (it != name_to_service_connector_.end())
@@ -69,4 +69,4 @@ void ServiceProviderImpl::SetDefaultServiceProvider(
       });
 }
 
-}  // namespace app
+}  // namespace component

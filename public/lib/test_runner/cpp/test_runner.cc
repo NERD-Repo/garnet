@@ -40,10 +40,11 @@
 #include <vector>
 
 #include "lib/fxl/logging.h"
+#include "lib/fxl/type_converter.h"
 #include "lib/fxl/strings/split_string.h"
 #include "lib/fxl/strings/string_view.h"
-#include "lib/fxl/synchronization/sleep.h"
 #include "lib/fsl/tasks/message_loop.h"
+#include "lib/fsl/types/type_converters.h"
 #include "third_party/rapidjson/rapidjson/document.h"
 #include "third_party/rapidjson/rapidjson/writer.h"
 #include "third_party/rapidjson/rapidjson/stringbuffer.h"
@@ -84,27 +85,27 @@ void TestRunnerImpl::TeardownAfterTermination() {
   teardown_after_termination_ = true;
 }
 
-void TestRunnerImpl::Identify(const fidl::String& program_name,
-                              const IdentifyCallback& callback) {
+void TestRunnerImpl::Identify(fidl::StringPtr program_name,
+                              IdentifyCallback callback) {
   program_name_ = program_name;
   callback();
 }
 
-void TestRunnerImpl::ReportResult(TestResultPtr result) {
+void TestRunnerImpl::ReportResult(TestResult result) {
   test_run_context_->ReportResult(std::move(result));
 }
 
-void TestRunnerImpl::Fail(const fidl::String& log_message) {
+void TestRunnerImpl::Fail(fidl::StringPtr log_message) {
   test_run_context_->Fail(log_message);
 }
 
-void TestRunnerImpl::Done(const DoneCallback& callback) {
+void TestRunnerImpl::Done(DoneCallback callback) {
   // Acknowledge that we got the Done() call.
   callback();
   test_run_context_->StopTrackingClient(this, false);
 }
 
-void TestRunnerImpl::Teardown(const TeardownCallback& callback) {
+void TestRunnerImpl::Teardown(TeardownCallback callback) {
   // Acknowledge that we got the Teardown() call.
   callback();
   test_run_context_->Teardown(this);
@@ -154,11 +155,9 @@ void TestRunnerImpl::PassTestPoint() {
 }
 
 TestRunContext::TestRunContext(
-    std::shared_ptr<app::ApplicationContext> app_context,
-    TestRunObserver* connection,
-    const std::string& test_id,
-    const std::string& url,
-    const std::vector<std::string>& args)
+    std::shared_ptr<component::ApplicationContext> app_context,
+    TestRunObserver* connection, const std::string& test_id,
+    const std::string& url, const std::vector<std::string>& args)
     : test_runner_connection_(connection), test_id_(test_id), success_(true) {
   // 1. Make a child environment to run the command.
   child_env_scope_ =
@@ -176,13 +175,13 @@ TestRunContext::TestRunContext(
       });
 
   // 2. Launch the test command.
-  app::ApplicationLauncherPtr launcher;
+  component::ApplicationLauncherPtr launcher;
   child_env_scope_->environment()->GetApplicationLauncher(
       launcher.NewRequest());
 
-  auto info = app::ApplicationLaunchInfo::New();
-  info->url = url;
-  info->arguments = fidl::Array<fidl::String>::From(args);
+  component::ApplicationLaunchInfo info;
+  info.url = url;
+  info.arguments = fxl::To<fidl::VectorPtr<fidl::StringPtr>>(args);
   launcher->CreateApplication(std::move(info),
                               child_app_controller_.NewRequest());
 
@@ -195,18 +194,18 @@ TestRunContext::TestRunContext(
   });
 }
 
-void TestRunContext::ReportResult(TestResultPtr result) {
-  if (result->failed) {
+void TestRunContext::ReportResult(TestResult result) {
+  if (result.failed) {
     success_ = false;
   }
 
   rapidjson::Document doc;
   rapidjson::Document::AllocatorType& allocator = doc.GetAllocator();
   doc.SetObject();
-  doc.AddMember("name", std::string(result->name), allocator);
-  doc.AddMember("elapsed", result->elapsed, allocator);
-  doc.AddMember("failed", result->failed, allocator);
-  doc.AddMember("message", std::string(result->message), allocator);
+  doc.AddMember("name", std::string(result.name), allocator);
+  doc.AddMember("elapsed", result.elapsed, allocator);
+  doc.AddMember("failed", result.failed, allocator);
+  doc.AddMember("message", std::string(result.message), allocator);
 
   rapidjson::StringBuffer buffer;
   rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
@@ -215,7 +214,7 @@ void TestRunContext::ReportResult(TestResultPtr result) {
   test_runner_connection_->SendMessage(test_id_, "result", buffer.GetString());
 }
 
-void TestRunContext::Fail(const fidl::String& log_msg) {
+void TestRunContext::Fail(const fidl::StringPtr& log_msg) {
   success_ = false;
   std::string msg("FAIL: ");
   msg += log_msg;

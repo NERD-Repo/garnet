@@ -4,12 +4,12 @@
 
 #include "test_controller.h"
 
+#include <lib/async/cpp/task.h>
 #include <zircon/status.h>
 
 #include "gtest/gtest.h"
 
 #include "garnet/drivers/bluetooth/lib/common/test_helpers.h"
-#include "lib/fxl/functional/make_copyable.h"
 
 namespace btlib {
 namespace testing {
@@ -34,40 +34,38 @@ common::DynamicByteBuffer CommandTransaction::PopNextReply() {
   return reply;
 }
 
-TestController::TestController(zx::channel cmd_channel,
-                               zx::channel acl_data_channel)
-    : FakeControllerBase(std::move(cmd_channel), std::move(acl_data_channel)) {}
+TestController::TestController()
+    : FakeControllerBase(),
+      data_dispatcher_(nullptr),
+      transaction_dispatcher_(nullptr) {}
 
-TestController::~TestController() {
-  if (IsStarted())
-    Stop();
-}
+TestController::~TestController() { Stop(); }
 
 void TestController::QueueCommandTransaction(CommandTransaction transaction) {
   cmd_transactions_.push(std::move(transaction));
 }
 
 void TestController::SetDataCallback(const DataCallback& callback,
-                                     fxl::RefPtr<fxl::TaskRunner> task_runner) {
+                                     async_t* dispatcher) {
   FXL_DCHECK(callback);
-  FXL_DCHECK(task_runner);
+  FXL_DCHECK(dispatcher);
   FXL_DCHECK(!data_callback_);
-  FXL_DCHECK(!data_task_runner_);
+  FXL_DCHECK(!data_dispatcher_);
 
   data_callback_ = callback;
-  data_task_runner_ = task_runner;
+  data_dispatcher_ = dispatcher;
 }
 
 void TestController::SetTransactionCallback(
     const fxl::Closure& callback,
-    fxl::RefPtr<fxl::TaskRunner> task_runner) {
+    async_t* dispatcher) {
   FXL_DCHECK(callback);
-  FXL_DCHECK(task_runner);
+  FXL_DCHECK(dispatcher);
   FXL_DCHECK(!transaction_callback_);
-  FXL_DCHECK(!transaction_task_runner_);
+  FXL_DCHECK(!transaction_dispatcher_);
 
   transaction_callback_ = callback;
-  transaction_task_runner_ = task_runner;
+  transaction_dispatcher_ = dispatcher;
 }
 
 void TestController::OnCommandPacketReceived(
@@ -80,8 +78,7 @@ void TestController::OnCommandPacketReceived(
 
   while (!current.replies_.empty()) {
     auto& reply = current.replies_.front();
-    zx_status_t status =
-        command_channel().write(0, reply.data(), reply.size(), nullptr, 0);
+    auto status = SendCommandChannelPacket(reply);
     ASSERT_EQ(ZX_OK, status)
         << "Failed to send reply: " << zx_status_get_string(status);
     current.replies_.pop();
@@ -89,7 +86,7 @@ void TestController::OnCommandPacketReceived(
 
   cmd_transactions_.pop();
   if (transaction_callback_)
-    transaction_task_runner_->PostTask(transaction_callback_);
+    async::PostTask(transaction_dispatcher_, transaction_callback_);
 }
 
 void TestController::OnACLDataPacketReceived(
@@ -98,9 +95,9 @@ void TestController::OnACLDataPacketReceived(
     return;
 
   common::DynamicByteBuffer packet_copy(acl_data_packet);
-  data_task_runner_->PostTask(fxl::MakeCopyable([
-    packet_copy = std::move(packet_copy), cb = data_callback_
-  ]() mutable { cb(packet_copy); }));
+  async::PostTask(data_dispatcher_,
+                  [packet_copy = std::move(packet_copy),
+                   cb = data_callback_]() mutable { cb(packet_copy); });
 }
 
 }  // namespace testing

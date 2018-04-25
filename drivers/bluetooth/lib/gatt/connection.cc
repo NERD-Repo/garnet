@@ -4,23 +4,44 @@
 
 #include "connection.h"
 
-#include "garnet/drivers/bluetooth/lib/att/bearer.h"
 #include "garnet/drivers/bluetooth/lib/att/database.h"
-#include "garnet/drivers/bluetooth/lib/gatt/server.h"
+
+#include "client.h"
+#include "server.h"
 
 namespace btlib {
 namespace gatt {
+namespace internal {
 
 Connection::Connection(const std::string& peer_id,
-                       std::unique_ptr<l2cap::Channel> att_chan,
-                       fxl::RefPtr<att::Database> local_db) {
-  auto att = att::Bearer::Create(std::move(att_chan));
-  FXL_DCHECK(att);
+                       fxl::RefPtr<att::Bearer> att_bearer,
+                       fxl::RefPtr<att::Database> local_db,
+                       RemoteServiceWatcher svc_watcher,
+                       async_t* gatt_dispatcher) {
+  FXL_DCHECK(att_bearer);
+  FXL_DCHECK(local_db);
+  FXL_DCHECK(svc_watcher);
+  FXL_DCHECK(gatt_dispatcher);
 
-  server_ = std::make_unique<gatt::Server>(peer_id, local_db, std::move(att));
+  server_ = std::make_unique<gatt::Server>(peer_id, local_db, att_bearer);
+  remote_service_manager_ = std::make_unique<RemoteServiceManager>(
+      gatt::Client::Create(att_bearer), gatt_dispatcher);
+
+  remote_service_manager_->set_service_watcher(std::move(svc_watcher));
+  remote_service_manager_->Initialize([att_bearer](att::Status status) {
+    if (status) {
+      FXL_VLOG(1) << "gatt: Primary service discovery complete";
+    } else {
+      FXL_VLOG(1) << "gatt: Client setup failed - " << status.ToString();
+
+      // Signal a link error.
+      att_bearer->ShutDown();
+    }
+  });
 }
 
 Connection::~Connection() {}
 
+}  // namespace internal
 }  // namespace gatt
 }  // namespace btlib

@@ -5,6 +5,7 @@
 #ifndef ADDRESS_MANAGER_H_
 #define ADDRESS_MANAGER_H_
 
+#include <condition_variable>
 #include <mutex>
 #include <vector>
 
@@ -37,7 +38,14 @@ public:
     // AddressSpaceObserver implementation.
     void FlushAddressMappingRange(AddressSpace*, uint64_t start, uint64_t length,
                                   bool synchronous) override;
-    void ReleaseSpaceMappings(AddressSpace* address_space) override;
+    void ReleaseSpaceMappings(const AddressSpace* address_space) override;
+
+    void UnlockAddressSpace(AddressSpace*) override;
+
+    void set_acquire_slot_timeout_seconds(uint32_t timeout)
+    {
+        acquire_slot_timeout_seconds_ = timeout;
+    }
 
 private:
     struct AddressSlot {
@@ -47,7 +55,7 @@ private:
         // set to null by AddressSpace destructor if this is attached to an
         // address space. This can't be a weak pointer because we need to
         // compare against it in the AddressSpace destructor.
-        void* address_space = nullptr;
+        const void* address_space = nullptr;
     };
 
     struct HardwareSlot {
@@ -58,13 +66,14 @@ private:
         // Wait for the MMU to finish processing any existing commands.
         void WaitForMmuIdle(RegisterIo* io) FXL_EXCLUSIVE_LOCKS_REQUIRED(lock);
         void InvalidateSlot(RegisterIo* io) FXL_EXCLUSIVE_LOCKS_REQUIRED(lock);
+        void UnlockMmu(RegisterIo* io) FXL_EXCLUSIVE_LOCKS_REQUIRED(lock);
 
         std::mutex lock;
         FXL_GUARDED_BY(lock) registers::AsRegisters registers;
     };
 
     std::shared_ptr<AddressSlotMapping>
-    GetMappingForAddressSpaceUnlocked(AddressSpace* address_space)
+    GetMappingForAddressSpaceUnlocked(const AddressSpace* address_space)
         FXL_EXCLUSIVE_LOCKS_REQUIRED(address_slot_lock_);
     std::shared_ptr<AddressSlotMapping>
     AllocateMappingForAddressSpace(std::shared_ptr<MsdArmConnection> connection);
@@ -73,8 +82,10 @@ private:
         FXL_EXCLUSIVE_LOCKS_REQUIRED(address_slot_lock_);
 
     Owner* owner_;
+    uint32_t acquire_slot_timeout_seconds_ = 10;
     std::mutex address_slot_lock_;
     FXL_GUARDED_BY(address_slot_lock_) std::vector<AddressSlot> address_slots_;
+    std::condition_variable address_slot_free_;
 
     // Before a slot is modified, the corresponding lock should be taken.
     // It should only be taken while address_slot_lock_ is

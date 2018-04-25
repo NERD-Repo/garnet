@@ -5,11 +5,10 @@
 package main
 
 import (
-	"application/lib/app/context"
-	"fidl/bindings"
+	"app/context"
 	"flag"
 	"fmt"
-	"garnet/amber/api/amber"
+	"fuchsia/go/amber"
 	"os"
 	"strings"
 )
@@ -48,10 +47,10 @@ var (
 	rateLimit  = fs.Int("l", 0, "Minimum time between requests to a source, in seconds")
 	srcKey     = fs.String("k", "", "Root key for the source, this can be either the key itself or a http[s]:// or file:// URL to the key")
 	srcKeyHash = fs.String("h", "", "SHA256 of the key. This is required whether the key is provided directly or by URL")
-	blob_id    = fs.String("i", "", "Content ID of the blob")
+	blobID     = fs.String("i", "", "Content ID of the blob")
 )
 
-func doTest(pxy *amber.Control_Proxy) {
+func doTest(pxy *amber.ControlInterface) {
 	v := int32(42)
 	resp, err := pxy.DoTest(v)
 	if err != nil {
@@ -61,9 +60,11 @@ func doTest(pxy *amber.Control_Proxy) {
 	}
 }
 
-func connect(ctx *context.Context) (*amber.Control_Proxy, amber.Control_Request) {
-	var pxy *amber.Control_Proxy
-	req, pxy := pxy.NewRequest(bindings.GetAsyncWaiter())
+func connect(ctx *context.Context) (*amber.ControlInterface, amber.ControlInterfaceRequest) {
+	req, pxy, err := amber.NewControlInterfaceRequest()
+	if err != nil {
+		panic(err)
+	}
 	ctx.ConnectToEnvService(req)
 	return pxy, req
 }
@@ -85,14 +86,21 @@ func main() {
 		if strings.Index(*pkgName, "/") != 0 {
 			*pkgName = fmt.Sprintf("/%s", *pkgName)
 		}
-		blobId, err := proxy.GetUpdate(*pkgName, pkgVersion)
+		if *pkgVersion == "" {
+			*pkgVersion = "0"
+		}
+		// combine name and 'version' here, because the FIDL interface is talking
+		// about an amber version as opposed to human version. the human version is
+		// part of the package name
+		*pkgName = fmt.Sprintf("%s/%s", *pkgName, *pkgVersion)
+		blobID, err := proxy.GetUpdate(*pkgName, nil)
 		if err == nil {
-			fmt.Printf("Wrote update to blob %s\n", *blobId)
+			fmt.Printf("Wrote update to blob %s\n", *blobID)
 		} else {
 			fmt.Printf("Error getting update %s\n", err)
 		}
 	case "get_blob":
-		if err := proxy.GetBlob(*blob_id); err != nil {
+		if err := proxy.GetBlob(*blobID); err != nil {
 			fmt.Printf("Error getting content blob %s\n", err)
 		}
 	case "add_src":

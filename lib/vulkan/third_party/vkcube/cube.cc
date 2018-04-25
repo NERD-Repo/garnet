@@ -49,7 +49,7 @@
 #include "platform_trace.h"
 
 #ifdef MAGMA_ENABLE_TRACING
-#include <async/cpp/loop.h>
+#include <lib/async-loop/cpp/loop.h>
 #include <trace-provider/provider.h>
 #endif
 
@@ -551,11 +551,8 @@ void demo_draw(struct demo* demo)
     TRACE_ASYNC_BEGIN("cube", "acquire next image", nonce);
 
     while (true) {
-        // TODO(MA-265) dont do this
-        VkSemaphore acquire_semaphore = VK_NULL_HANDLE;
-#if !defined(CUBE_USE_IMAGE_PIPE)
-        acquire_semaphore = demo->image_acquired_semaphores[demo->frame_index];
-#endif
+        VkSemaphore acquire_semaphore = demo->image_acquired_semaphores[demo->frame_index];
+
         // Get the index of the next available swapchain image:
         err = demo->fpAcquireNextImageKHR(demo->device, demo->swapchain, 5000 * 1000 * 1000,
                                           acquire_semaphore, VK_NULL_HANDLE, &demo->current_buffer);
@@ -593,12 +590,7 @@ void demo_draw(struct demo* demo)
     submit_info.pNext = NULL;
     submit_info.pWaitDstStageMask = &pipe_stage_flags;
     pipe_stage_flags = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-// TODO(MA-265) dont do this
-#if defined(CUBE_USE_IMAGE_PIPE)
-    submit_info.waitSemaphoreCount = 0;
-#else
     submit_info.waitSemaphoreCount = 1;
-#endif
     submit_info.pWaitSemaphores = &demo->image_acquired_semaphores[demo->frame_index];
     submit_info.commandBufferCount = 1;
     submit_info.pCommandBuffers = &demo->buffers[demo->current_buffer].cmd;
@@ -2765,14 +2757,14 @@ void demo_run_image_pipe(struct demo* demo, int argc, char** argv)
     trace::TraceProvider trace_provider(demo->fuchsia_state->loop.async());
 #endif
 
-    auto application_context_ = app::ApplicationContext::CreateFromStartupInfo();
+    auto application_context_ =
+        component::ApplicationContext::CreateFromStartupInfo();
 
-#if defined(CUBE_USE_MOZART)
     demo->fuchsia_state->view_provider_service = std::make_unique<mozart::ViewProviderService>(
         application_context_.get(), [demo](mozart::ViewContext view_context) {
             auto resize_callback = [demo](
                                        float width, float height,
-                                       fidl::InterfaceHandle<scenic::ImagePipe> interface_handle) {
+                                       fidl::InterfaceHandle<images::ImagePipe> interface_handle) {
                 demo->width = width;
                 demo->height = height;
                 demo->fuchsia_state->image_pipe_handle = interface_handle.TakeChannel().release();
@@ -2794,28 +2786,6 @@ void demo_run_image_pipe(struct demo* demo, int argc, char** argv)
         }
         demo->fuchsia_state->loop.RunUntilIdle();
     }
-#else
-    demo->display =
-        application_context_->ConnectToEnvironmentService<display_pipe::DisplayProvider>();
-
-    demo->display->GetInfo([demo, &loop](display_pipe::DisplayInfoPtr info) {
-
-        demo->display->BindPipe(demo->pipe.NewRequest());
-
-        demo->width = info->width;
-        demo->height = info->height;
-        demo->fuchsia_state->image_pipe_handle =
-            demo->fuchsia_state->pipe.Unbind().TakeChannel().release();
-
-        demo_init_vk_swapchain(demo);
-        demo_prepare(demo);
-        while (!demo->quit) {
-            demo_update_magma_one_frame(demo);
-        }
-        demo->fuchsia_state->loop.QuitNow();
-        demo->fuchsia_state->loop.Run();
-    });
-#endif
 }
 
 #endif // defined(CUBE_USE_IMAGE_PIPE)

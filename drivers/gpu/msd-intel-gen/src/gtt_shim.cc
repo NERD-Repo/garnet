@@ -7,7 +7,7 @@
 
 class GttShim : public Gtt {
 public:
-    GttShim(Owner* owner) : owner_(owner) {}
+    GttShim(Owner* owner) : Gtt(owner), owner_(owner) {}
 
     uint64_t Size() const override { return pci_device()->GetGtt()->Size(); }
 
@@ -27,10 +27,19 @@ public:
 
     bool Clear(uint64_t addr) override { return pci_device()->GetGtt()->Clear(addr); }
 
-    bool Insert(uint64_t addr, uint32_t buffer_handle, uint64_t offset, uint64_t length,
-                CachingType caching_type) override
+    bool Insert(uint64_t addr, magma::PlatformBusMapper::BusMapping* bus_mapping,
+                uint64_t page_offset, uint64_t page_count, CachingType caching_type) override
     {
-        return pci_device()->GetGtt()->Insert(addr, buffer_handle, offset, length, caching_type);
+        DASSERT(false);
+        return false;
+    }
+
+    bool GlobalGttInsert(uint64_t addr, magma::PlatformBuffer* buffer,
+                         magma::PlatformBusMapper::BusMapping* bus_mapping, uint64_t page_offset,
+                         uint64_t page_count, CachingType caching_type) override
+    {
+        return pci_device()->GetGtt()->GlobalGttInsert(addr, buffer, bus_mapping, page_offset,
+                                                       page_count, caching_type);
     }
 
 private:

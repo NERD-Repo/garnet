@@ -8,14 +8,14 @@
 
 #include "garnet/bin/appmgr/job_holder.h"
 
-namespace app {
+namespace component {
 
 ApplicationNamespace::ApplicationNamespace(
     fxl::RefPtr<ApplicationNamespace> parent,
     JobHolder* job_holder,
     ServiceListPtr service_list)
     : parent_(parent), job_holder_(job_holder) {
-  app::ServiceProviderPtr services_backend;
+  component::ServiceProviderPtr services_backend;
   if (parent_) {
     parent_->services().AddBinding(services_backend.NewRequest());
   }
@@ -30,10 +30,10 @@ ApplicationNamespace::ApplicationNamespace(
         launcher_bindings_.AddBinding(this, std::move(request));
       });
 
-  if (!service_list.is_null()) {
+  if (service_list) {
     auto& names = service_list->names;
     additional_services_ = service_list->provider.Bind();
-    for (auto& name : names) {
+    for (auto& name : *names) {
       services_.AddServiceForName(
           [this, name](zx::channel channel) {
             additional_services_->ConnectToService(name, std::move(channel));
@@ -51,12 +51,13 @@ void ApplicationNamespace::AddBinding(
 }
 
 void ApplicationNamespace::CreateNestedEnvironment(
-    fidl::InterfaceHandle<ApplicationEnvironmentHost> host,
+    zx::channel host_directory,
     fidl::InterfaceRequest<ApplicationEnvironment> environment,
     fidl::InterfaceRequest<ApplicationEnvironmentController> controller,
-    const fidl::String& label) {
-  job_holder_->CreateNestedJob(std::move(host), std::move(environment),
-                               std::move(controller), label);
+    fidl::StringPtr label) {
+  job_holder_->CreateNestedJob(std::move(host_directory),
+                               std::move(environment), std::move(controller),
+                               label);
 }
 
 void ApplicationNamespace::GetApplicationLauncher(
@@ -69,10 +70,14 @@ void ApplicationNamespace::GetServices(
   services_.AddBinding(std::move(services));
 }
 
+void ApplicationNamespace::GetDirectory(zx::channel directory_request) {
+  services_.ServeDirectory(std::move(directory_request));
+}
+
 void ApplicationNamespace::CreateApplication(
-    ApplicationLaunchInfoPtr launch_info,
+    ApplicationLaunchInfo launch_info,
     fidl::InterfaceRequest<ApplicationController> controller) {
   job_holder_->CreateApplication(std::move(launch_info), std::move(controller));
 }
 
-}  // namespace app
+}  // namespace component

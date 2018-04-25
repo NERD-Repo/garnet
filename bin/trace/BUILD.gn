@@ -22,12 +22,8 @@ source_set("trace_app") {
     "app.h",
     "command.cc",
     "command.h",
-    "commands/dump_provider.cc",
-    "commands/dump_provider.h",
     "commands/list_categories.cc",
     "commands/list_categories.h",
-    "commands/list_providers.cc",
-    "commands/list_providers.h",
     "commands/record.cc",
     "commands/record.h",
     "results_export.cc",
@@ -46,8 +42,8 @@ source_set("trace_app") {
     "//garnet/public/lib/app/cpp",
     "//garnet/public/lib/fsl",
     "//garnet/public/lib/fxl",
-    "//garnet/public/lib/network/fidl",
     "//garnet/public/lib/tracing/fidl",
+    "//zircon/public/lib/launchpad",
     "//zircon/public/lib/trace-reader",
   ]
 
@@ -66,25 +62,27 @@ source_set("unittests") {
   deps = [
     ":trace_app",
     "//garnet/public/lib/fxl",
-    "//third_party/gtest",
+    "//third_party/googletest:gtest",
   ]
 }
 
 package("trace") {
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
     ":bin",
   ]
 
-  binaries = [ {
-        name = "trace"
-      } ]
+  binaries = [
+    {
+      name = "trace"
+    },
+  ]
 
   # If your build includes the target trace tool, your $host_tools_dir
   # contains the utilities to work with traces copied from the target.
   data_deps = [
-    "//garnet/bin/traceutils",
+    "//garnet/bin/traceutil",
   ]
 }
 
@@ -102,16 +100,15 @@ executable("trace_tests_bin") {
 
 package("trace_tests") {
   testonly = true
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
     ":trace_tests_bin",
   ]
 
-  tests = [ {
-        name = "trace_tests"
-
-        # Disabled because several tests are crashing on release builds.
-        disabled = true
-      } ]
+  tests = [
+    {
+      name = "trace_tests"
+    },
+  ]
 }

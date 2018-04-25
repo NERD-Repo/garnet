@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "media_tests": "//garnet/bin/media:tests"
+    }
+}

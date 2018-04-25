@@ -16,16 +16,14 @@ source_set("lib") {
     "application_namespace.h",
     "application_runner_holder.cc",
     "application_runner_holder.h",
-    "config.cc",
-    "config.h",
+    "dynamic_library_loader.cc",
+    "dynamic_library_loader.h",
     "job_holder.cc",
     "job_holder.h",
     "namespace_builder.cc",
     "namespace_builder.h",
     "root_application_loader.cc",
     "root_application_loader.h",
-    "root_environment_host.cc",
-    "root_environment_host.h",
     "runtime_metadata.cc",
     "runtime_metadata.h",
     "sandbox_metadata.cc",
@@ -38,12 +36,12 @@ source_set("lib") {
     "//garnet/lib/farfs",
     "//garnet/public/lib/app/cpp",
     "//garnet/public/lib/app/fidl",
-    "//garnet/public/lib/fsl",
     "//garnet/public/lib/fxl",
     "//garnet/public/lib/svc/cpp",
     "//third_party/rapidjson",
-    "//zircon/public/lib/launchpad",
     "//zircon/public/lib/fs",
+    "//zircon/public/lib/launchpad",
+    "//zircon/public/lib/loader-service",
     "//zircon/public/lib/zx",
   ]
 
@@ -80,24 +78,28 @@ executable("tests") {
 }
 
 package("appmgr") {
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
     ":bin",
   ]
-  binaries = [ {
-        name = "appmgr"
-      } ]
+  binaries = [
+    {
+      name = "appmgr"
+    },
+  ]
 }
 
 package("appmgr_tests") {
   testonly = true
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
     ":tests",
   ]
-  tests = [ {
-        name = "appmgr_unittests"
-      } ]
+  tests = [
+    {
+      name = "appmgr_unittests"
+    },
+  ]
 }

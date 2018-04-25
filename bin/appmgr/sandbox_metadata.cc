@@ -4,9 +4,11 @@
 
 #include "garnet/bin/appmgr/sandbox_metadata.h"
 
+#include <algorithm>
+
 #include "third_party/rapidjson/rapidjson/document.h"
 
-namespace app {
+namespace component {
 namespace {
 
 template <typename Value>
@@ -68,4 +70,9 @@ bool SandboxMetadata::Parse(const std::string& data) {
   return true;
 }
 
-}  // namespace app
+bool SandboxMetadata::HasFeature(const std::string& feature) {
+  return std::find(features_.begin(), features_.end(), feature) !=
+         features_.end();
+}
+
+}  // namespace component

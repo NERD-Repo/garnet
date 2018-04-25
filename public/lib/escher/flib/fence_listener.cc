@@ -4,7 +4,10 @@
 
 #include "lib/escher/flib/fence_listener.h"
 
-#include <zx/time.h>
+#include <lib/async/cpp/task.h>
+#include <lib/async/default.h>
+#include <lib/zx/time.h>
+
 #include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/functional/closure.h"
 #include "lib/fxl/logging.h"
@@ -13,9 +16,8 @@ namespace escher {
 
 FenceListener::FenceListener(zx::event fence)
     : fence_(std::move(fence)),
-      waiter_(fsl::MessageLoop::GetCurrent()->async(),  // dispatcher
-              fence_.get(),                             // handle
-              kFenceSignalled)                          // trigger
+      waiter_(fence_.get(),         // handle
+              kFenceSignalled)      // trigger
 {
   FXL_DCHECK(fence_);
 }
@@ -27,7 +29,7 @@ bool FenceListener::WaitReady(fxl::TimeDelta timeout) {
   else if (timeout == fxl::TimeDelta::Max())
     zx_deadline = zx::time::infinite();
   else
-    zx_deadline = zx::deadline_after(zx::duration(timeout.ToNanoseconds()));
+    zx_deadline = zx::deadline_after(zx::nsec(timeout.ToNanoseconds()));
 
   zx_signals_t pending = 0u;
   while (!ready_) {
@@ -49,19 +51,18 @@ void FenceListener::WaitReadyAsync(fxl::Closure ready_callback) {
   FXL_DCHECK(!ready_callback_);
 
   if (ready_) {
-    fsl::MessageLoop::GetCurrent()->task_runner()->PostTask(
-        std::move(ready_callback));
+    async::PostTask(async_get_default(), std::move(ready_callback));
     return;
   }
 
   waiter_.set_handler(std::bind(&FenceListener::OnFenceSignalled, this,
-                                std::placeholders::_2, std::placeholders::_3));
-  zx_status_t status = waiter_.Begin();
+                                std::placeholders::_3, std::placeholders::_4));
+  zx_status_t status = waiter_.Begin(async_get_default());
   FXL_CHECK(status == ZX_OK);
   ready_callback_ = std::move(ready_callback);
 }
 
-async_wait_result_t FenceListener::OnFenceSignalled(
+void FenceListener::OnFenceSignalled(
     zx_status_t status,
     const zx_packet_signal* signal) {
   if (status == ZX_OK) {
@@ -74,7 +75,6 @@ async_wait_result_t FenceListener::OnFenceSignalled(
     waiter_.Cancel();
 
     callback();
-    return ASYNC_WAIT_FINISHED;
   } else {
     FXL_LOG(ERROR) << "FenceListener::OnFenceSignalled received an "
                       "error status code: "
@@ -82,8 +82,7 @@ async_wait_result_t FenceListener::OnFenceSignalled(
 
     // TODO(MZ-173): Close the session if there is an error, or if the fence
     // is closed.
-    return ASYNC_WAIT_FINISHED;
   }
 }
 
-}  // namespace scene_manager
+}  // namespace escher

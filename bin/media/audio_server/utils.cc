@@ -6,8 +6,7 @@
 
 #include <audio-proto-utils/format-utils.h>
 
-#include "garnet/bin/media/audio/driver_utils.h"
-#include "garnet/bin/media/fidl/fidl_type_conversions.h"
+#include "garnet/bin/media/audio_server/driver_utils.h"
 #include "lib/fxl/logging.h"
 
 namespace media {
@@ -27,8 +26,8 @@ zx_status_t SelectBestFormat(
   uint32_t pref_channels = *channels_inout;
   audio_sample_format_t pref_sample_format;
 
-  if (!driver_utils::SampleFormatToDriverSampleFormat(
-          Convert(*sample_format_inout), &pref_sample_format)) {
+  if (!driver_utils::AudioSampleFormatToDriverSampleFormat(
+          *sample_format_inout, &pref_sample_format)) {
     FXL_LOG(WARNING) << "Failed to convert FIDL sample format ("
                      << static_cast<uint32_t>(*sample_format_inout)
                      << ") to driver sample format.";
@@ -39,44 +38,51 @@ zx_status_t SelectBestFormat(
   uint32_t best_channels;
   audio_sample_format_t best_sample_format;
   uint32_t best_score = 0;
+  uint32_t best_frame_rate_delta = std::numeric_limits<uint32_t>::max();
 
   constexpr uint32_t U8_FMT =
       AUDIO_SAMPLE_FORMAT_8BIT | AUDIO_SAMPLE_FORMAT_FLAG_UNSIGNED;
   constexpr uint32_t S16_FMT = AUDIO_SAMPLE_FORMAT_16BIT;
+  constexpr uint32_t F32_FMT = AUDIO_SAMPLE_FORMAT_32BIT_FLOAT;
 
-  // Users should not be asking for anything but unsigned 8 bit, or signed 16
-  // bit right now.  If they ask for anything else, change their preference to
+  // Users should only be asking for unsigned 8 bit, signed 16 bit or float32
+  // right now.  If they ask for anything else, change their preference to
   // indicate signed 16 bit for now.
   //
   // TODO(johngro) : clean this up as part of fixing MTWN-54
-  if ((pref_frame_rate & AUDIO_SAMPLE_FORMAT_FLAG_INVERT_ENDIAN) ||
-      (((pref_frame_rate & U8_FMT) != U8_FMT) &&
-       ((pref_frame_rate & S16_FMT) != S16_FMT))) {
-    pref_frame_rate = AUDIO_SAMPLE_FORMAT_16BIT;
+  if ((pref_sample_format & AUDIO_SAMPLE_FORMAT_FLAG_INVERT_ENDIAN) ||
+      (((pref_sample_format & U8_FMT) != U8_FMT) &&
+       ((pref_sample_format & S16_FMT) != S16_FMT) &&
+       ((pref_sample_format & F32_FMT) != F32_FMT))) {
+    pref_sample_format = AUDIO_SAMPLE_FORMAT_16BIT;
   }
 
   for (const auto& range : fmts) {
     // Start by scoring our sample format.  Right now, we only support 8-bit
-    // unsigned and 16-bit signed LPCM in the mixer.  If this sample format
-    // range does not support either of these, just skip it for now.  Otherwise,
-    // 3 points if you match the requested format, 2 for signed 16 bit, or 1 for
-    // unsigned 8.
+    // unsigned, 32-bit float, and 16-bit signed LPCM in the mixer.  If this
+    // sample format range does not support any of these, just skip it for now.
+    // Otherwise, 4 points if you match the requested format, 3 for signed 16
+    // bit, 2 for float32, or 1 for unsigned 8.
     audio_sample_format_t this_sample_format;
     int sample_format_score;
 
     bool supports_u8 = (range.sample_formats & U8_FMT) == U8_FMT;
     bool supports_s16 = (range.sample_formats & S16_FMT) == S16_FMT;
+    bool supports_f32 = (range.sample_formats & F32_FMT) == F32_FMT;
     if ((range.sample_formats & AUDIO_SAMPLE_FORMAT_FLAG_INVERT_ENDIAN) ||
-        (!supports_u8 && !supports_s16)) {
-      continue;  // Skip
+        (!supports_u8 && !supports_s16 && !supports_f32)) {
+      continue;  // Skip -- this isn't a sample container we understand.
     }
 
     if ((pref_sample_format & range.sample_formats) == pref_sample_format) {
       // Direct match.
       this_sample_format = pref_sample_format;
-      sample_format_score = 3;
+      sample_format_score = 4;
     } else if (supports_s16) {
       this_sample_format = AUDIO_SAMPLE_FORMAT_16BIT;
+      sample_format_score = 3;
+    } else if (supports_f32) {
+      this_sample_format = AUDIO_SAMPLE_FORMAT_32BIT_FLOAT;
       sample_format_score = 2;
     } else {
       FXL_DCHECK(supports_u8);
@@ -116,8 +122,9 @@ zx_status_t SelectBestFormat(
     }
 
     uint32_t this_frame_rate = 0;
+    uint32_t frame_rate_delta = std::numeric_limits<uint32_t>::max();
     int frame_rate_score = 0;
-    if (range.flags | ASF_RANGE_FLAG_FPS_CONTINUOUS) {
+    if (range.flags & ASF_RANGE_FLAG_FPS_CONTINUOUS) {
       // This is a continuous sample rate range.  If we are within the range,
       // thats a match.  Otherwise move up/down as needed to match the min/max
       // of the range as appropriate.
@@ -125,13 +132,16 @@ zx_status_t SelectBestFormat(
           (pref_frame_rate <= range.max_frames_per_second)) {
         this_frame_rate = pref_frame_rate;
         frame_rate_score = 3;
+        frame_rate_delta = 0;
       } else if (pref_frame_rate < range.min_frames_per_second) {
         this_frame_rate = range.min_frames_per_second;
         frame_rate_score = 2;
+        frame_rate_delta = range.min_frames_per_second - pref_frame_rate;
       } else {
         FXL_DCHECK(pref_frame_rate > range.max_frames_per_second);
         this_frame_rate = range.max_frames_per_second;
         frame_rate_score = 1;
+        frame_rate_delta = pref_frame_rate - range.max_frames_per_second;
       }
     } else {
       // This is a discrete sample rate range.  Use the frame rate enumerator
@@ -141,6 +151,7 @@ zx_status_t SelectBestFormat(
           // We matched our preference.  No need to keep searching.
           this_frame_rate = rate;
           frame_rate_score = 3;
+          frame_rate_delta = 0;
           break;
         }
 
@@ -153,6 +164,7 @@ zx_status_t SelectBestFormat(
               ((frame_rate_score == 2) && (rate < this_frame_rate))) {
             this_frame_rate = rate;
             frame_rate_score = 2;
+            frame_rate_delta = rate - pref_frame_rate;
           }
         } else {
           FXL_DCHECK(pref_frame_rate > rate);
@@ -165,6 +177,7 @@ zx_status_t SelectBestFormat(
               ((frame_rate_score == 1) && (rate > this_frame_rate))) {
             this_frame_rate = rate;
             frame_rate_score = 1;
+            frame_rate_delta = pref_frame_rate - rate;
           }
         }
       }
@@ -194,8 +207,13 @@ zx_status_t SelectBestFormat(
     FXL_DCHECK(::audio::utils::FormatIsCompatible(
         this_frame_rate, this_channels, this_sample_format, range));
 
-    if (score > best_score) {
+    // If this score is better than the current best score, or this score ties
+    // the current best score but the frame rate distance is less, then this is
+    // the new best format.
+    if ((score > best_score) ||
+        ((score == best_score) && (frame_rate_delta < best_frame_rate_delta))) {
       best_frame_rate = this_frame_rate;
+      best_frame_rate_delta = frame_rate_delta;
       best_channels = this_channels;
       best_sample_format = this_sample_format;
       best_score = score;
@@ -208,10 +226,9 @@ zx_status_t SelectBestFormat(
     return ZX_ERR_NOT_SUPPORTED;
   }
 
-  AudioStreamType::SampleFormat tmp;
   __UNUSED bool convert_res =
-      driver_utils::DriverSampleFormatToSampleFormat(best_sample_format, &tmp);
-  *sample_format_inout = Convert(tmp);
+      driver_utils::DriverSampleFormatToAudioSampleFormat(best_sample_format,
+                                                          sample_format_inout);
   FXL_DCHECK(convert_res);
 
   *channels_inout = best_channels;

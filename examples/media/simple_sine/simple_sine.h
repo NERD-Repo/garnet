@@ -1,42 +1,49 @@
-// Copyright 2017 The Fuchsia Authors. All rights reserved.
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
 #pragma once
 
+#include <fbl/vmo_mapper.h>
+#include <fuchsia/cpp/media.h>
 #include "lib/app/cpp/application_context.h"
-#include "lib/media/fidl/media_renderer.fidl.h"
-#include "lib/media/fidl/media_transport.fidl.h"
+#include "lib/fxl/functional/closure.h"
 
 namespace examples {
 
 class MediaApp {
  public:
-  MediaApp();
-  ~MediaApp();
+  MediaApp(fxl::Closure quit_callback);
 
-  void Run(app::ApplicationContext* app_context);
+  void set_float(bool enable_float) { use_float_ = enable_float; }
+
+  void Run(component::ApplicationContext* app_context);
 
  private:
-  void AcquireRenderer(app::ApplicationContext* app_context);
+  void AcquireRenderer(component::ApplicationContext* app_context);
   void SetMediaType();
 
   zx_status_t CreateMemoryMapping();
   void WriteAudioIntoBuffer();
 
-  media::MediaPacketPtr CreateMediaPacket(size_t packet_num);
-  void SendMediaPacket(media::MediaPacketPtr packet);
+  media::AudioPacket CreateAudioPacket(size_t packet_num);
+  void SendPacket(media::AudioPacket packet);
+  void OnSendPacketComplete();
 
-  void StartPlayback();
   void Shutdown();
 
-  media::MediaRendererPtr media_renderer_;
-  media::MediaPacketConsumerPtr packet_consumer_;
+  fxl::Closure quit_callback_;
 
-  zx::vmo vmo_;
-  uintptr_t mapped_address_ = 0u;
+  media::AudioRenderer2Ptr audio_renderer_;
+
+  fbl::VmoMapper payload_buffer_;
+  size_t sample_size_;
+  size_t payload_size_;
+  size_t total_mapping_size_;
   size_t num_packets_sent_ = 0u;
   size_t num_packets_completed_ = 0u;
+
+  bool use_float_ = false;
 };
 
 }  // namespace examples

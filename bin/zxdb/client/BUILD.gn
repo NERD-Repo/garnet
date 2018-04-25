@@ -1,0 +1,67 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+static_library("client") {
+  public = [
+    "breakpoint.h",
+    "breakpoint_observer.h",
+    "client_object.h",
+    "err.h",
+    "frame.h",
+    "memory_dump.h",
+    "process.h",
+    "process_observer.h",
+    "session.h",
+    "system.h",
+    "system_observer.h",
+    "target.h",
+    "target_observer.h",
+    "thread.h",
+    "thread_observer.h",
+  ]
+
+  sources = [
+    "breakpoint.cc",
+    "breakpoint_impl.cc",
+    "breakpoint_impl.h",
+    "client_object.cc",
+    "err.cc",
+    "frame.cc",
+    "frame_impl.cc",
+    "frame_impl.h",
+    "memory_dump.cc",
+    "process.cc",
+    "process_impl.cc",
+    "process_impl.h",
+    "session.cc",
+    "system.cc",
+    "system_impl.cc",
+    "system_impl.h",
+    "target.cc",
+    "target_impl.cc",
+    "target_impl.h",
+    "thread.cc",
+    "thread_impl.cc",
+    "thread_impl.h",
+  ]
+
+  public_deps = [
+    "//garnet/lib/debug_ipc:client",
+    "//garnet/lib/debug_ipc/helper",
+    "//garnet/public/lib/fxl",
+  ]
+}
+
+source_set("tests") {
+  testonly = true
+  sources = [
+    "memory_dump_unittest.cc",
+  ]
+
+  deps = [
+    ":client",
+    "//third_party/googletest:gtest",
+  ]
+}
+

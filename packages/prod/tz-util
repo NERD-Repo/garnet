@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "tz-util": "//garnet/bin/tz-util"
+    }
+}

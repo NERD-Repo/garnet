@@ -7,38 +7,42 @@
 #include <memory>
 #include <unordered_map>
 
-#include <zx/channel.h>
+#include <lib/zx/channel.h>
 
-#include "lib/fidl/cpp/bindings/binding.h"
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/weak_ptr.h"
 
 #include "garnet/drivers/bluetooth/host/fidl/server_base.h"
 #include "garnet/drivers/bluetooth/lib/gap/adapter.h"
-#include "garnet/lib/bluetooth/fidl/host.fidl.h"
+#include <fuchsia/cpp/bluetooth_host.h>
 
 namespace bthost {
 
+class GattHost;
+
 // Implements the Host FIDL interface. Owns all FIDL connections that have been
 // opened through it.
-class HostServer : public ServerBase<::bluetooth::host::Host> {
+class HostServer : public AdapterServerBase<::bluetooth_host::Host> {
  public:
-  HostServer(zx::channel channel, fxl::WeakPtr<btlib::gap::Adapter> adapter);
+  HostServer(zx::channel channel,
+             fxl::WeakPtr<btlib::gap::Adapter> adapter,
+             fbl::RefPtr<GattHost> gatt_host);
   ~HostServer() override = default;
 
  private:
-  // ::bluetooth::host::Host overrides:
-  void GetInfo(const GetInfoCallback& callback) override;
-  void RequestControlAdapter(
-      ::fidl::InterfaceRequest<bluetooth::control::Adapter> adapter) override;
+  // ::bluetooth_host::Host overrides:
+  void GetInfo(GetInfoCallback callback) override;
+  void RequestAdapter(
+      ::fidl::InterfaceRequest<bluetooth_host::Adapter> adapter) override;
   void RequestLowEnergyCentral(
-      ::fidl::InterfaceRequest<bluetooth::low_energy::Central> central)
+      ::fidl::InterfaceRequest<bluetooth_low_energy::Central> central)
       override;
   void RequestLowEnergyPeripheral(
-      ::fidl::InterfaceRequest<bluetooth::low_energy::Peripheral> peripheral)
+      ::fidl::InterfaceRequest<bluetooth_low_energy::Peripheral> peripheral)
       override;
   void RequestGattServer(
-      ::fidl::InterfaceRequest<bluetooth::gatt::Server> server) override;
+      ::fidl::InterfaceRequest<bluetooth_gatt::Server> server) override;
   void Close() override;
 
   // Called when |server| receives a channel connection error.
@@ -46,14 +50,17 @@ class HostServer : public ServerBase<::bluetooth::host::Host> {
 
   // Helper for binding a fidl::InterfaceRequest to a FIDL server of type
   // ServerType.
-  template <typename ServerType, typename InterfaceType>
-  void BindServer(fidl::InterfaceRequest<InterfaceType> request) {
+  template <typename ServerType, typename... Args>
+  void BindServer(Args... args) {
     auto server = std::make_unique<ServerType>(adapter()->AsWeakPtr(),
-                                               std::move(request));
+                                               std::move(args)...);
     server->set_error_handler(
         std::bind(&HostServer::OnConnectionError, this, server.get()));
     servers_[server.get()] = std::move(server);
   }
+
+  // We hold a reference to GattHost for dispatching GATT FIDL requests.
+  fbl::RefPtr<GattHost> gatt_host_;
 
   // All active FIDL interface servers.
   // NOTE: Each key is a raw pointer that is owned by the corresponding value.

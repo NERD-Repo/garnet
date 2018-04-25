@@ -14,8 +14,9 @@
 #ifndef GARNET_BIN_AUTH_TOKEN_MANAGER_TEST_DEV_AUTH_PROVIDER_IMPL_H_
 #define GARNET_BIN_AUTH_TOKEN_MANAGER_TEST_DEV_AUTH_PROVIDER_IMPL_H_
 
-#include "lib/auth/fidl/auth_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/binding.h"
+#include <fuchsia/cpp/auth.h>
+
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/tasks/task_runner.h"
 
@@ -32,28 +33,28 @@ class DevAuthProviderImpl : public auth::AuthProvider {
   // |AuthProvider|
   void GetPersistentCredential(
       fidl::InterfaceHandle<auth::AuthenticationUIContext> auth_ui_context,
-      const GetPersistentCredentialCallback& callback) override;
+      GetPersistentCredentialCallback callback) override;
 
   // |AuthProvider|
-  void GetAppAccessToken(const fidl::String& credential,
-                         const fidl::String& app_client_id,
-                         const fidl::Array<fidl::String> app_scopes,
-                         const GetAppAccessTokenCallback& callback) override;
+  void GetAppAccessToken(fidl::StringPtr credential,
+                         fidl::StringPtr app_client_id,
+                         const fidl::VectorPtr<fidl::StringPtr> app_scopes,
+                         GetAppAccessTokenCallback callback) override;
 
   // |AuthProvider|
-  void GetAppIdToken(const fidl::String& credential,
-                     const fidl::String& audience,
-                     const GetAppIdTokenCallback& callback) override;
+  void GetAppIdToken(fidl::StringPtr credential,
+                     fidl::StringPtr audience,
+                     GetAppIdTokenCallback callback) override;
 
   // |AuthProvider|
-  void GetAppFirebaseToken(
-      const fidl::String& id_token, const fidl::String& firebase_api_key,
-      const GetAppFirebaseTokenCallback& callback) override;
+  void GetAppFirebaseToken(fidl::StringPtr id_token,
+                           fidl::StringPtr firebase_api_key,
+                           GetAppFirebaseTokenCallback callback) override;
 
   // |AuthProvider|
   void RevokeAppOrPersistentCredential(
-      const fidl::String& credential,
-      const RevokeAppOrPersistentCredentialCallback& callback) override;
+      fidl::StringPtr credential,
+      RevokeAppOrPersistentCredentialCallback callback) override;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(DevAuthProviderImpl);
 };

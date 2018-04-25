@@ -8,7 +8,7 @@
 
 namespace machina {
 
-void GpuScanout::FlushRegion(const virtio_gpu_rect_t& rect) {
+void GpuScanout::DrawScanoutResource(const virtio_gpu_rect_t& rect) {
   GpuResource* res = resource_;
   if (res == nullptr) {
     return;
@@ -26,25 +26,97 @@ void GpuScanout::FlushRegion(const virtio_gpu_rect_t& rect) {
   dest_rect.width = rect.width;
   dest_rect.height = rect.height;
 
-  surface_.DrawBitmap(res->bitmap(), source_rect, dest_rect);
-  return;
+  Draw(*res, source_rect, dest_rect);
+  if (cursor_resource_ && cursor_position_.Overlaps(dest_rect)) {
+    DrawCursor();
+  }
+  InvalidateRegion(dest_rect);
 }
 
-zx_status_t GpuScanout::SetResource(GpuResource* res,
-                                    const virtio_gpu_set_scanout_t* request) {
+void GpuScanout::Draw(const GpuResource& res,
+                      const GpuRect& source_rect,
+                      const GpuRect& dest_rect) {
+  surface_.DrawBitmap(res.bitmap(), source_rect, dest_rect);
+}
+
+void GpuScanout::SetResource(GpuResource* res,
+                             const virtio_gpu_set_scanout_t* request) {
   GpuResource* old_res = resource_;
   resource_ = res;
   if (resource_ == nullptr) {
-    if (old_res != nullptr)
+    if (old_res != nullptr) {
       old_res->DetachFromScanout();
-    return ZX_OK;
+    }
+    return;
   }
+
   resource_->AttachToScanout(this);
   rect_.x = request->r.x;
   rect_.y = request->r.y;
   rect_.width = request->r.width;
   rect_.height = request->r.height;
-  return ZX_OK;
+}
+
+void GpuScanout::WhenReady(OnReadyCallback callback) {
+  ready_callback_ = fbl::move(callback);
+  InvokeReadyCallback();
+}
+
+void GpuScanout::MoveOrUpdateCursor(GpuResource* cursor,
+                                    const virtio_gpu_update_cursor* request) {
+  EraseCursor();
+  if (request->hdr.type == VIRTIO_GPU_CMD_UPDATE_CURSOR) {
+    cursor_resource_ = cursor;
+  }
+
+  // Move Cursor.
+  if (cursor_resource_ != nullptr) {
+    cursor_position_.x = request->pos.x;
+    cursor_position_.y = request->pos.y;
+    cursor_position_.width = cursor_resource_->bitmap().width();
+    cursor_position_.height = cursor_resource_->bitmap().height();
+
+    DrawCursor();
+  }
+  InvalidateRegion(cursor_position_);
+}
+
+void GpuScanout::EraseCursor() {
+  if (cursor_resource_ == nullptr) {
+    return;
+  }
+  GpuRect source = {
+      rect_.x + cursor_position_.x,
+      rect_.y + cursor_position_.y,
+      cursor_position_.width,
+      cursor_position_.height,
+  };
+  Draw(*resource_, source, cursor_position_);
+}
+
+void GpuScanout::DrawCursor() {
+  if (cursor_resource_ == nullptr) {
+    return;
+  }
+  GpuRect source = {
+      0,
+      0,
+      cursor_resource_->bitmap().width(),
+      cursor_resource_->bitmap().height(),
+  };
+  Draw(*cursor_resource_, source, cursor_position_);
+}
+
+void GpuScanout::SetReady(bool ready) {
+  ready_ = ready;
+  InvokeReadyCallback();
+}
+
+void GpuScanout::InvokeReadyCallback() {
+  if (ready_ && ready_callback_) {
+    ready_callback_();
+    ready_callback_ = nullptr;
+  }
 }
 
 }  // namespace machina

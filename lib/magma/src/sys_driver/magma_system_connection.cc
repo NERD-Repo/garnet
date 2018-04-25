@@ -105,6 +105,25 @@ magma::Status MagmaSystemConnection::ExecuteCommandBuffer(uint32_t command_buffe
     return context->ExecuteCommandBuffer(std::move(command_buffer));
 }
 
+magma::Status MagmaSystemConnection::ExecuteImmediateCommands(uint32_t context_id,
+                                                              uint64_t commands_size,
+                                                              void* commands,
+                                                              uint64_t semaphore_count,
+                                                              uint64_t* semaphore_ids)
+{
+    if (!has_render_capability_)
+        return DRET_MSG(MAGMA_STATUS_ACCESS_DENIED,
+                        "Attempting to execute a command buffer without render capability");
+
+    auto context = LookupContext(context_id);
+    if (!context)
+        return DRET_MSG(MAGMA_STATUS_INVALID_ARGS,
+                        "Attempting to execute command buffer on invalid context");
+
+    return context->ExecuteImmediateCommands(commands_size, commands, semaphore_count,
+                                             semaphore_ids);
+}
+
 magma::Status MagmaSystemConnection::WaitRendering(uint64_t buffer_id)
 {
     if (!has_render_capability_)
@@ -180,8 +199,9 @@ bool MagmaSystemConnection::MapBufferGpu(uint64_t id, uint64_t gpu_va, uint64_t 
     auto iter = buffer_map_.find(id);
     if (iter == buffer_map_.end())
         return DRETF(false, "Attempting to gpu map invalid buffer id");
-    msd_connection_map_buffer_gpu(msd_connection(), iter->second.buffer->msd_buf(), gpu_va,
-                                  page_offset, page_count, flags);
+    if (msd_connection_map_buffer_gpu(msd_connection(), iter->second.buffer->msd_buf(), gpu_va,
+                                      page_offset, page_count, flags) != MAGMA_STATUS_OK)
+        return DRETF(false, "msd_connection_map_buffer_gpu failed");
 
     return true;
 }
@@ -191,7 +211,9 @@ bool MagmaSystemConnection::UnmapBufferGpu(uint64_t id, uint64_t gpu_va)
     auto iter = buffer_map_.find(id);
     if (iter == buffer_map_.end())
         return DRETF(false, "Attempting to gpu unmap invalid buffer id");
-    msd_connection_unmap_buffer_gpu(msd_connection(), iter->second.buffer->msd_buf(), gpu_va);
+    if (msd_connection_unmap_buffer_gpu(msd_connection(), iter->second.buffer->msd_buf(), gpu_va) !=
+        MAGMA_STATUS_OK)
+        return DRETF(false, "msd_connection_unmap_buffer_gpu failed");
 
     return true;
 }
@@ -201,8 +223,15 @@ bool MagmaSystemConnection::CommitBuffer(uint64_t id, uint64_t page_offset, uint
     auto iter = buffer_map_.find(id);
     if (iter == buffer_map_.end())
         return DRETF(false, "Attempting to commit invalid buffer id");
-    msd_connection_commit_buffer(msd_connection(), iter->second.buffer->msd_buf(), page_offset,
-                                 page_count);
+    if (page_count + page_offset < page_count) {
+        return DRETF(false, "Offset overflows");
+    }
+    if (page_count + page_offset > iter->second.buffer->size() / PAGE_SIZE) {
+        return DRETF(false, "Page offset too large for buffer");
+    }
+    if (msd_connection_commit_buffer(msd_connection(), iter->second.buffer->msd_buf(), page_offset,
+                                     page_count) != MAGMA_STATUS_OK)
+        return DRETF(false, "msd_connection_commit_buffer failed");
 
     return true;
 }
@@ -225,13 +254,16 @@ bool MagmaSystemConnection::ImportObject(uint32_t handle, magma::PlatformObject:
             if (!magma::PlatformObject::IdFromHandle(handle, &id))
                 return DRETF(false, "failed to get semaphore id for handle");
 
+            // Always import the handle to to ensure it gets closed
+            auto platform_sem = magma::PlatformSemaphore::Import(handle);
+
             auto iter = semaphore_map_.find(id);
             if (iter != semaphore_map_.end()) {
                 iter->second.refcount++;
                 return true;
             }
 
-            auto semaphore = MagmaSystemSemaphore::Create(magma::PlatformSemaphore::Import(handle));
+            auto semaphore = MagmaSystemSemaphore::Create(std::move(platform_sem));
             if (!semaphore)
                 return DRETF(false, "failed to import platform semaphore");
 

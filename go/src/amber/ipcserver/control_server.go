@@ -6,27 +6,31 @@ package ipcserver
 
 import (
 	"fmt"
-	"log"
 	"strings"
+	"sync"
 
 	"fidl/bindings"
 
-	"syscall/zx"
-	"syscall/zx/mxerror"
-
-	"garnet/amber/api/amber"
+	"fuchsia/go/amber"
 
 	"amber/daemon"
 	"amber/pkg"
+	"amber/source"
+
+	"syscall/zx"
 )
 
 type ControlSrvr struct {
-	daemon *daemon.Daemon
-	stubs  []*bindings.Stub
+	daemonSrc  *daemon.DaemonProvider
+	daemonGate sync.Once
+	daemon     *daemon.Daemon
+	pinger     *source.TickGenerator
+	bs         bindings.BindingSet
 }
 
-func NewControlSrvr(d *daemon.Daemon) *ControlSrvr {
-	return &ControlSrvr{daemon: d}
+func NewControlSrvr(d *daemon.DaemonProvider, r *source.TickGenerator) *ControlSrvr {
+	go bindings.Serve()
+	return &ControlSrvr{daemonSrc: d, pinger: r}
 }
 
 func (c *ControlSrvr) DoTest(in int32) (out string, err error) {
@@ -67,6 +71,7 @@ func (c *ControlSrvr) GetUpdate(name string, version *string) (*string, error) {
 	pkg := pkg.Package{Name: name, Version: *version}
 	ps.Add(&pkg)
 
+	c.initDaemon()
 	updates := c.daemon.GetUpdates(ps)
 	res, ok := updates[pkg]
 	if !ok {
@@ -89,27 +94,24 @@ func (c *ControlSrvr) GetBlob(merkle string) error {
 		return fmt.Errorf("Supplied merkle root is empty")
 	}
 
+	c.initDaemon()
 	return c.daemon.GetBlob(merkle)
 }
 
 func (c *ControlSrvr) Quit() {
-	for _, s := range c.stubs {
-		s.Close()
-	}
-	c.stubs = []*bindings.Stub{}
+	c.bs.Close()
 }
 
-func (c *ControlSrvr) Bind(req amber.Control_Request) {
-	s := req.NewStub(c, bindings.GetAsyncWaiter())
-	c.stubs = append(c.stubs, s)
-	go func(b *bindings.Stub) {
-		for {
-			if err := b.ServeRequest(); err != nil {
-				if mxerror.Status(err) != zx.ErrPeerClosed {
-					log.Printf("Request error %v \n", err)
-				}
-				break
-			}
-		}
-	}(s)
+func (c *ControlSrvr) Bind(ch zx.Channel) error {
+	s := amber.ControlStub{Impl: c}
+	_, err := c.bs.Add(&s, ch, nil)
+	return err
+}
+
+func (c *ControlSrvr) initDaemon() {
+	c.daemonGate.Do(func() {
+		c.pinger.GenerateTick()
+		c.daemon = c.daemonSrc.Daemon()
+		c.pinger = nil
+	})
 }

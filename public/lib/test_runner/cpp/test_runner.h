@@ -9,7 +9,7 @@
 #include "lib/app/cpp/application_context.h"
 #include "lib/test_runner/cpp/scope.h"
 #include "lib/test_runner/cpp/test_runner_store_impl.h"
-#include "lib/test_runner/fidl/test_runner.fidl.h"
+#include <fuchsia/cpp/test_runner.h>
 #include "lib/fxl/tasks/one_shot_timer.h"
 
 namespace test_runner {
@@ -47,16 +47,16 @@ class TestRunnerImpl : public TestRunner {
 
  private:
   // |TestRunner|
-  void Identify(const fidl::String& program_name,
-                const IdentifyCallback& callback) override;
+  void Identify(fidl::StringPtr program_name,
+                IdentifyCallback callback) override;
   // |TestRunner|
-  void ReportResult(TestResultPtr result) override;
+  void ReportResult(TestResult result) override;
   // |TestRunner|
-  void Fail(const fidl::String& log_message) override;
+  void Fail(fidl::StringPtr log_message) override;
   // |TestRunner|
-  void Done(const DoneCallback& callback) override;
+  void Done(DoneCallback callback) override;
   // |TestRunner|
-  void Teardown(const TeardownCallback& callback) override;
+  void Teardown(TeardownCallback callback) override;
   // |TestRunner|
   void WillTerminate(double withinSeconds) override;
   // |TestRunner|
@@ -83,20 +83,18 @@ class TestRunnerImpl : public TestRunner {
 // reporting anything, we declare the test a failure.
 class TestRunContext {
  public:
-  TestRunContext(std::shared_ptr<app::ApplicationContext> app_context,
-                 TestRunObserver* connection,
-                 const std::string& test_id,
-                 const std::string& url,
-                 const std::vector<std::string>& args);
+  TestRunContext(std::shared_ptr<component::ApplicationContext> app_context,
+                 TestRunObserver* connection, const std::string& test_id,
+                 const std::string& url, const std::vector<std::string>& args);
 
   // Called from TestRunnerImpl, the actual implemention of |TestRunner|.
   void StopTrackingClient(TestRunnerImpl* client, bool crashed);
-  void ReportResult(TestResultPtr result);
-  void Fail(const fidl::String& log_message);
+  void ReportResult(TestResult result);
+  void Fail(const fidl::StringPtr& log_message);
   void Teardown(TestRunnerImpl* teardown_client);
 
  private:
-  app::ApplicationControllerPtr child_app_controller_;
+  component::ApplicationControllerPtr child_app_controller_;
   std::unique_ptr<Scope> child_env_scope_;
 
   TestRunObserver* const test_runner_connection_;

@@ -11,9 +11,10 @@
 #include <thread>
 #include <unordered_map>
 
+#include <lib/async/dispatcher.h>
+#include <lib/zx/port.h>
 #include <zircon/syscalls/exception.h>
 #include <zircon/types.h>
-#include <zx/port.h>
 
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_ptr.h"
@@ -21,7 +22,6 @@
 
 namespace debugserver {
 
-class Process;
 class Thread;
 
 // Maintains a dedicated thread for listening to exceptions from multiple
@@ -68,10 +68,13 @@ class ExceptionPort final {
  private:
   struct BindData {
     BindData() = default;
-    BindData(zx_handle_t process_handle, const Callback& callback)
-        : process_handle(process_handle), callback(callback) {}
+    BindData(zx_handle_t process_handle, zx_koid_t process_koid,
+             const Callback& callback)
+        : process_handle(process_handle), process_koid(process_koid),
+          callback(callback) {}
 
     zx_handle_t process_handle;
+    zx_koid_t process_koid;
     Callback callback;
   };
 
@@ -85,9 +88,9 @@ class ExceptionPort final {
   // its loop as soon as zx_port_wait returns.
   std::atomic_bool keep_running_;
 
-  // The origin task runner used to post observer callback events to the thread
+  // The origin dispatcher to post observer callback events to the thread
   // that created this object.
-  fxl::RefPtr<fxl::TaskRunner> origin_task_runner_;
+  async_t* const  origin_dispatcher_;
 
   // The exception port handle and a mutex for synchronizing access to it.
   // |io_thread_| only ever reads from |eport_handle_| but a call to Quit() can

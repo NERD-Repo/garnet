@@ -5,5 +5,5 @@ import (
 )
 
 type Transport interface {
-	SendMessage(msg bindings.Payload, ordinal int32) error
+	SendMessage(msg bindings.Payload, ordinal uint32) error
 }

@@ -5,14 +5,15 @@
 #ifndef LIB_SVC_CPP_SERVICES_H_
 #define LIB_SVC_CPP_SERVICES_H_
 
-#include <zx/channel.h>
+#include <lib/zx/channel.h>
 
 #include <string>
 
-#include "lib/fidl/cpp/bindings/interface_request.h"
+#include "lib/fidl/cpp/interface_ptr.h"
+#include "lib/fidl/cpp/interface_request.h"
 #include "lib/fxl/macros.h"
 
-namespace app {
+namespace component {
 
 // Connects to a service located at a path within the directory and binds it to
 // an untyped interface request.
@@ -69,7 +70,7 @@ class Services {
   // Creates a request for a directory and stores the other end of the channel
   // in this object for later use by |Connect|.
   //
-  // The returned channel is suitable for use in PA_SERVICE_REQUEST.
+  // The returned channel is suitable for use in PA_DIRECTORY_REQUEST.
   zx::channel NewRequest();
 
   void Bind(zx::channel directory);
@@ -78,7 +79,7 @@ class Services {
   // to an untyped interface request.
   // By default, uses the interface name as the service's path.
   void ConnectToService(zx::channel request, const std::string& service_path) {
-    app::ConnectToService(directory_, std::move(request), service_path);
+    component::ConnectToService(directory_, std::move(request), service_path);
   }
 
   // Connects to a service located at a path within the directory and binds it
@@ -87,8 +88,8 @@ class Services {
   template <typename Interface>
   void ConnectToService(fidl::InterfaceRequest<Interface> request,
                         const std::string& service_path = Interface::Name_) {
-    app::ConnectToService<Interface>(directory_, std::move(request),
-                                     service_path);
+    component::ConnectToService<Interface>(directory_, std::move(request),
+                                           service_path);
   }
 
   // Connects to a service located at a path within the directory and returns a
@@ -97,7 +98,7 @@ class Services {
   template <typename Interface>
   fidl::InterfacePtr<Interface> ConnectToService(
       const std::string& service_path = Interface::Name_) {
-    return app::ConnectToService<Interface>(directory_, service_path);
+    return component::ConnectToService<Interface>(directory_, service_path);
   }
 
   const zx::channel& directory() const { return directory_; }
@@ -108,6 +109,6 @@ class Services {
   FXL_DISALLOW_COPY_AND_ASSIGN(Services);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // LIB_SVC_CPP_SERVICES_H_

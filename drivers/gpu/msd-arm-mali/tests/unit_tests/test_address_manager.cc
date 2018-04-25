@@ -2,7 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <future>
+
 #include "address_manager.h"
+#include "mock/mock_bus_mapper.h"
 #include "mock/mock_mmio.h"
 #include "platform_mmio.h"
 #include "registers.h"
@@ -27,10 +30,14 @@ public:
     void ScheduleAtom(std::shared_ptr<MsdArmAtom> atom) override {}
     void CancelAtoms(std::shared_ptr<MsdArmConnection> connection) override {}
     AddressSpaceObserver* GetAddressSpaceObserver() override { return manager_; }
+    magma::PlatformBusMapper* GetBusMapper() override { return &bus_mapper_; }
 
 private:
     AddressManager* manager_;
+    MockBusMapper bus_mapper_;
 };
+
+static constexpr uint64_t kMemoryAttributes = 0x8848u;
 
 TEST(AddressManager, MultipleAtoms)
 {
@@ -51,14 +58,15 @@ TEST(AddressManager, MultipleAtoms)
     EXPECT_EQ(1u, atom2->address_slot_mapping()->slot_number());
 
     registers::AsRegisters as_regs(0);
-    EXPECT_EQ(0x8d4du, as_regs.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
-    uint64_t translation_table_entry1 = connection1->address_space()->translation_table_entry();
+    EXPECT_EQ(kMemoryAttributes, as_regs.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
+    uint64_t translation_table_entry1 =
+        connection1->const_address_space()->translation_table_entry();
     EXPECT_EQ(translation_table_entry1,
               as_regs.TranslationTable().ReadFrom(reg_io.get()).reg_value());
 
     registers::AsRegisters as_regs1(1);
-    EXPECT_EQ(0x8d4du, as_regs1.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
-    EXPECT_EQ(connection2->address_space()->translation_table_entry(),
+    EXPECT_EQ(kMemoryAttributes, as_regs1.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
+    EXPECT_EQ(connection2->const_address_space()->translation_table_entry(),
               as_regs1.TranslationTable().ReadFrom(reg_io.get()).reg_value());
 
     connection1.reset();
@@ -67,7 +75,7 @@ TEST(AddressManager, MultipleAtoms)
               as_regs.TranslationTable().ReadFrom(reg_io.get()).reg_value());
 
     address_manager.AtomFinished(atom1.get());
-    EXPECT_EQ(0x8d4du, as_regs.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
+    EXPECT_EQ(kMemoryAttributes, as_regs.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
     EXPECT_EQ(0u, as_regs.TranslationTable().ReadFrom(reg_io.get()).reg_value() & 0xff);
 
     EXPECT_FALSE(address_manager.AssignAddressSpace(atom1.get()));
@@ -120,21 +128,30 @@ TEST(AddressManager, ReuseSlot)
     }
 
     registers::AsRegisters as_regs(2);
-    EXPECT_EQ(0x8d4du, as_regs.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
-    uint64_t translation_table_entry = connections[2]->address_space()->translation_table_entry();
+    EXPECT_EQ(kMemoryAttributes, as_regs.MemoryAttributes().ReadFrom(reg_io.get()).reg_value());
+    uint64_t translation_table_entry =
+        connections[2]->const_address_space()->translation_table_entry();
     EXPECT_EQ(translation_table_entry,
               as_regs.TranslationTable().ReadFrom(reg_io.get()).reg_value());
 
     connections.push_back(MsdArmConnection::Create(0, &connection_owner));
     atoms.push_back(
         std::make_unique<MsdArmAtom>(connections.back(), 0, 0, 0, magma_arm_mali_user_data()));
+    // Reduce timeout to make test faster.
+    address_manager.set_acquire_slot_timeout_seconds(1);
     EXPECT_FALSE(address_manager.AssignAddressSpace(atoms.back().get()));
+    address_manager.set_acquire_slot_timeout_seconds(10);
 
-    address_manager.AtomFinished(atoms[2].get());
+    auto future = std::async(std::launch::async, [&]() {
+        // Sleep to try to ensure AssignAddressSpace is currently running.
+        usleep(10000);
+        address_manager.AtomFinished(atoms[2].get());
+    });
+
     EXPECT_TRUE(address_manager.AssignAddressSpace(atoms.back().get()));
 
     uint64_t new_translation_table_entry =
-        connections[8]->address_space()->translation_table_entry();
+        connections[8]->const_address_space()->translation_table_entry();
     EXPECT_EQ(new_translation_table_entry,
               as_regs.TranslationTable().ReadFrom(reg_io.get()).reg_value());
 }
@@ -143,6 +160,7 @@ TEST(AddressManager, FlushAddressRange)
 {
     std::unique_ptr<RegisterIo> reg_io(new RegisterIo(MockMmio::Create(1024 * 1024)));
     FakeOwner owner(reg_io.get());
+    auto mapper = std::unique_ptr<MockBusMapper>();
 
     const uint32_t kNumberAddressSpaces = 8;
     AddressManager address_manager(&owner, kNumberAddressSpaces);
@@ -157,10 +175,12 @@ TEST(AddressManager, FlushAddressRange)
 
     buffer = magma::PlatformBuffer::Create(PAGE_SIZE * 3, "test");
 
-    EXPECT_TRUE(buffer->PinPages(0, buffer->size() / PAGE_SIZE));
+    auto bus_mapping = connection_owner.GetBusMapper()->MapPageRangeBus(buffer.get(), 0,
+                                                                        buffer->size() / PAGE_SIZE);
+    ASSERT_NE(nullptr, bus_mapping);
 
-    EXPECT_TRUE(connection->address_space()->Insert(addr, buffer.get(), 0, buffer->size(),
-                                                    kAccessFlagRead | kAccessFlagNoExecute));
+    EXPECT_TRUE(connection->address_space_for_testing()->Insert(
+        addr, bus_mapping.get(), 0, buffer->size(), kAccessFlagRead | kAccessFlagNoExecute));
     // 3 pages should be cleared, so it should be rounded up to 4 (and log
     // base 2 is 2).
     constexpr uint64_t kLockOffset = 13;
@@ -169,7 +189,7 @@ TEST(AddressManager, FlushAddressRange)
     EXPECT_EQ(registers::AsCommand::kCmdFlushPageTable,
               as_regs.Command().ReadFrom(reg_io.get()).reg_value());
 
-    EXPECT_TRUE(connection->address_space()->Clear(addr, buffer->size()));
+    EXPECT_TRUE(connection->address_space_for_testing()->Clear(addr, buffer->size()));
 
     EXPECT_EQ(addr | kLockOffset, as_regs.LockAddress().ReadFrom(reg_io.get()).reg_value());
     EXPECT_EQ(registers::AsCommand::kCmdFlushMem,

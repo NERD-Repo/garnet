@@ -10,6 +10,8 @@ static_library("gap") {
     "adapter_state.h",
     "advertising_data.cc",
     "advertising_data.h",
+    "bredr_discovery_manager.cc",
+    "bredr_discovery_manager.h",
     "discovery_filter.cc",
     "discovery_filter.h",
     "gap.h",
@@ -34,7 +36,8 @@ static_library("gap") {
     "//garnet/drivers/bluetooth/lib/gatt",
     "//garnet/drivers/bluetooth/lib/hci",
     "//garnet/drivers/bluetooth/lib/l2cap",
-    "//garnet/public/lib/bluetooth/fidl:fidl_data_only",
+    "//garnet/public/lib/bluetooth/fidl",
+    "//garnet/public/lib/bluetooth/fidl:bluetooth_low_energy",
     "//garnet/public/lib/fxl",
   ]
 }
@@ -45,6 +48,7 @@ source_set("tests") {
   sources = [
     "adapter_unittest.cc",
     "advertising_data_unittest.cc",
+    "bredr_discovery_manager_unittest.cc",
     "discovery_filter_unittest.cc",
     "low_energy_advertising_manager_unittest.cc",
     "low_energy_connection_manager_unittest.cc",
@@ -55,7 +59,9 @@ source_set("tests") {
 
   deps = [
     ":gap",
+    "//garnet/drivers/bluetooth/lib/gatt:testing",
+    "//garnet/drivers/bluetooth/lib/l2cap:testing",
     "//garnet/drivers/bluetooth/lib/testing",
-    "//third_party/gtest",
+    "//third_party/googletest:gtest",
   ]
 }

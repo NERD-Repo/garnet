@@ -10,15 +10,12 @@
 #include <memory>
 
 #include "lib/app/cpp/service_provider_impl.h"
-#include "lib/app/fidl/application_environment.fidl.h"
-#include "lib/app/fidl/application_launcher.fidl.h"
-#include "lib/app/fidl/application_runner.fidl.h"
-#include "lib/app/fidl/service_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/interface_handle.h"
-#include "lib/fidl/cpp/bindings/interface_request.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/interface_handle.h"
+#include "lib/fidl/cpp/interface_request.h"
 #include "lib/svc/cpp/service_namespace.h"
 
-namespace app {
+namespace component {
 
 // Provides access to the application's environment and allows the application
 // to publish outgoing services back to its creator.
@@ -26,8 +23,7 @@ class ApplicationContext {
  public:
   // The constructor is normally called by CreateFromStartupInfo().
   ApplicationContext(zx::channel service_root,
-                     zx::channel service_request,
-                     fidl::InterfaceRequest<ServiceProvider> outgoing_services);
+                     zx::channel directory_request);
 
   ~ApplicationContext();
 
@@ -49,7 +45,7 @@ class ApplicationContext {
   static std::unique_ptr<ApplicationContext> CreateFromStartupInfoNotChecked();
 
   static std::unique_ptr<ApplicationContext> CreateFrom(
-      ApplicationStartupInfoPtr startup_info);
+      ApplicationStartupInfo startup_info);
 
   // Gets the application's environment.
   //
@@ -67,7 +63,9 @@ class ApplicationContext {
 
   // Gets a service provider implementation by which the application can
   // provide outgoing services back to its creator.
-  ServiceNamespace* outgoing_services() { return &outgoing_services_; }
+  ServiceNamespace* outgoing_services() {
+    return &deprecated_outgoing_services_;
+  }
 
   // Gets the directory which is the root of the tree of file-system objects
   // exported by this application to the rest of the system.
@@ -78,20 +76,27 @@ class ApplicationContext {
   // - debug: debugging information exported by the application
   // - fs: the mounted file-system (for applications which are file-systems)
   const fbl::RefPtr<fs::PseudoDir>& export_dir() const {
-    // TODO(ZX-1036): For compatibiliy purposes, we map ServiceNamespace
-    // to the root of the export directory.  Once all clients migrate off of
-    // the legacy ServiceProvider and the bridging band-aids we have built,
-    // we can move these objects into the "svc" subdirectory as intended.
-    return outgoing_services_.directory();
+    return export_dir_;
   }
 
-  // Gets or creates an export sub-directory called "svc" for publishing
-  // services.
-  const fbl::RefPtr<fs::PseudoDir>& GetOrCreateServiceExportDir();
+  // Gets an export sub-directory called "public" for publishing services for
+  // clients.
+  const fbl::RefPtr<fs::PseudoDir>& public_export_dir() const {
+    return public_export_dir_;
+  }
 
-  // Gets or creates an export sub-directory called "debug" for publishing
-  // debugging information.
-  const fbl::RefPtr<fs::PseudoDir>& GetOrCreateDebugExportDir();
+  // Gets an export sub-directory called "debug" for publishing debugging
+  // information.
+  const fbl::RefPtr<fs::PseudoDir>& debug_export_dir() const {
+    return debug_export_dir_;
+  }
+
+  // Gets an export sub-directory called "ctrl" for publishing services for
+  // appmgr.
+  const fbl::RefPtr<fs::PseudoDir>& ctrl_export_dir() const {
+    return ctrl_export_dir_;
+  }
+
 
   // Connects to a service provided by the application's environment,
   // returning an interface pointer.
@@ -120,15 +125,21 @@ class ApplicationContext {
 
  private:
   ApplicationEnvironmentPtr environment_;
-  ServiceNamespace outgoing_services_;
-  fbl::RefPtr<fs::PseudoDir> service_export_dir_;
-  fbl::RefPtr<fs::PseudoDir> debug_export_dir_;
-  zx::channel service_root_;
   ApplicationLauncherPtr launcher_;
+
+  fs::ManagedVfs vfs_;
+  fbl::RefPtr<fs::PseudoDir> export_dir_;
+  fbl::RefPtr<fs::PseudoDir> public_export_dir_;
+  fbl::RefPtr<fs::PseudoDir> debug_export_dir_;
+  fbl::RefPtr<fs::PseudoDir> ctrl_export_dir_;
+
+  zx::channel service_root_;
+
+  ServiceNamespace deprecated_outgoing_services_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(ApplicationContext);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // LIB_APP_CPP_APPLICATION_CONTEXT_H_

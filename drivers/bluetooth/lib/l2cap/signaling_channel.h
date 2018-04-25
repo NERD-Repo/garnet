@@ -7,15 +7,13 @@
 #include <memory>
 
 #include "garnet/drivers/bluetooth/lib/common/byte_buffer.h"
-#include "garnet/drivers/bluetooth/lib/common/cancelable_callback.h"
 #include "garnet/drivers/bluetooth/lib/common/packet_view.h"
 #include "garnet/drivers/bluetooth/lib/hci/connection.h"
-#include "garnet/drivers/bluetooth/lib/l2cap/l2cap.h"
+#include "garnet/drivers/bluetooth/lib/l2cap/l2cap_defs.h"
+#include "garnet/drivers/bluetooth/lib/l2cap/scoped_channel.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/sdu.h"
 #include "lib/fxl/macros.h"
-#include "lib/fxl/memory/ref_ptr.h"
 #include "lib/fxl/synchronization/thread_checker.h"
-#include "lib/fxl/tasks/task_runner.h"
 
 namespace btlib {
 namespace l2cap {
@@ -33,7 +31,7 @@ using MutableSignalingPacket = common::MutablePacketView<CommandHeader>;
 // TODO(armansito): Implement flow control (RTX/ERTX timers).
 class SignalingChannel {
  public:
-  SignalingChannel(std::unique_ptr<Channel> chan, hci::Connection::Role role);
+  SignalingChannel(fbl::RefPtr<Channel> chan, hci::Connection::Role role);
   virtual ~SignalingChannel();
 
   bool is_open() const { return is_open_; }
@@ -96,15 +94,9 @@ class SignalingChannel {
   void ProcessPacket(const SignalingPacket& packet);
 
   bool is_open_;
-  std::unique_ptr<Channel> chan_;
+  l2cap::ScopedChannel chan_;
   hci::Connection::Role role_;
   uint16_t mtu_;
-
-  // Used to cancel OnRxBFrame()
-  common::CancelableCallbackFactory<void(const SDU& sdu)> rx_cb_factory_;
-
-  // Task runner on which to process received signaling packets.
-  fxl::RefPtr<fxl::TaskRunner> task_runner_;
 
   fxl::ThreadChecker thread_checker_;
 

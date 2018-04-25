@@ -20,7 +20,7 @@
 
 namespace machina {
 
-static const char kInputDirPath[] = "/dev/class/input";
+static constexpr char kInputDirPath[] = "/dev/class/input";
 
 zx_status_t HidInputDevice::Start() {
   thrd_t thread;
@@ -59,7 +59,7 @@ zx_status_t HidInputDevice::HandleHidKeys(const hid_keys_t& curr_keys) {
   }
 
   if (send_barrier) {
-    SendBarrier();
+    SendBarrier(input_dispatcher_->Keyboard());
   }
 
   prev_keys_ = curr_keys;
@@ -80,7 +80,7 @@ zx_status_t HidInputDevice::HidEventLoop() {
 
     zx_status_t status = HandleHidKeys(curr_keys);
     if (status != ZX_OK) {
-      FXL_LOG(ERROR) << "Failed to handle HID keys.";
+      FXL_LOG(ERROR) << "Failed to handle HID keys";
       return status;
     }
   }
@@ -94,13 +94,13 @@ void HidInputDevice::SendKeyEvent(uint32_t hid_usage, bool pressed) {
       .hid_usage = hid_usage,
       .state = pressed ? KeyState::PRESSED : KeyState::RELEASED,
   };
-  input_dispatcher_->PostEvent(event);
+  input_dispatcher_->Keyboard()->PostEvent(event);
 }
 
-void HidInputDevice::SendBarrier() {
+void HidInputDevice::SendBarrier(InputEventQueue* event_queue) {
   InputEvent event;
   event.type = InputEventType::BARRIER;
-  input_dispatcher_->PostEvent(event);
+  event_queue->PostEvent(event);
 }
 
 zx_status_t HidEventSource::Start() {
@@ -145,7 +145,7 @@ zx_status_t HidEventSource::AddInputDevice(int dirfd,
 
   int proto = INPUT_PROTO_NONE;
   if (ioctl_input_get_protocol(fd.get(), &proto) < 0) {
-    FXL_LOG(ERROR) << "Failed to get input device protocol.";
+    FXL_LOG(ERROR) << "Failed to get input device protocol";
     return ZX_ERR_INVALID_ARGS;
   }
 

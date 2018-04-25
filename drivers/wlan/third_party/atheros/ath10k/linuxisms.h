@@ -20,10 +20,16 @@
 
 #include <stdio.h>
 
-#define ARRAY_SIZE(arr) \
-    (sizeof(arr) / sizeof(arr[0]))
+#define ASSERT_MTX_HELD(mtx) ZX_ASSERT(mtx_trylock(mtx) != thrd_success)
 
 #define BIT(pos) (1UL << (pos))
+
+#define BITMAP_TYPE uint64_t
+
+#define BITMAP_TYPE_NUM_BITS (sizeof(BITMAP_TYPE) * 8)
+
+#define DECLARE_BITMAP(name, size) \
+    BITMAP_TYPE name[DIV_ROUND_UP(size, BITMAP_TYPE_NUM_BITS)]
 
 #define DIV_ROUND_UP(n, m) (((n) + ((m) - 1)) / (m))
 
@@ -32,65 +38,63 @@
 #define GENMASK1(val) ((1UL << (val)) - 1)
 #define GENMASK(start, end) ((GENMASK1((start) + 1) & ~GENMASK1(end)))
 
-#define LOCK_ASSERT_HELD(lock)                                              \
-    do {                                                                    \
-        int res = mtx_trylock(lock);                                        \
-        ZX_ASSERT(res != 0);                                                \
-        if (res == 0) {                                                     \
-            printf("ath10k: lock not held at %s:%d\n", __FILE__, __LINE__); \
-            mtx_unlock(lock);                                               \
-        }                                                                   \
-    } while (0)
+#define IS_ALIGNED(ptr, alignment) (((uintptr_t)(ptr) & (uintptr_t)((alignment) - 1)) == 0)
 
 #define WARN(cond, filename, lineno) \
     printf("ath10k: unexpected condition %s at %s:%d\n", cond, filename, lineno)
 
-#define WARN_ON(cond)                       \
-    ({                          \
-        if (cond) {                 \
+#define WARN_ON(cond)                           \
+    ({                                          \
+        bool result = cond;                     \
+        if (result) {                           \
             WARN(#cond, __FILE__, __LINE__);    \
-        }                       \
-        cond;                       \
+        }                                       \
+        result;                                 \
     })
 
-#define WARN_ON_ONCE(cond)                  \
-    ({                          \
+#define WARN_ON_ONCE(cond)                      \
+    ({                                          \
         static bool warn_next = true;           \
-        if (cond && warn_next) {            \
+        bool result = cond;                     \
+        if (result && warn_next) {              \
             WARN(#cond, __FILE__, __LINE__);    \
-            warn_next = false;          \
-        }                       \
-        cond;                       \
+            warn_next = false;                  \
+        }                                       \
+        result;                                 \
     })
+
+#define clear_bit(pos, field) \
+    field[(pos) / BITMAP_TYPE_NUM_BITS] &= ~((BITMAP_TYPE)1 << ((pos) % BITMAP_TYPE_NUM_BITS))
+
+#define ether_addr_copy(e1, e2) memcpy(e1, e2, ETH_ALEN)
 
 #define ilog2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
 
-#define iowrite32(value, addr)                          \
-    do {                                    \
+#define iowrite32(value, addr)                                  \
+    do {                                                        \
         (*(volatile uint32_t*)(uintptr_t)(addr)) = (value);     \
     } while (0)
 
 #define ioread32(addr) (*(volatile uint32_t*)(uintptr_t)(addr))
 
-#define lockdep_assert_held(mtx)    \
-    ZX_ASSERT(mtx_trylock(mtx) != thrd_success)
+#define is_power_of_2(x) (((x) & ((x) - 1)) == 0)
 
-#define mdelay(msecs)                                       \
-    do {                                            \
+#define mdelay(msecs)                                                                    \
+    do {                                                                                 \
             zx_time_t busy_loop_end = zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_MSEC(msecs); \
-        while (zx_clock_get(ZX_CLOCK_MONOTONIC) < busy_loop_end) {           \
-        }                                       \
+        while (zx_clock_get(ZX_CLOCK_MONOTONIC) < busy_loop_end) {                       \
+        }                                                                                \
     } while (0)
 
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #define min_t(t,a,b) (((t)(a) < (t)(b)) ? (t)(a) : (t)(b))
 
-#define __packed __attribute__((packed))
-#define __aligned(n) __attribute__((aligned(n)))
-
 #define rounddown(n,m) ((n) - ((n) % (m)))
 #define roundup(n,m) (((n) % (m) == 0) ? (n) : (n) + ((m) - ((n) % (m))))
+
+// round_up only supports powers of two, so it can be implemented more efficiently, some day...
+#define round_up(n,m) roundup(n,m)
 
 #define roundup_pow_of_two(val) \
     ((unsigned long) (val) == 0 ? (val) : \
@@ -100,4 +104,17 @@
 #define roundup_log2(val) \
     ((unsigned long) (val) == 0 ? (val) : \
              ((sizeof(unsigned long) * 8) - __builtin_clzl((val) - 1)))
+
+#define scnprintf(buf, size, format, ...)                           \
+    ({                                                              \
+        int result = snprintf(buf, size, format, __VA_ARGS__);      \
+        min_t(int, size, result);                                   \
+    })
+
+#define set_bit(pos, field) \
+    field[(pos) / BITMAP_TYPE_NUM_BITS] |= ((BITMAP_TYPE)1 << ((pos) % BITMAP_TYPE_NUM_BITS))
+
+#define test_bit(pos, field) \
+    ((field[(pos) / BITMAP_TYPE_NUM_BITS] & \
+      ((BITMAP_TYPE)1 << ((pos) % BITMAP_TYPE_NUM_BITS))) != 0)
 

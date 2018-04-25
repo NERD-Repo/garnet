@@ -5,43 +5,45 @@
 #ifndef LIB_UI_SCENIC_CLIENT_SESSION_H_
 #define LIB_UI_SCENIC_CLIENT_SESSION_H_
 
-#include <zx/event.h>
-
 #include <functional>
 
-#include "lib/fidl/cpp/bindings/binding.h"
+#include <lib/zx/event.h>
+
+#include <fuchsia/cpp/gfx.h>
+#include <fuchsia/cpp/images.h>
+#include <fuchsia/cpp/ui.h>
+
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fxl/functional/closure.h"
 #include "lib/fxl/macros.h"
-#include "lib/ui/scenic/fidl/scene_manager.fidl.h"
-#include "lib/ui/scenic/fidl/session.fidl.h"
 
 namespace scenic_lib {
 
-// Wraps a Mozart session.
+// Wraps a Scenic session.
 // Maintains a queue of pending operations and assists with allocation of
 // resource ids.
-class Session : private scenic::SessionListener {
+class Session : private ui::SessionListener {
  public:
   // Provides timing information about a presentation request which has
   // been applied by the scene manager.
-  using PresentCallback = std::function<void(scenic::PresentationInfoPtr info)>;
+  using PresentCallback = std::function<void(images::PresentationInfo info)>;
 
   // Provide information about hits.
-  using HitTestCallback = std::function<void(fidl::Array<scenic::HitPtr> hits)>;
+  using HitTestCallback = std::function<void(fidl::VectorPtr<gfx::Hit> hits)>;
 
   // Called when session events are received.
-  using EventHandler = std::function<void(fidl::Array<scenic::EventPtr>)>;
+  using EventHandler = std::function<void(fidl::VectorPtr<ui::Event>)>;
 
   // Wraps the provided session and session listener.
   // The listener is optional.
-  explicit Session(scenic::SessionPtr session,
-                   fidl::InterfaceRequest<scenic::SessionListener>
-                       session_listener = nullptr);
+  explicit Session(
+      ui::SessionPtr session,
+      fidl::InterfaceRequest<ui::SessionListener> session_listener = nullptr);
 
   // Creates a new session using the provided scene manager and binds the
   // session listener to this object.
   // The scene manager itself is not retained after construction.
-  explicit Session(scenic::SceneManager* scene_manager);
+  explicit Session(ui::Scenic* mozart);
 
   // Destroys the session.
   // All resources must be released prior to destruction.
@@ -58,7 +60,7 @@ class Session : private scenic::SessionListener {
   }
 
   // Gets a pointer to the underlying session interface.
-  scenic::Session* session() { return session_.get(); }
+  ui::Session* session() { return session_.get(); }
 
   // Allocates a new unique resource id.
   uint32_t AllocResourceId();
@@ -69,7 +71,7 @@ class Session : private scenic::SessionListener {
   // Enqueues an operation.
   // The session will queue operations locally to batch submission of operations
   // until |Flush()| or |Present()| is called.
-  void Enqueue(scenic::OpPtr op);
+  void Enqueue(gfx::Command command);
 
   // Registers an acquire fence to be submitted during the subsequent call to
   // |Present()|.
@@ -95,26 +97,25 @@ class Session : private scenic::SessionListener {
 
   // Performs a hit test along the specified ray into the engine's first
   // compositor.
-  void HitTestDeviceRay(
-      const float ray_origin[3],
-      const float ray_direction[3],
-      const scenic::Session::HitTestDeviceRayCallback& callback);
+  void HitTestDeviceRay(const float ray_origin[3],
+                        const float ray_direction[3],
+                        const ui::Session::HitTestDeviceRayCallback& callback);
 
  private:
-  // |scenic::SessionListener|
-  void OnError(const fidl::String& error) override;
-  void OnEvent(fidl::Array<scenic::EventPtr> events) override;
+  // |ui::SessionListener|
+  void OnError(fidl::StringPtr error) override;
+  void OnEvent(fidl::VectorPtr<ui::Event> events) override;
 
-  scenic::SessionPtr session_;
+  ui::SessionPtr session_;
   uint32_t next_resource_id_ = 1u;
   uint32_t resource_count_ = 0u;
 
-  fidl::Array<scenic::OpPtr> ops_;
-  fidl::Array<zx::event> acquire_fences_;
-  fidl::Array<zx::event> release_fences_;
+  fidl::VectorPtr<ui::Command> commands_;
+  fidl::VectorPtr<zx::event> acquire_fences_;
+  fidl::VectorPtr<zx::event> release_fences_;
 
   EventHandler event_handler_;
-  fidl::Binding<scenic::SessionListener> session_listener_binding_;
+  fidl::Binding<ui::SessionListener> session_listener_binding_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(Session);
 };

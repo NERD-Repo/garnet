@@ -50,15 +50,15 @@ constexpr uint16_t SHARED_KEY_BASE = 0x6c00;
 constexpr uint16_t SHARED_KEY_MODE_BASE = 0x7000;
 
 // B/G min/max TX power
-constexpr int8_t kMinTxPower_BG = 0;
-constexpr int8_t kMaxTxPower_BG = 31;
-constexpr int8_t kMinTxPower_A = -7;
-constexpr int8_t kMaxTxPower_A = 15;
+constexpr int8_t kMinTxPower_BG = 0;   // Seemingly dBm unit, assuming 1 Tx chain
+constexpr int8_t kMaxTxPower_BG = 31;  //
+constexpr int8_t kMinTxPower_A = -7;   // Seemingly dBm unit, assuming 2 Tx chain
+constexpr int8_t kMaxTxPower_A = 15;   //
 
 // EIRP max power
-constexpr uint16_t kEirpMaxPower = 0x50;
+constexpr uint16_t kEirpMaxPower = 0x50;  // Seemingly 0.5 dBm unit, making 40 dBm
 // TX compensation max power
-constexpr uint16_t kTxCompMaxPower = 0x0c;
+constexpr uint16_t kTxCompMaxPower = 0x0c;  // Unit uncertain.
 
 // Device supports multiple rotating group keys for each BSS.
 constexpr int8_t kGroupKeysPerBss = 4;
@@ -143,6 +143,28 @@ class SharedKeyModeEntry {
 // Registers
 
 // TODO(tkilbourn): differentiate between read-only and read/write registers
+
+class IntStatus : public Register<0x0200> {
+   public:
+    WLAN_BIT_FIELD(rx_dly_int, 0, 1);
+    WLAN_BIT_FIELD(tx_dly_int, 1, 1);
+    WLAN_BIT_FIELD(rx_done_int, 2, 1);
+    WLAN_BIT_FIELD(tx_done_int0, 3, 1);
+    WLAN_BIT_FIELD(tx_done_int1, 4, 2);
+    WLAN_BIT_FIELD(tx_done_int2, 5, 1);
+    WLAN_BIT_FIELD(tx_done_int3, 6, 1);
+    WLAN_BIT_FIELD(tx_done_int4, 7, 1);
+    WLAN_BIT_FIELD(tx_done_int5, 8, 1);
+    WLAN_BIT_FIELD(mcu_cmd_int, 9, 1);
+    WLAN_BIT_FIELD(tx_rx_coherent, 10, 1);
+    WLAN_BIT_FIELD(mac_int_0, 11, 1);
+    WLAN_BIT_FIELD(mac_int_1, 12, 1);
+    WLAN_BIT_FIELD(mac_int_2, 13, 1);
+    WLAN_BIT_FIELD(mac_int_3, 14, 1);
+    WLAN_BIT_FIELD(mac_int_4, 15, 1);
+    WLAN_BIT_FIELD(rx_coherent, 16, 1);
+    WLAN_BIT_FIELD(tx_coherent, 17, 1);
+};
 
 class WpdmaGloCfg : public Register<0x0208> {
    public:
@@ -438,10 +460,22 @@ class TbttSyncCfg : public Register<0x1118> {
     WLAN_BIT_FIELD(bcn_cwmin, 20, 4);
 };
 
+class TbttTimer : public Register<0x01124> {
+   public:
+    WLAN_BIT_FIELD(tbtt_timer, 0, 16);
+};
+
+
 class IntTimerCfg : public Register<0x1128> {
    public:
     WLAN_BIT_FIELD(pre_tbtt_timer, 0, 16);
     WLAN_BIT_FIELD(gp_timer, 16, 16);
+};
+
+class IntTimerEn : public Register<0x112C> {
+   public:
+    WLAN_BIT_FIELD(pre_tbtt_int_en, 0, 1);
+    WLAN_BIT_FIELD(gp_timer_en, 1, 1);
 };
 
 class ChIdleSta : public Register<0x1130> {
@@ -823,11 +857,11 @@ constexpr uint16_t EEPROM_MAC_ADDR_2 = 0x0004;
 constexpr uint16_t EEPROM_NIC_CONF2 = 0x0021;
 constexpr uint16_t EEPROM_RSSI_A = 0x0025;
 constexpr uint16_t EEPROM_RSSI_A2 = 0x0026;
-constexpr uint16_t EEPROM_TXPOWER_BG1 = 0x0029;
+constexpr uint16_t EEPROM_TXPOWER_BG1 = 0x0029;  // Seemingly 0.5 dBm unit
 constexpr uint16_t EEPROM_TXPOWER_BG2 = 0x0030;
 constexpr uint16_t EEPROM_TXPOWER_A1 = 0x003c;
 constexpr uint16_t EEPROM_TXPOWER_A2 = 0x0053;
-constexpr uint16_t EEPROM_TXPOWER_BYRATE = 0x006f;
+constexpr uint16_t EEPROM_TXPOWER_BYRATE = 0x006f;  // Unit uncertain
 constexpr uint16_t EEPROM_BBP_START = 0x0078;
 
 constexpr size_t EEPROM_TXPOWER_BYRATE_SIZE = 9;
@@ -949,7 +983,9 @@ constexpr uint8_t MCU_FREQ_OFFSET = 0x74;
 
 class Bbp1 : public BbpRegister<1> {
    public:
+    // 2, 1, 0, 3 corresponds to -12, -6, 0, 6 dBm
     WLAN_BIT_FIELD(tx_power_ctrl, 0, 2);
+
     WLAN_BIT_FIELD(tx_antenna, 3, 2);
 };
 
@@ -1172,7 +1208,7 @@ class Rxwi2 : public AddressableBitField<uint16_t, uint32_t, 3> {
     constexpr explicit Rxwi2(uint32_t val) : AddressableBitField(val) {}
     WLAN_BIT_FIELD(rssi0, 0, 8);
     WLAN_BIT_FIELD(rssi1, 8, 8);
-    WLAN_BIT_FIELD(rssi2, 8, 8);
+    WLAN_BIT_FIELD(rssi2, 16, 8);
 };
 
 class Rxwi3 : public AddressableBitField<uint16_t, uint32_t, 4> {
@@ -1184,7 +1220,7 @@ class Rxwi3 : public AddressableBitField<uint16_t, uint32_t, 4> {
 
 class TxInfo : public BitField<uint32_t> {
    public:
-    WLAN_BIT_FIELD(tx_pkt_length, 0, 16);
+    WLAN_BIT_FIELD(aggr_payload_len, 0, 16);  // Bulk-out Aggregation format payload length
     // Reserved 8 bits.
     WLAN_BIT_FIELD(wiv, 24, 1);
     WLAN_BIT_FIELD(qsel, 25, 2);
@@ -1260,13 +1296,31 @@ class Txwi3 : public BitField<uint32_t> {
     WLAN_BIT_FIELD(eiv, 0, 32);
 };
 
-struct TxPacket {
+struct BulkoutAggregation {
+    // Aggregation Header
+    // TODO(porce): Investigate if Aggregation Header and TxInfo are identical.
     TxInfo tx_info;
+
+    // Structure of BulkoutAggregation's payload
+    // TXWI            : 16 or 20 bytes // (a).
+    // MPDU header     :      (b) bytes // (b).
+    // L2PAD           :      0~3 bytes // (c).
+    // MSDU            :      (d) bytes // (d).  (b) + (d) is mpdu_len
+    // Bulkout Agg Pad :      0~3 bytes // (e).
     Txwi0 txwi0;
     Txwi1 txwi1;
     Txwi2 txwi2;
     Txwi3 txwi3;
-    uint8_t payload[];
+    // Txwi4 txwi4 for RT5592
+
+    uint8_t* payload(uint16_t rt_type) {  // TODO(porce): better naming
+        // Return where MPDU is to be stored.
+        // Precisely, this will consist of MPDU header + (L2PAD) + MSDU + (AggregatePAD)
+        size_t txwi_len = (rt_type == RT5592) ? 20 : 16;
+        return reinterpret_cast<uint8_t*>(this) + sizeof(TxInfo) + txwi_len;
+    }
+
+    // BulkoutAggregation Tail padding (4 bytes of zeros)
 } __PACKED;
 
 }  // namespace ralink

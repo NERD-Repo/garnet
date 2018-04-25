@@ -9,10 +9,11 @@
 #include <vector>
 
 #include <fbl/unique_ptr.h>
-#include <hypervisor/phys_mem.h>
 #include <zircon/types.h>
 
 namespace machina {
+
+class PhysMem;
 
 class BlockDispatcher {
  public:
@@ -22,7 +23,7 @@ class BlockDispatcher {
   };
   enum class DataPlane {
     FDIO,
-    FIFO,
+    QCOW,
   };
   enum class GuidType {
     NONE,
@@ -30,7 +31,7 @@ class BlockDispatcher {
     // Each GPT partition has 2 GUIDs, one that is unique to that specific
     // partition, and one that specifies the purpose of the partition.
     //
-    // For a partial list of existing parition type GUIDs, see
+    // For a partial list of existing partition type GUIDs, see
     // https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_type_GUIDs
     GPT_PARTITION_GUID,
     GPT_PARTITION_TYPE_GUID,
@@ -42,6 +43,12 @@ class BlockDispatcher {
     // If |false|, |bytes| contains a valid GUID.
     bool empty() const { return type == GuidType::NONE; }
   };
+
+  // Creates a new dispatcher that stores writes in RAM. Untouched blocks
+  // are delegated to the provided dispatcher.
+  static zx_status_t CreateVolatileWrapper(
+      fbl::unique_ptr<BlockDispatcher> dispatcher,
+      fbl::unique_ptr<BlockDispatcher>* out);
 
   static zx_status_t CreateFromPath(
       const char* path,

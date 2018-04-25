@@ -147,7 +147,7 @@ void AudioDeviceManager::HandlePlugStateChange(
 }
 
 void AudioDeviceManager::SetMasterGain(float db_gain) {
-  master_gain_ = fbl::clamp(db_gain, AudioRenderer::kMutedGain, 0.0f);
+  master_gain_ = fbl::clamp(db_gain, kMutedGain, 0.0f);
   for (auto& device : devices_) {
     if (device.is_input()) {
       continue;
@@ -186,6 +186,9 @@ void AudioDeviceManager::SelectOutputsForRenderer(AudioRendererImpl* renderer) {
 
     } break;
   }
+
+  // Figure out the initial minimum clock lead time requirement.
+  renderer->RecomputeMinClockLeadTime();
 }
 
 void AudioDeviceManager::LinkOutputToRenderer(AudioOutput* output,
@@ -224,8 +227,8 @@ void AudioDeviceManager::AddCapturer(fbl::RefPtr<AudioCapturerImpl> capturer) {
     FXL_DCHECK(source->driver() != nullptr);
     auto initial_format = source->driver()->GetSourceFormat();
 
-    if (!initial_format.is_null()) {
-      capturer->SetInitialFormat(std::move(initial_format));
+    if (initial_format) {
+      capturer->SetInitialFormat(std::move(*initial_format));
     }
 
     if (source->plugged()) {
@@ -240,9 +243,9 @@ void AudioDeviceManager::RemoveCapturer(AudioCapturerImpl* capturer) {
   capturers_.erase(*capturer);
 }
 
-void AudioDeviceManager::ScheduleMessageLoopTask(const fxl::Closure& task) {
+void AudioDeviceManager::ScheduleMainThreadTask(const fxl::Closure& task) {
   FXL_DCHECK(server_);
-  server_->ScheduleMessageLoopTask(task);
+  server_->ScheduleMainThreadTask(task);
 }
 
 fbl::RefPtr<AudioDevice> AudioDeviceManager::FindLastPlugged(
@@ -293,50 +296,52 @@ void AudioDeviceManager::OnDeviceUnplugged(
   // This device was just unplugged.  Unlink it from everything it is currently
   // linked to.
   device->Unlink();
-  // TODO(mpuryear): See MTWN-64. If this device was NOT the last-plugged,
-  // then any attached sources and destinations are **re-linked** to their
-  // target devices. In the case of renderers, this duplicate link leads to
-  // output volume doubling, if non-default output removed during playback.
-  // We should check whether an object is already attached, before linking to
-  // the new target device.
 
   // If the device which was unplugged was not the last plugged device in the
   // system, then there has been no change in who was the last plugged device,
   // and no updates to the routing state are needed.
-  if (!was_last_plugged) {
-    return;
+  if (was_last_plugged) {
+    if (device->is_output()) {
+      // This was an output.  If we are applying 'last plugged output' policy,
+      // go over our list of renderers and link them to the most recently
+      // plugged output (if any).  Then go over our list of capturers and do the
+      // same for each of the loopback capturers.  Note: the current hack
+      // routing policy for inputs is always 'last plugged'
+      FXL_DCHECK(static_cast<AudioOutput*>(device.get()) !=
+                 throttle_output_.get());
+
+      fbl::RefPtr<AudioOutput> replacement = FindLastPluggedOutput();
+      if (replacement) {
+        if (routing_policy_ == RoutingPolicy::LAST_PLUGGED_OUTPUT) {
+          for (auto& obj : renderers_) {
+            FXL_DCHECK(obj.is_renderer());
+            auto renderer = static_cast<AudioRendererImpl*>(&obj);
+            LinkOutputToRenderer(replacement.get(), renderer);
+          }
+        }
+
+        LinkToCapturers(replacement);
+      }
+    } else {
+      // This was an input.  Find the new most recently plugged in input (if
+      // any), then go over our list of capturers and link all of the
+      // non-loopback capturers to the new input.
+      FXL_DCHECK(device->is_input());
+
+      fbl::RefPtr<AudioInput> replacement = FindLastPluggedInput();
+      if (replacement) {
+        LinkToCapturers(replacement);
+      }
+    }
   }
 
+  // If the device which was removed was an output, recompute our renderers'
+  // minimum lead time requirements.
   if (device->is_output()) {
-    // This was an output.  If we are applying 'last plugged output' policy, go
-    // over our list of renderers and link them to the most recently plugged
-    // output (if any).  Then go over our list of capturers and do the same for
-    // each of the loopback capturers.
-    // Note: the current hack routing policy for inputs is always 'last plugged'
-    FXL_DCHECK(static_cast<AudioOutput*>(device.get()) !=
-               throttle_output_.get());
-
-    fbl::RefPtr<AudioOutput> replacement = FindLastPluggedOutput();
-    if (replacement) {
-      if (routing_policy_ == RoutingPolicy::LAST_PLUGGED_OUTPUT) {
-        for (auto& obj : renderers_) {
-          FXL_DCHECK(obj.is_renderer());
-          auto renderer = static_cast<AudioRendererImpl*>(&obj);
-          LinkOutputToRenderer(replacement.get(), renderer);
-        }
-      }
-
-      LinkToCapturers(replacement);
-    }
-  } else {
-    // This was an input.  Find the new most recently plugged in input (if any),
-    // then go over our list of capturers and link all of the non-loopback
-    // capturers to the new input.
-    FXL_DCHECK(device->is_input());
-
-    fbl::RefPtr<AudioInput> replacement = FindLastPluggedInput();
-    if (replacement) {
-      LinkToCapturers(replacement);
+    for (auto& obj : renderers_) {
+      FXL_DCHECK(obj.is_renderer());
+      auto renderer = static_cast<AudioRendererImpl*>(&obj);
+      renderer->RecomputeMinClockLeadTime();
     }
   }
 }
@@ -382,6 +387,23 @@ void AudioDeviceManager::OnDevicePlugged(
         FXL_DCHECK(obj.is_renderer());
         auto renderer = static_cast<AudioRendererImpl*>(&obj);
         LinkOutputToRenderer(output, renderer);
+
+        // If we are adding a new link (regardless of whether we may or may not
+        // have removed old links based on the specific active policy) because
+        // of an output becoming plugged in, we need to recompute the minimum
+        // clock lead time requirement, and perhaps update users as to what it
+        // is supposed to be.
+        //
+        // TODO(johngro) : In theory, this could be optimized.  We don't
+        // *technically* need to go over the entire set of links and find the
+        // largest minimum lead time requirement if we know (for example) that
+        // we just added a link, but didn't remove any.  Right now, we are
+        // sticking to the simple approach because we know that N (the total
+        // number of outputs an input is linked to) is small, and maintaining
+        // optimized/specialized logic for computing this value would start to
+        // become a real pain as we start to get more complicated in our
+        // approach to policy based routing.
+        renderer->RecomputeMinClockLeadTime();
       }
     }
 

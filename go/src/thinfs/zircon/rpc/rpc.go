@@ -36,7 +36,7 @@ type ThinVFS struct {
 	nextCookie int64
 }
 
-type VfsQueryInfo struct {
+type VFSQueryInfo struct {
 	TotalBytes uint64
 	UsedBytes  uint64
 	TotalNodes uint64
@@ -114,7 +114,7 @@ func (dw *directoryWrapper) GetToken(cookie int64) (zx.Handle, error) {
 	if e1, err = e0.Duplicate(zx.RightSameRights); err != nil {
 		goto fail_event_created
 	}
-	if err := zx.Handle(e0).SetCookie(zx.ProcHandle, uint64(cookie)); err != nil {
+	if err := e0.Handle().SetCookie(zx.ProcHandle, uint64(cookie)); err != nil {
 		goto fail_event_duplicated
 	}
 	return zx.Handle(e1), nil
@@ -214,13 +214,12 @@ func openFlagsToRIO(f fs.OpenFlags) (arg uint32, mode uint32) {
 }
 
 func describe(msg *fdio.Msg) bool {
-	return msg.Arg & syscall.FsFlagDescribe != 0
+	return msg.Arg&syscall.FsFlagDescribe != 0
 }
 
 func indirectError(h zx.Handle, status zx.Status) {
 	ro := &fdio.RioDescription{
 		Status: status,
-		Type:   uint32(fdio.ProtocolRemote),
 	}
 	ro.SetOp(fdio.OpOnOpen)
 	ro.Write(h, 0)
@@ -241,14 +240,15 @@ func (vfs *ThinVFS) processOpFile(msg *fdio.Msg, f fs.File, cookie int64) zx.Sta
 		if describe(msg) {
 			ro := &fdio.RioDescription{
 				Status: zx.ErrOk,
-				Type:   uint32(fdio.ProtocolRemote),
 			}
+			ro.Info.Tag = fdio.ProtocolFile
 			ro.SetOp(fdio.OpOnOpen)
 			ro.Write(msg.Handle[0], 0)
 		}
 		if err := vfs.AddHandler(msg.Handle[0], f2); err != nil {
 			f2.Close()
 		}
+		msg.Handle[0] = zx.HANDLE_INVALID
 		return fdio.ErrIndirect.Status
 	case fdio.OpClose:
 		err := f.Close()
@@ -324,12 +324,10 @@ func (vfs *ThinVFS) processOpFile(msg *fdio.Msg, f fs.File, cookie int64) zx.Sta
 			err := f.SetOpenFlags(fs.OpenFlags(uflags))
 			return errorToRIO(err)
 		default:
-			msg.DiscardHandles()
 			return zx.ErrNotSupported
 		}
 	default:
 		println("ThinFS FILE UNKNOWN OP: ", msg.Op())
-		msg.DiscardHandles()
 		return zx.ErrNotSupported
 	}
 	return zx.ErrNotSupported
@@ -417,7 +415,11 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 		if describe(msg) {
 			ro := &fdio.RioDescription{
 				Status: zx.ErrOk,
-				Type:   uint32(fdio.ProtocolRemote),
+			}
+			if f != nil {
+				ro.Info.Tag = fdio.ProtocolFile
+			} else {
+				ro.Info.Tag = fdio.ProtocolDirectory
 			}
 			ro.SetOp(fdio.OpOnOpen)
 			ro.Write(msg.Handle[0], 0)
@@ -430,6 +432,7 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 				d.Close()
 			}
 		}
+		msg.Handle[0] = zx.HANDLE_INVALID
 		return fdio.ErrIndirect.Status
 	case fdio.OpClone:
 		d2, err := dir.Dup()
@@ -442,20 +445,21 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 		if describe(msg) {
 			ro := &fdio.RioDescription{
 				Status: zx.ErrOk,
-				Type:   uint32(fdio.ProtocolRemote),
 			}
+			ro.Info.Tag = fdio.ProtocolDirectory
 			ro.SetOp(fdio.OpOnOpen)
 			ro.Write(msg.Handle[0], 0)
 		}
 		if err := vfs.AddHandler(msg.Handle[0], &directoryWrapper{d: d2}); err != nil {
 			d2.Close()
 		}
+		msg.Handle[0] = zx.HANDLE_INVALID
 		return fdio.ErrIndirect.Status
 	case fdio.OpClose:
 		err := dir.Close()
 		vfs.Lock()
 		if dw.e != 0 {
-			zx.Handle(dw.e).SetCookie(zx.ProcHandle, 0)
+			dw.e.Handle().SetCookie(zx.ProcHandle, 0)
 		}
 		vfs.Unlock()
 		vfs.freeCookie(cookie)
@@ -523,7 +527,6 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 		msg.Datalen = 0
 		return errorToRIO(err)
 	case fdio.OpRename:
-		defer msg.DiscardHandles()
 		if len(inputData) < 4 { // Src + null + dst + null
 			return zx.ErrInvalidArgs
 		}
@@ -563,7 +566,7 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 			// Shut down filesystem
 			err := vfs.fs.Close()
 			if err != nil {
-				fmt.Println("Error closing Filesystem: %#v", err)
+				fmt.Printf("error unmounting filesystem: %#v\n", err)
 			}
 			// Close reply handle, indicating that the unmounting process is complete
 			rh.Close()
@@ -573,7 +576,7 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 			totalBytes := uint64(vfs.fs.Size())
 			usedBytes := totalBytes - uint64(vfs.fs.FreeSize())
 
-			queryInfo := VfsQueryInfo{
+			queryInfo := VFSQueryInfo{
 				TotalBytes: totalBytes,
 				UsedBytes:  usedBytes,
 				TotalNodes: 0,
@@ -606,16 +609,19 @@ func (vfs *ThinVFS) processOpDirectory(msg *fdio.Msg, rh zx.Handle, dw *director
 		return errorToRIO(dir.Touch(atime, mtime))
 	default:
 		println("ThinFS DIR UNKNOWN OP: ", msg.Op())
-		msg.DiscardHandles()
 		return zx.ErrNotSupported
 	}
 	return zx.ErrNotSupported
 }
 
 func (vfs *ThinVFS) fdioServer(msg *fdio.Msg, rh zx.Handle, cookie int64) zx.Status {
+	// Dispatching must take ownership of handles and explicitly set handles in msg
+	// to 0 in order to avoid them being closed after dispatching. This guard
+	// extensively prevents leaked handles from dispatching.
+	defer msg.DiscardHandles()
+
+	// Incoming number of handles must match message type
 	if msg.Hcount != msg.OpHandleCount() {
-		// Incoming number of handles must match message type
-		msg.DiscardHandles()
 		return zx.ErrIO
 	}
 
@@ -627,6 +633,7 @@ func (vfs *ThinVFS) fdioServer(msg *fdio.Msg, rh zx.Handle, cookie int64) zx.Sta
 		// Removing object that has already been removed
 		return zx.ErrOk
 	}
+
 	switch obj := obj.(type) {
 	case fs.File:
 		return vfs.processOpFile(msg, obj, cookie)
@@ -634,7 +641,6 @@ func (vfs *ThinVFS) fdioServer(msg *fdio.Msg, rh zx.Handle, cookie int64) zx.Sta
 		return vfs.processOpDirectory(msg, rh, obj, cookie)
 	default:
 		fmt.Printf("cookie %d resulted in unexpected type %T\n", cookie, obj)
-		msg.DiscardHandles()
 		return zx.ErrInternal
 	}
 }

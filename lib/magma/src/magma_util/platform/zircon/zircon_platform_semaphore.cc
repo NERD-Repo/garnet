@@ -4,10 +4,10 @@
 
 #include "zircon_platform_semaphore.h"
 #include "zircon_platform_port.h"
-#include "magma_util/macros.h"
 #include "platform_object.h"
+#include "magma_util/macros.h"
 
-#include <zx/time.h>
+#include <lib/zx/time.h>
 
 namespace magma {
 

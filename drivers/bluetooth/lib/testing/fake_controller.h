@@ -7,7 +7,10 @@
 #include <memory>
 #include <unordered_map>
 
-#include <zx/channel.h>
+#include <fbl/ref_counted.h>
+#include <fbl/ref_ptr.h>
+#include <lib/async/default.h>
+#include <lib/zx/channel.h>
 
 #include "garnet/drivers/bluetooth/lib/common/device_address.h"
 #include "garnet/drivers/bluetooth/lib/hci/connection_parameters.h"
@@ -27,7 +30,8 @@ class FakeDevice;
 
 // FakeController emulates a real Bluetooth controller. It can be configured to
 // respond to HCI commands in a predictable manner.
-class FakeController : public FakeControllerBase {
+class FakeController : public FakeControllerBase,
+                       public fbl::RefCounted<FakeController> {
  public:
   // Global settings for the FakeController. These can be used to initialize a
   // FakeController and/or to re-configure an existing one.
@@ -102,7 +106,7 @@ class FakeController : public FakeControllerBase {
 
   // Constructor initializes the controller with the minimal default settings
   // (equivalent to calling Settings::ApplyDefaults()).
-  FakeController(zx::channel cmd_channel, zx::channel acl_data_channel);
+  FakeController();
   ~FakeController() override;
 
   // Resets the controller settings.
@@ -110,7 +114,7 @@ class FakeController : public FakeControllerBase {
 
   // Tells the FakeController to always respond to the given command opcode with
   // the given HCI status code.
-  void SetDefaultResponseStatus(hci::OpCode opcode, hci::Status status);
+  void SetDefaultResponseStatus(hci::OpCode opcode, hci::StatusCode status);
   void ClearDefaultResponseStatus(hci::OpCode opcode);
 
   // Returns the current LE scan state.
@@ -132,17 +136,17 @@ class FakeController : public FakeControllerBase {
   // Sets a callback to be invoked when the scan state changes.
   using ScanStateCallback = std::function<void(bool enabled)>;
   void SetScanStateCallback(const ScanStateCallback& callback,
-                            fxl::RefPtr<fxl::TaskRunner> task_runner);
+                            async_t* dispatcher);
 
   // Sets a callback to be invoked when the LE Advertising state changes.
   void SetAdvertisingStateCallback(const fxl::Closure& callback,
-                                   fxl::RefPtr<fxl::TaskRunner> task_runner);
+                                   async_t* dispatcher);
 
   // Sets a callback to be invoked on connection events.
   using ConnectionStateCallback = std::function<
       void(const common::DeviceAddress&, bool connected, bool canceled)>;
   void SetConnectionStateCallback(const ConnectionStateCallback& callback,
-                                  fxl::RefPtr<fxl::TaskRunner> task_runner);
+                                  async_t* dispatcher);
 
   // Sets a callback to be invoked when LE connection parameters are updated for
   // a fake device.
@@ -151,7 +155,7 @@ class FakeController : public FakeControllerBase {
                          const hci::LEConnectionParameters&)>;
   void SetLEConnectionParametersCallback(
       const LEConnectionParametersCallback& callback,
-      fxl::RefPtr<fxl::TaskRunner> task_runner);
+      async_t* dispatcher);
 
   // Sends a HCI event with the given parameters.
   void SendEvent(hci::EventCode event_code, const common::ByteBuffer& payload);
@@ -195,9 +199,9 @@ class FakeController : public FakeControllerBase {
   void Disconnect(const common::DeviceAddress& addr);
 
  private:
-  // Returns the current thread's task runner.
-  fxl::RefPtr<fxl::TaskRunner> task_runner() const {
-    return fsl::MessageLoop::GetCurrent()->task_runner();
+  // Returns the current thread's task dispatcher.
+  async_t* dispatcher() const {
+    return async_get_default();
   }
 
   // Finds and returns the FakeDevice with the given parameters or nullptr if no
@@ -219,7 +223,7 @@ class FakeController : public FakeControllerBase {
 
   // Sends a HCI_Command_Status event in response to the command with |opcode|
   // and using the given data as the parameter payload.
-  void RespondWithCommandStatus(hci::OpCode opcode, hci::Status status);
+  void RespondWithCommandStatus(hci::OpCode opcode, hci::StatusCode status);
 
   // If a default status has been configured for the given opcode, sends back an
   // error response and returns true. Returns false if no response was set.
@@ -276,20 +280,20 @@ class FakeController : public FakeControllerBase {
   // ID used for L2CAP LE signaling channel commands.
   uint8_t next_le_sig_id_;
 
-  std::unordered_map<hci::OpCode, hci::Status> default_status_map_;
+  std::unordered_map<hci::OpCode, hci::StatusCode> default_status_map_;
   std::vector<std::unique_ptr<FakeDevice>> le_devices_;
 
   ScanStateCallback scan_state_cb_;
-  fxl::RefPtr<fxl::TaskRunner> scan_state_cb_runner_;
+  async_t* scan_state_cb_dispatcher_;
 
   fxl::Closure advertising_state_cb_;
-  fxl::RefPtr<fxl::TaskRunner> advertising_state_cb_runner_;
+  async_t* advertising_state_cb_dispatcher_;
 
   ConnectionStateCallback conn_state_cb_;
-  fxl::RefPtr<fxl::TaskRunner> conn_state_cb_runner_;
+  async_t* conn_state_cb_dispatcher_;
 
   LEConnectionParametersCallback le_conn_params_cb_;
-  fxl::RefPtr<fxl::TaskRunner> le_conn_params_cb_runner_;
+  async_t* le_conn_params_cb_dispatcher_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(FakeController);
 };

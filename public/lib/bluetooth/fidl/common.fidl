@@ -2,18 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-module bluetooth;
+library bluetooth;
 
 enum ErrorCode {
-  UNKNOWN,
-  BAD_STATE,
-  BLUETOOTH_NOT_AVAILABLE,
-  FAILED,
-  IN_PROGRESS,
-  INVALID_ARGUMENTS,
-  NOT_FOUND,
-  ALREADY,
-  PROTOCOL_ERROR,
+  UNKNOWN = 0;
+  FAILED = 1;
+  CANCELED = 2;
+  IN_PROGRESS = 3;
+  TIMED_OUT = 4;
+  NOT_FOUND = 5;
+  NOT_SUPPORTED = 6;
+  BLUETOOTH_NOT_AVAILABLE = 7;
+  BAD_STATE = 8;
+  INVALID_ARGUMENTS = 9;
+  ALREADY = 10;
+  PROTOCOL_ERROR = 11;
 };
 
 // Represents an error result returned from an asynchronous operation.

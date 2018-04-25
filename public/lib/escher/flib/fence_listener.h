@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef LIB_ESCHER_FLIB_FENCE_LISTENER_H_
+#define LIB_ESCHER_FLIB_FENCE_LISTENER_H_
 
-#include <async/cpp/auto_wait.h>
+#include <lib/async/cpp/wait.h>
+#include <lib/zx/event.h>
 #include <zircon/syscalls/port.h>
-#include <zx/event.h>
 
 #include "lib/escher/flib/fence.h"
 #include "lib/fxl/functional/closure.h"
@@ -38,14 +39,14 @@ class FenceListener {
   const zx::event& event() { return fence_; }
 
  private:
-  async_wait_result_t OnFenceSignalled(zx_status_t status,
-                                       const zx_packet_signal* signal);
+  void OnFenceSignalled(zx_status_t status,
+                        const zx_packet_signal* signal);
 
   void ClearHandler();
 
   zx::event fence_;
 
-  async::AutoWait waiter_;
+  async::Wait waiter_;
   fxl::Closure ready_callback_;
   bool ready_ = false;
 
@@ -53,3 +54,5 @@ class FenceListener {
 };
 
 }  // namespace escher
+
+#endif  // LIB_ESCHER_FLIB_FENCE_LISTENER_H_

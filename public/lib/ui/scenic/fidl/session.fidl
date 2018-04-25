@@ -1,19 +1,13 @@
-// Copyright 2017 The Fuchsia Authors. All rights reserved.
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-module scenic;
+library ui;
 
-import "lib/ui/scenic/fidl/ops.fidl";
-import "lib/ui/scenic/fidl/presentation_info.fidl";
-import "lib/ui/scenic/fidl/types.fidl";
-
+// Client use Sessions to interact with a Mozart instance by enqueuing commands
+// that create or modify resources.
 interface Session {
-  // Enqueue a list of operations, which will not take effect until Present() is
-  // called.  It is allowable to call Enqueue() several times before calling
-  // Present(); the effect is the same as if all operations had been
-  // concatenated into a single Enqueue() call.
-  Enqueue@0(array<Op> op);
+  1: Enqueue(vector<Command> cmds);
 
   // Present all previously enqueued operations.  In order to pipeline the
   // preparation of the resources required to render the scene, two lists of
@@ -83,7 +77,7 @@ interface Session {
   //
   // Together, |acquire_fences| and |release_fences| are intended to allow clients
   // to implement strategies such as double-buffering.  For example, a client
-  // might do the following:
+  // might do the following in the Scenic subsystem:
   //   1) create two Image with resource IDs #1 and #2.
   //   2) create two Materials with resource IDs #3 and #4, which respectively
   //      use Images #1 and #2 as their texture.
@@ -122,113 +116,28 @@ interface Session {
   //
   // TODO(MZ-400): document invariants that apply to |presentation_info|.  Is it
   // strong enough to guarantee that receiving the response means that all
-  // previously-enqueued Ops have been applied?  Or does it need to be stronger,
+  // previously-enqueued Commands have been applied?  Or does it need to be stronger,
   // e.g. that all frames based on previous presentations are completely done,
   // and subsequent frames will be rendered based on the most recent presented
   // content?
-  Present@1(uint64 presentation_time,
-      array<handle<event>> acquire_fences, array<handle<event>> release_fences) =>
-      (PresentationInfo presentation_info);
+  2: Present(uint64 presentation_time,
+      vector<handle<event>> acquire_fences, vector<handle<event>> release_fences) ->
+      (images.PresentationInfo presentation_info);
 
-  // Performs a hit test along the specified ray.
-  //
-  // Returns a list of intersections of tagged nodes between the ray
-  // and the geometry of the subtree of nodes at |node_id|.  Results are
-  // sorted by increasing distance from the ray's origin.  Nodes which are
-  // hit at the same distance are sorted by the sequence they would appear
-  // in a post-order tree traversal of the scene.  Equivalently, the
-  // results are ordered by decreasing hit specificity.
-  //
-  // The session must associate a tag with any nodes it would like to
-  // observe in the result set.  Untagged nodes are still considered in
-  // hit tests and may cause hits to be reported for containing nodes
-  // which are tagged.
-  //
-  // The hit test only considers the currently presented content at
-  // the time of the request.  This means that content pending presentation
-  // may not be considered for hit testing until the scene manager begins
-  // preparing a frame which includes it.
-  //
-  // |ray_origin| is a point in the node's local coordinate system
-  // from which the hit test ray originates.
-  //
-  // |ray_direction| is a vector in the node's local coordinate system
-  // which expresses how the ray propagates from the origin.  It must
-  // be non-zero (otherwise nothing will be hit) but it does not need
-  // to be normalized.
-  //
-  // Returns a null hit array if |node_id| is unknown or not a node.
-  HitTest@2(uint32 node_id, vec3 ray_origin, vec3 ray_direction) =>
-      (array<Hit>? hits);
-
-  // TODO(MZ-404): This API is not finalized and should not be used outside of
-  // Mozart (i.e. ViewManager/RootPresenter) until remaining issues are sorted
-  // out.
-  //
-  // Performs a hit test along the provided ray, into the layer stack of
-  // the engine's first compositor.
-  //
-  // Returns a list of intersections of tagged nodes between the ray
-  // and the geometry of the subtree of nodes at |node_id|.  Results are
-  // sorted by increasing distance from the ray's origin.  Nodes which are
-  // hit at the same distance are sorted by the sequence they would appear
-  // in a post-order tree traversal of the scene.  Equivalently, the
-  // results are ordered by decreasing hit specificity.
-  //
-  // The session must associate a tag with any nodes it would like to
-  // observe in the result set.  Untagged nodes are still considered in
-  // hit tests and may cause hits to be reported for containing nodes
-  // which are tagged.
-  //
-  // The hit test only considers the currently presented content at
-  // the time of the request.  This means that content pending presentation
-  // may not be considered for hit testing until the scene manager begins
-  // preparing a frame which includes it.
-  //
-  // Returns a null hit array if |node_id| is unknown or not a node.
-  //
-  // The |ray_origin| is expected to be in physical screen coordinates.
-  HitTestDeviceRay@3(vec3 ray_origin, vec3 ray_direction) =>
-      (array<Hit>? hits);
-};
-
-// Describes where a hit occurred within the content of a node tagged
-// by this session.
-//
-// To compute the point of intersection within the node's local coordinate
-// system, perform the following calculation using the ray which was
-// originally passed to |Session.HitTest()|.
-//
-//   hit_point = ray.origin + (hit.distance * ray.direction)
-//   local_point = hit.inverse_transform * hit_point
-struct Hit {
-  // The node's tag value.
-  uint32 tag_value;
-
-  // The origin of the ray that was used for the hit test, in the hit
-  // node's coordinate system.
-  vec4 ray_origin;
-
-  // The direction of the ray that was used for the hit test, in the hit
-  // node's coordinate system.
-  vec4 ray_direction;
-
-  // The inverse transformation matrix which maps the coordinate system of
-  // the node at which the hit test was initiated into the local coordinate
-  // system of the node which was hit.
-  mat4 inverse_transform;
-
-  // The distance from the ray's origin to the closest point of intersection
-  // in multiples of the ray's direction vector.
-  float distance;
+  // TODO(MZ-422) Remove these methods from the FIDL; they should just be
+  // exposed to View Manager directly using a C++ interface.
+  3: HitTest(uint32 node_id, gfx.vec3 ray_origin, gfx.vec3 ray_direction) ->
+      (vector<gfx.Hit>? hits);
+  4: HitTestDeviceRay(gfx.vec3 ray_origin, gfx.vec3 ray_direction) ->
+      (vector<gfx.Hit>? hits);
 };
 
 // Listens for events which occur within the session.
 interface SessionListener {
   // Called when an error has occurred and the session will be torn down.
-  OnError@0(string error);
+  1: OnError(string error);
 
   // Called to deliver a batch of one or more events to the listener.
-  // Use |SetEventMaskOp| to enable event delivery for a resource.
-  OnEvent@1(array<Event> events);
+  // Use |SetEventMaskCommand| to enable event delivery for a resource.
+  2: OnEvent(vector<Event> events);
 };

@@ -2,45 +2,41 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//garnet/public/lib/fidl/fidl.gni")
+import("//garnet/public/lib/fidl/build/fidl/fidl.gni")
 
 fidl("fidl") {
+  name = "media"
+
+  sdk_candidate = true
+
   sources = [
     "audio_capturer.fidl",
-    "audio_policy_service.fidl",
     "audio_renderer.fidl",
     "audio_server.fidl",
-    "logs/media_demux_channel.fidl",
-    "logs/media_packet_consumer_channel.fidl",
-    "logs/media_packet_producer_channel.fidl",
-    "logs/media_player_channel.fidl",
-    "logs/media_renderer_channel.fidl",
-    "logs/media_sink_channel.fidl",
-    "logs/media_source_channel.fidl",
-    "logs/media_timeline_control_point_channel.fidl",
-    "logs/media_type_converter_channel.fidl",
     "media_capturer.fidl",
-    "media_metadata.fidl",
-    "media_player.fidl",
     "media_renderer.fidl",
     "media_result.fidl",
-    "media_service.fidl",
-    "media_sink.fidl",
-    "media_source.fidl",
     "media_transport.fidl",
-    "media_type_converter.fidl",
     "media_types.fidl",
-    "net_media_player.fidl",
+    "timeline_controller.fidl",
+    "timelines.fidl",
+  ]
+}
+
+fidl("media_player") {
+  name = "media_player"
+
+  sources = [
+    "media_metadata.fidl",
+    "media_player.fidl",
+    "media_source.fidl",
     "net_media_service.fidl",
     "problem.fidl",
     "seeking_reader.fidl",
-    "timeline_controller.fidl",
-    "timelines.fidl",
-    "tts_service.fidl",
-    "video_renderer.fidl",
   ]
 
   public_deps = [
-    "//garnet/public/lib/ui/views/fidl",
+    ":fidl",
+    "//garnet/public/lib/ui/views/fidl:v1",
   ]
 }

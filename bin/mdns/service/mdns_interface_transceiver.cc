@@ -11,13 +11,15 @@
 
 #include <iostream>
 
+#include <lib/async/cpp/task.h>
+#include <lib/async/default.h>
+
 #include "garnet/bin/mdns/service/dns_formatting.h"
 #include "garnet/bin/mdns/service/dns_reading.h"
 #include "garnet/bin/mdns/service/dns_writing.h"
 #include "garnet/bin/mdns/service/mdns_addresses.h"
 #include "garnet/bin/mdns/service/mdns_interface_transceiver_v4.h"
 #include "garnet/bin/mdns/service/mdns_interface_transceiver_v6.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/files/unique_fd.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/time/time_delta.h"
@@ -178,8 +180,8 @@ void MdnsInterfaceTransceiver::InboundReady(zx_status_t status,
   if (result < 0) {
     FXL_LOG(ERROR) << "Failed to recvfrom, errno " << errno;
     // Wait a bit before trying again to avoid spamming the log.
-    fsl::MessageLoop::GetCurrent()->task_runner()->PostDelayedTask(
-        [this]() { WaitForInbound(); }, fxl::TimeDelta::FromSeconds(10));
+    async::PostDelayedTask(async_get_default(), [this]() { WaitForInbound(); },
+                           zx::sec(10));
     return;
   }
 
@@ -251,34 +253,17 @@ std::shared_ptr<DnsResource> MdnsInterfaceTransceiver::MakeAddressResource(
 void MdnsInterfaceTransceiver::FixUpAddresses(
     std::vector<std::shared_ptr<DnsResource>>* resources) {
   for (auto iter = resources->begin(); iter != resources->end(); ++iter) {
-    if ((*iter)->type_ == DnsType::kA || (*iter)->type_ == DnsType::kAaaa) {
-      *iter = GetAddressResource((*iter)->name_.dotted_string_);
+    // Agents shouldn't produce AAAA resources, just A resource placeholders.
+    FXL_DCHECK((*iter)->type_ != DnsType::kAaaa);
 
-      auto next_iter = iter;
-      ++next_iter;
-
-      bool next_is_address = next_iter != resources->end() &&
-                             ((*next_iter)->type_ == DnsType::kA ||
-                              (*next_iter)->type_ == DnsType::kAaaa);
+    if ((*iter)->type_ == DnsType::kA) {
+      auto name = (*iter)->name_.dotted_string_;
+      *iter = GetAddressResource(name);
 
       if (alternate_address_.is_valid()) {
-        auto resource =
-            GetAlternateAddressResource((*iter)->name_.dotted_string_);
-        if (next_is_address) {
-          // There's already a second address record. Copy the alternate address
-          // record over it.
-          *next_iter = resource;
-        } else {
-          // There's no second address record. Insert the alternate address
-          // record after the first one.
-          resources->insert(next_iter, resource);
-        }
-      } else if (next_is_address) {
-        // We don't need this second address record.
-        resources->erase(next_iter);
+        // Insert the alternate address record after the first one.
+        iter = resources->insert(++iter, GetAlternateAddressResource(name));
       }
-
-      break;
     }
   }
 }

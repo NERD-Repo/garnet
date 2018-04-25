@@ -5,18 +5,13 @@
 import("//build/package.gni")
 
 package("escher_examples") {
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
-    "sketchy",
     "waterfall",
   ]
 
   binaries = [
-    {
-      name = "sketchy_demo"
-      dest = "sketchy"
-    },
     {
       name = "waterfall"
     },

@@ -5,6 +5,7 @@
 #ifndef PLATFORM_BUFFER_H
 #define PLATFORM_BUFFER_H
 
+#include "magma_common_defs.h"
 #include "magma_util/dlog.h"
 #include <memory>
 
@@ -16,8 +17,6 @@ public:
     static std::unique_ptr<PlatformBuffer> Create(uint64_t size, const char* name);
     // Import takes ownership of the handle.
     static std::unique_ptr<PlatformBuffer> Import(uint32_t handle);
-    // ImportFromFd does not close the given file descriptor.
-    static std::unique_ptr<PlatformBuffer> ImportFromFd(int fd);
 
     virtual ~PlatformBuffer() {}
 
@@ -30,9 +29,6 @@ public:
     // on success, duplicate of the underlying handle which is owned by the caller
     virtual bool duplicate_handle(uint32_t* handle_out) const = 0;
 
-    // creates a new fd which can be used to import this buffer.
-    virtual bool GetFd(int* fd_out) const = 0;
-
     // ensures the specified pages are backed by real memory
     // note: the implementation of this function is required to be threadsafe
     virtual bool CommitPages(uint32_t start_page_index, uint32_t page_count) const = 0;
@@ -42,16 +38,15 @@ public:
     virtual bool MapCpu(void** addr_out, uintptr_t alignment = 0) = 0;
     virtual bool UnmapCpu() = 0;
 
-    virtual bool PinPages(uint32_t start_page_index, uint32_t page_count) = 0;
-    virtual bool UnpinPages(uint32_t start_page_index, uint32_t page_count) = 0;
-
-    virtual bool MapPageRangeBus(uint32_t start_page_index, uint32_t page_count,
-                                 uint64_t addr_out[]) = 0;
-    virtual bool UnmapPageRangeBus(uint32_t start_page_index, uint32_t page_count) = 0;
+    virtual bool MapAtCpuAddr(uint64_t addr) = 0;
 
     virtual bool CleanCache(uint64_t offset, uint64_t size, bool invalidate) = 0;
 
+    virtual bool SetCachePolicy(magma_cache_policy_t cache_policy) = 0;
+
     static bool IdFromHandle(uint32_t handle, uint64_t* id_out);
+
+    static uint64_t MinimumMappableAddress();
 };
 
 } // namespace magma

@@ -17,6 +17,17 @@ import (
 	"amber/publish"
 )
 
+type RepeatedArg []string
+
+func (r *RepeatedArg) Set(s string) error {
+	*r = append(*r, s)
+	return nil
+}
+
+func (r *RepeatedArg) String() string {
+	return strings.Join(*r, " ")
+}
+
 type manifestEntry struct {
 	localPath  string
 	remotePath string
@@ -27,29 +38,33 @@ var fuchsiaBuildDir = os.Getenv("FUCHSIA_BUILD_DIR")
 const serverBase = "amber-files"
 
 var (
-	usage = "usage: publish (-p|-b|-m) [-k=<keys_dir>] [-n=<name>] [-r=<repo_path>] -f=file "
-	// TODO(jmatt) support publishing batches of files instead of just singles
+	filePaths    = RepeatedArg{}
+	usage        = "usage: publish (-p|-b|-m) [-k=<keys_dir>] [-n=<name>] [-r=<repo_path>] -f=file "
 	tufFile      = flag.Bool("p", false, "Publish a package.")
 	packageSet   = flag.Bool("ps", false, "Publish a set of packages from a manifest.")
 	regFile      = flag.Bool("b", false, "Publish a content blob.")
 	blobSet      = flag.Bool("bs", false, "Publish a set of blobs from a manifest.")
 	manifestFile = flag.Bool("m", false, "Publish a the contents of a manifest as as content blobs.")
-	filePath     = flag.String("f", "", "Path of the file to publish")
 	name         = flag.String("n", "", "Name/path used for the published file. This only applies to '-p', package files If not supplied, the relative path supplied to '-f' will be used.")
-	repoPath     = flag.String("r", filepath.Join(os.Getenv("FUCHSIA_BUILD_DIR"), serverBase), "Path to the TUF repository directory.")
+	repoPath     = flag.String("r", "", "Path to the TUF repository directory.")
 	keySrc       = flag.String("k", fuchsiaBuildDir, "Directory containing the signing keys.")
+	verbose      = flag.Bool("v", false, "Print out more informational messages.")
 )
 
 func main() {
+	flag.Var(&filePaths, "f", "Path(s) of the file(s) to publish")
 	flag.CommandLine.Usage = func() {
 		fmt.Println(usage)
 		flag.CommandLine.PrintDefaults()
 	}
 	flag.Parse()
 
-	if *repoPath == serverBase {
-		log.Fatal("Either set $FUCHSIA_BUILD_DIR or supply a path with -r.")
-		return
+	if *repoPath == "" {
+		if buildDir, ok := os.LookupEnv("FUCHSIA_BUILD_DIR"); ok {
+			*repoPath = filepath.Join(buildDir, serverBase)
+		} else {
+			log.Fatal("Either set $FUCHSIA_BUILD_DIR or supply a path with -r.")
+		}
 	}
 
 	modeCheck := false
@@ -66,13 +81,20 @@ func main() {
 		log.Fatal("A mode, -p, -ps, -b, or -m must be selected")
 	}
 
-	if _, e := os.Stat(*filePath); e != nil {
-		log.Fatal("File path must be valid")
-		return
+	if len(filePaths) == 0 {
+		log.Fatal("No file path supplied.")
+	}
+	for _, k := range filePaths {
+		if _, e := os.Stat(k); e != nil {
+			log.Fatalf("File path %q is not valid.\n", k)
+			return
+		}
 	}
 
-	if e := os.MkdirAll(*repoPath, os.ModePerm); e != nil {
-		log.Fatalf("Repository path %q does not exist and could not be created.\n",
+	// allow mkdir to fail, but check if the path exists afterward.
+	os.MkdirAll(*repoPath, os.ModePerm)
+	if _, err := os.Stat(*repoPath); err != nil {
+		log.Fatalf("Repository path %q does not exist or could not be read.\n",
 			*repoPath)
 	}
 
@@ -83,7 +105,10 @@ func main() {
 	}
 
 	if *packageSet {
-		f, err := os.Open(*filePath)
+		if len(filePaths) != 1 {
+			log.Fatalf("Too many file paths supplied.")
+		}
+		f, err := os.Open(filePaths[0])
 		if err != nil {
 			log.Fatalf("error reading package set manifest: %s", err)
 		}
@@ -105,7 +130,10 @@ func main() {
 			log.Fatalf("error committing repository updates: %s", err)
 		}
 	} else if *blobSet {
-		f, err := os.Open(*filePath)
+		if len(filePaths) != 1 {
+			log.Fatalf("Too many file paths supplied.")
+		}
+		f, err := os.Open(filePaths[0])
 		if err != nil {
 			log.Fatalf("error reading package set manifest: %s", err)
 		}
@@ -128,10 +156,13 @@ func main() {
 		}
 
 	} else if *tufFile {
-		if len(*name) == 0 {
-			name = filePath
+		if len(filePaths) != 1 {
+			log.Fatalf("Too many file paths supplied.")
 		}
-		if err = repo.AddPackageFile(*filePath, *name); err != nil {
+		if len(*name) == 0 {
+			name = &filePaths[0]
+		}
+		if err = repo.AddPackageFile(filePaths[0], *name); err != nil {
 			log.Fatalf("Problem adding signed file: %s\n", err)
 		}
 		if err = repo.CommitUpdates(); err != nil {
@@ -142,15 +173,18 @@ func main() {
 			log.Fatal("Name is not a valid argument for content addressed files")
 			return
 		}
-		//var filename string
-		if *name, err = repo.AddContentBlob(*filePath); err != nil {
-			log.Fatalf("Error adding regular file: %s\n", err)
-			return
+		for _, path := range filePaths {
+			//var filename string
+			if *name, err = repo.AddContentBlob(path); err != nil && err != os.ErrExist {
+				log.Fatalf("Error adding regular file: %s %s\n", path, err)
+				return
+			}
 		}
-
-		fmt.Printf("Added file as %s\n", *name)
 	} else {
-		if err = publishManifest(*filePath, repo); err != nil {
+		if len(filePaths) != 1 {
+			log.Fatalf("Too many file paths supplied.")
+		}
+		if err = publishManifest(filePaths[0], repo); err != nil {
 			fmt.Printf("Error processing manifest: %s\n", err)
 			os.Exit(1)
 		}
@@ -169,13 +203,15 @@ func publishManifest(manifestPath string, repo *publish.UpdateRepo) error {
 	}
 
 	dupes := make(map[string]string, len(blobIndex))
-	for p, m := range blobIndex {
-		fmt.Printf("File %q stored as %s\n", p, m)
-		dupes[m] = p
-	}
+	if *verbose {
+		for p, m := range blobIndex {
+			fmt.Printf("File %q stored as %s\n", p, m)
+			dupes[m] = p
+		}
 
-	fmt.Printf("Blobs\n  examined: %d\n  added: %d\n  duplicates: %d\n",
-		len(manifest), len(addedBlobs), len(manifest)-len(dupes))
+		fmt.Printf("Blobs\n  examined: %d\n  added: %d\n  duplicates: %d\n",
+			len(manifest), len(addedBlobs), len(manifest)-len(dupes))
+	}
 	return nil
 }
 
@@ -220,25 +256,23 @@ func readManifest(manifestPath string) ([]manifestEntry, error) {
 
 	for {
 		l, err := rdr.ReadString('\n')
-		if err == io.EOF {
-			if len(strings.TrimSpace(l)) == 0 {
-				return entries, nil
-			}
-			err = nil
-		}
-
-		if err != nil {
+		if err != nil && err != io.EOF {
 			return entries, err
 		}
 
 		l = strings.TrimSpace(l)
-		parts := strings.SplitN(l, "=", 2)
-		if len(parts) < 2 {
-			continue
+		parts := strings.Split(l, "=")
+		if len(parts) == 2 {
+			entries = append(entries,
+				manifestEntry{remotePath: parts[0], localPath: parts[1]})
+		} else if len(parts) > 2 {
+			fmt.Printf("Line %q had unexpected token count %d, expected 2\n", l,
+				len(parts))
 		}
 
-		entries = append(entries,
-			manifestEntry{remotePath: parts[0], localPath: parts[1]})
+		if err == io.EOF {
+			break
+		}
 	}
 
 	return entries, nil

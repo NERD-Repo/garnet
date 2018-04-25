@@ -5,35 +5,41 @@
 #ifndef GARNET_LIB_MACHINA_VIRTIO_CONSOLE_H_
 #define GARNET_LIB_MACHINA_VIRTIO_CONSOLE_H_
 
-#include <iostream>
-
+#include <lib/async/cpp/wait.h>
+#include <lib/zx/socket.h>
 #include <virtio/console.h>
+#include <virtio/virtio_ids.h>
+#include <array>
 
-#include "garnet/lib/machina/virtio.h"
+#include "garnet/lib/machina/virtio_device.h"
+#include "garnet/lib/machina/virtio_queue_waiter.h"
 
 namespace machina {
 
-class VirtioConsole : public VirtioDevice {
+static constexpr uint16_t kVirtioConsoleMaxNumPorts = 1;
+static_assert(kVirtioConsoleMaxNumPorts > 0,
+              "virtio-console must have at least 1 port");
+
+static constexpr uint16_t kVirtioConsoleNumQueues =
+    (kVirtioConsoleMaxNumPorts + 1) * 2;
+static_assert(kVirtioConsoleNumQueues % 2 == 0,
+              "There must be a queue for both RX and TX");
+
+class VirtioConsole : public VirtioDeviceBase<VIRTIO_ID_CONSOLE,
+                                              kVirtioConsoleNumQueues,
+                                              virtio_console_config_t> {
  public:
-  VirtioConsole(const PhysMem& phys_mem);
-  ~VirtioConsole() override;
+  VirtioConsole(const PhysMem&, async_t* async, zx::socket socket);
+  ~VirtioConsole();
 
   zx_status_t Start();
 
-  virtio_queue_t* rx_queue() { return &queues_[0]; }
-  virtio_queue_t* tx_queue() { return &queues_[1]; }
-
  private:
-  static const uint16_t kNumQueues = 2;
-  static_assert(kNumQueues % 2 == 0,
-                "There must be a queue for both RX and TX");
+  class Port;
 
-  zx_status_t Transmit(virtio_queue_t* queue, uint16_t head, uint32_t* used);
-
-  virtio_queue_t queues_[kNumQueues];
-  virtio_console_config_t config_ = {};
-
-  std::ostream& ostream_ = std::cout;
+  fbl::Mutex mutex_;
+  std::array<std::unique_ptr<Port>, kVirtioConsoleMaxNumPorts> ports_
+      __TA_GUARDED(mutex_);
 };
 
 }  // namespace machina

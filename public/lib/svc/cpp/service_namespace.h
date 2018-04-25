@@ -8,25 +8,25 @@
 #include <fbl/ref_ptr.h>
 #include <fs/managed-vfs.h>
 #include <fs/pseudo-dir.h>
-#include <zx/channel.h>
+#include <lib/zx/channel.h>
 
 #include <functional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
-#include "lib/app/fidl/service_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 
-namespace app {
+namespace component {
 
 // ServiceNamespace lets a client to publish services in the form of a
 // directory and provides compatibility with ServiceProvider.
 //
 // This class will be deprecated and removed once ServiceProvider is replaced
 // by direct use of directories for publishing and discoverying services.
-class ServiceNamespace : public app::ServiceProvider {
+class ServiceNamespace : public component::ServiceProvider {
  public:
   // |ServiceConnector| is the generic, type-unsafe interface for objects used
   // by |ServiceNamespace| to connect generic "interface requests" (i.e.,
@@ -49,7 +49,9 @@ class ServiceNamespace : public app::ServiceProvider {
   // interface request. Note: If |request| is not valid ("pending"), then the
   // object will be put into an unbound state.
   explicit ServiceNamespace(
-      fidl::InterfaceRequest<app::ServiceProvider> request);
+      fidl::InterfaceRequest<component::ServiceProvider> request);
+
+  explicit ServiceNamespace(fbl::RefPtr<fs::PseudoDir> directory);
 
   ~ServiceNamespace() override;
 
@@ -59,7 +61,7 @@ class ServiceNamespace : public app::ServiceProvider {
   // Binds this service provider implementation to the given interface request.
   // Multiple bindings may be added.  They are automatically removed when closed
   // remotely.
-  void AddBinding(fidl::InterfaceRequest<app::ServiceProvider> request);
+  void AddBinding(fidl::InterfaceRequest<component::ServiceProvider> request);
 
   // Disconnect this service provider implementation and put it in a state where
   // it can be rebound to a new request (i.e., restores this object to an
@@ -104,20 +106,9 @@ class ServiceNamespace : public app::ServiceProvider {
     RemoveServiceForName(service_name);
   }
 
-  // Serves a directory containing these services on the given channel.
-  //
-  // Returns true on success.
-  bool ServeDirectory(zx::channel channel);
-
-  // Retuns a file descriptor to a directory containing these services.
-  int OpenAsFileDescriptor();
-
-  // Mounts this service namespace at the given path in the file system.
-  bool MountAtPath(const char* path);
-
  private:
-  // Overridden from |app::ServiceProvider|:
-  void ConnectToService(const fidl::String& service_name,
+  // Overridden from |component::ServiceProvider|:
+  void ConnectToService(fidl::StringPtr service_name,
                         zx::channel channel) override;
 
   void Connect(fbl::StringPiece name, zx::channel channel);
@@ -125,13 +116,12 @@ class ServiceNamespace : public app::ServiceProvider {
 
   std::unordered_map<std::string, ServiceConnector> name_to_service_connector_;
 
-  fs::ManagedVfs vfs_;
   fbl::RefPtr<fs::PseudoDir> directory_;
-  fidl::BindingSet<app::ServiceProvider> bindings_;
+  fidl::BindingSet<component::ServiceProvider> bindings_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(ServiceNamespace);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // LIB_SVC_CPP_SERVICE_NAMESPACE_H_

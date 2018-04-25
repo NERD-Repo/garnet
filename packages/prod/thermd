@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "thermd": "//garnet/bin/thermd"
+    }
+}

@@ -14,14 +14,14 @@
 #include <iostream>
 #include <limits>
 
-#include <async/default.h>
-#include <async/cpp/loop.h>
 #include <fbl/string_printf.h>
 #include <fbl/unique_fd.h>
+#include <lib/async-loop/cpp/loop.h>
+#include <lib/async/default.h>
+#include <lib/zx/event.h>
+#include <lib/zx/time.h>
+#include <lib/zx/timer.h>
 #include <zircon/status.h>
-#include <zx/event.h>
-#include <zx/time.h>
-#include <zx/timer.h>
 
 #include "bt_intel.h"
 
@@ -317,25 +317,28 @@ bool IntelFirmwareLoader::RunCommandAndExpect(
 
   // We use a 5 second timeout for each event.
   zx::duration evt_timeout = zx::sec(5);
-  timeout.set(zx::deadline_after(evt_timeout), zx::duration());
+  timeout.set(zx::deadline_after(evt_timeout), zx::nsec(0));
 
   while (!failed && events.size() > 0) {
     size_t remaining_evt_count = events.size();
-    async_loop_run(async_get_default(), zx_deadline_after(ZX_SEC(1)), true);
+    // TODO(NET-680): Don't use the message loop modally.
+    async_loop_run(async_loop_from_dispatcher(async_get_default()),
+                   zx_deadline_after(ZX_SEC(1)), true);
 
     if (events.size() < remaining_evt_count) {
       // The expected event was received. Clear the old timeout and set up a new
       // one for the next event.
       timeout.cancel();
       if (events.size() > 0u) {
-        timeout.set(zx::deadline_after(evt_timeout), zx::duration());
+        timeout.set(zx::deadline_after(evt_timeout), zx::nsec(0));
       }
       continue;
     }
 
     // The expected event was not received in this iteration of the loop. Check
     // to see if this was due to a timeout.
-    zx_status_t status = timeout.wait_one(ZX_TIMER_SIGNALED, zx::time(), nullptr);
+    zx_status_t status =
+        timeout.wait_one(ZX_TIMER_SIGNALED, zx::time(), nullptr);
     if (status == ZX_OK) {
       std::cerr << "Timed out while waiting for event" << std::endl;
       return false;

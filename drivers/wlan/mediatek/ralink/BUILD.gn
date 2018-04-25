@@ -13,16 +13,21 @@ driver_module("ralink_driver") {
     "device.cpp",
     "device.h",
     "driver.cpp",
+    "driver.h",
     "ralink.h",
     "register.h",
   ]
 
   deps = [
+    "//garnet/drivers/wlan/lib",
     "//garnet/lib/wlan/common",
-    "//zircon/public/lib/ddk",
+    "//garnet/lib/wlan/fidl",
+    "//garnet/lib/wlan/mlme",
+    "//garnet/lib/wlan/protocol",
+    "//zircon/public/lib/async-cpp",
+    "//zircon/public/lib/async-loop-cpp",
     "//zircon/public/lib/driver",
     "//zircon/public/lib/sync",
-    "//zircon/public/lib/ddktl",
     "//zircon/public/lib/fbl",
     "//zircon/public/lib/zx",
   ]
@@ -40,7 +45,7 @@ copy("ralink-firmware") {
 }
 
 package("ralink") {
-  system_image = true
+  deprecated_system_image = true
 
   deps = [
     ":ralink_driver",

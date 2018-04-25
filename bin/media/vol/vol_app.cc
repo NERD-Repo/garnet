@@ -2,25 +2,28 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <poll.h>
-
 #include <cstdio>
 #include <iomanip>
 #include <iostream>
 
+#include <fuchsia/cpp/audio_policy.h>
+#include <lib/async-loop/cpp/loop.h>
+#include <lib/async/cpp/task.h>
+
 #include "lib/app/cpp/application_context.h"
+#include "lib/fidl/cpp/optional.h"
 #include "lib/fsl/tasks/fd_waiter.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/command_line.h"
+#include "lib/fxl/functional/closure.h"
 #include "lib/media/audio/perceived_level.h"
-#include "lib/media/fidl/audio_policy_service.fidl.h"
+
+using audio_policy::AudioPolicyStatus;
 
 namespace media {
 namespace {
 
 static constexpr float kGainUnchanged = 1.0f;
 static constexpr float kUnityGain = 0.0f;
-static constexpr float kMutedGain = -160.0f;
 static constexpr int kLevelMax = 25;
 static constexpr char kClearEol[] = "\x1b[K";
 static constexpr char kHideCursor[] = "\x1b[?25l";
@@ -52,8 +55,12 @@ std::ostream& operator<<(std::ostream& os, const AudioPolicyStatus& value) {
 
 class VolApp {
  public:
-  VolApp(int argc, const char** argv)
-      : application_context_(app::ApplicationContext::CreateFromStartupInfo()) {
+  VolApp(int argc, const char** argv, fxl::Closure quit_callback)
+      : application_context_(
+            component::ApplicationContext::CreateFromStartupInfo()),
+        quit_callback_(quit_callback) {
+    FXL_DCHECK(quit_callback);
+
     fxl::CommandLine command_line = fxl::CommandLineFromArgcArgv(argc, argv);
 
     if (command_line.HasOption("help")) {
@@ -91,7 +98,8 @@ class VolApp {
     }
 
     audio_policy_service_ =
-        application_context_->ConnectToEnvironmentService<AudioPolicyService>();
+        application_context_
+            ->ConnectToEnvironmentService<audio_policy::AudioPolicy>();
 
     if (mute_) {
       audio_policy_service_->SetSystemAudioMute(true);
@@ -107,8 +115,7 @@ class VolApp {
 
     HandleStatus();
     audio_policy_service_->GetStatus(
-        AudioPolicyService::kInitialStatus,
-        [this](uint64_t version, AudioPolicyStatusPtr status) {});
+        kInitialStatus, [this](uint64_t version, AudioPolicyStatus status) {});
 
     if (interactive_) {
       std::cout << "\ninteractive mode:\n";
@@ -136,7 +143,7 @@ class VolApp {
     std::cout << "    enter        quit\n";
     std::cout << "\n";
 
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    quit_callback_();
   }
 
   bool Parse(const std::string& string_value, float* float_out) {
@@ -146,8 +153,8 @@ class VolApp {
     return (istream >> *float_out) && istream.eof();
   }
 
-  void HandleStatus(uint64_t version = AudioPolicyService::kInitialStatus,
-                    AudioPolicyStatusPtr status = nullptr) {
+  void HandleStatus(uint64_t version = kInitialStatus,
+                    audio_policy::AudioPolicyStatusPtr status = nullptr) {
     if (status) {
       system_audio_gain_db_ = status->system_audio_gain_db;
       system_audio_muted_ = status->system_audio_muted;
@@ -160,14 +167,14 @@ class VolApp {
         }
       } else {
         std::cout << *status << std::endl;
-        fsl::MessageLoop::GetCurrent()->PostQuitTask();
+        quit_callback_();
         return;
       }
     }
 
     audio_policy_service_->GetStatus(
-        version, [this](uint64_t version, AudioPolicyStatusPtr status) {
-          HandleStatus(version, std::move(status));
+        version, [this](uint64_t version, AudioPolicyStatus status) {
+          HandleStatus(version, fidl::MakeOptional(std::move(status)));
         });
   }
 
@@ -205,7 +212,7 @@ class VolApp {
       case '\n':
       case 'q':
       case 'Q':
-        fsl::MessageLoop::GetCurrent()->PostQuitTask();
+        quit_callback_();
         std::cout << kShowCursor << "\n" << std::endl;
         return;
       default:
@@ -215,8 +222,9 @@ class VolApp {
     WaitForKeystroke();
   }
 
-  std::unique_ptr<app::ApplicationContext> application_context_;
-  AudioPolicyServicePtr audio_policy_service_;
+  std::unique_ptr<component::ApplicationContext> application_context_;
+  fxl::Closure quit_callback_;
+  audio_policy::AudioPolicyPtr audio_policy_service_;
   bool interactive_ = true;
   bool mute_ = false;
   bool unmute_ = false;
@@ -230,8 +238,10 @@ class VolApp {
 }  // namespace media
 
 int main(int argc, const char** argv) {
-  fsl::MessageLoop loop;
-  media::VolApp app(argc, argv);
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
+  media::VolApp app(argc, argv, [&loop]() {
+    async::PostTask(loop.async(), [&loop]() { loop.Quit(); });
+  });
   loop.Run();
   return 0;
 }

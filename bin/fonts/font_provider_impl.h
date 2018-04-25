@@ -5,14 +5,14 @@
 #ifndef GARNET_BIN_FONTS_FONT_PROVIDER_IMPL_H_
 #define GARNET_BIN_FONTS_FONT_PROVIDER_IMPL_H_
 
-#include <zx/vmo.h>
-
 #include <unordered_map>
 #include <vector>
 
+#include <lib/zx/vmo.h>
+
+#include <fuchsia/cpp/fonts.h>
 #include "garnet/bin/fonts/font_family.h"
-#include "lib/fonts/fidl/font_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 
 namespace fonts {
@@ -30,8 +30,7 @@ class FontProviderImpl : public FontProvider {
 
  private:
   // |FontProvider| implementation:
-  void GetFont(FontRequestPtr request,
-               const GetFontCallback& callback) override;
+  void GetFont(FontRequest request, GetFontCallback callback) override;
 
   // Load fonts. Returns true if all were loaded.
   bool LoadFontsInternal(const char path[], bool fallback_required);

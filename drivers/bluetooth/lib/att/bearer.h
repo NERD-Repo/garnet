@@ -8,14 +8,17 @@
 #include <memory>
 #include <unordered_map>
 
+#include <lib/async/cpp/task.h>
+
 #include "garnet/drivers/bluetooth/lib/att/att.h"
 #include "garnet/drivers/bluetooth/lib/att/packet.h"
+#include "garnet/drivers/bluetooth/lib/att/status.h"
 #include "garnet/drivers/bluetooth/lib/common/byte_buffer.h"
-#include "garnet/drivers/bluetooth/lib/common/cancelable_task.h"
 #include "garnet/drivers/bluetooth/lib/common/linked_list.h"
 #include "garnet/drivers/bluetooth/lib/common/optional.h"
 #include "garnet/drivers/bluetooth/lib/common/packet_view.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/channel.h"
+#include "garnet/drivers/bluetooth/lib/l2cap/scoped_channel.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/sdu.h"
 
 #include "lib/fxl/functional/cancelable_callback.h"
@@ -24,7 +27,6 @@
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_counted.h"
 #include "lib/fxl/synchronization/thread_checker.h"
-#include "lib/fxl/tasks/task_runner.h"
 
 namespace btlib {
 namespace att {
@@ -46,11 +48,9 @@ namespace att {
 // thread. All callbacks will be invoked on a Bearer's creation thread.
 class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
  public:
-  inline static fxl::RefPtr<Bearer> Create(
-      std::unique_ptr<l2cap::Channel>&& chan,
-      uint32_t transaction_timeout_ms = kDefaultTransactionTimeoutMs) {
-    return fxl::AdoptRef(new Bearer(std::move(chan), transaction_timeout_ms));
-  }
+  // Creates a new ATT Bearer. Returns nullptr if |chan| cannot be activated.
+  // This can happen if the link is closed.
+  static fxl::RefPtr<Bearer> Create(fbl::RefPtr<l2cap::Channel> chan);
 
   // Returns true if the underlying channel is open.
   bool is_open() const { return static_cast<bool>(chan_); }
@@ -111,8 +111,7 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
   // Returns false if |pdu| is malformed or does not correspond to a request or
   // indication.
   using TransactionCallback = std::function<void(const PacketReader& packet)>;
-  using ErrorCallback = std::function<
-      void(bool timeout, ErrorCode protocol_error, Handle attr_in_error)>;
+  using ErrorCallback = std::function<void(Status, Handle attr_in_error)>;
   bool StartTransaction(common::ByteBufferPtr pdu,
                         const TransactionCallback& callback,
                         const ErrorCallback& error_callback);
@@ -156,17 +155,14 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
   // Ends a request transaction with an error response.
   bool ReplyWithError(TransactionId id, Handle handle, ErrorCode error_code);
 
-  // Sets the transaction timeout interval. This is intended for unit tests.
-  void set_transaction_timeout_ms(uint32_t value) {
-    FXL_DCHECK(value);
-    transaction_timeout_ms_ = value;
-  }
-
  private:
   FRIEND_REF_COUNTED_THREAD_SAFE(Bearer);
 
-  Bearer(std::unique_ptr<l2cap::Channel> chan, uint32_t transaction_timeout_ms);
+  explicit Bearer(fbl::RefPtr<l2cap::Channel> chan);
   ~Bearer();
+
+  // Returns false if activation fails. This is called by the factory method.
+  bool Activate();
 
   // Represents a locally initiated pending request or indication transaction.
   struct PendingTransaction : common::LinkedListable<PendingTransaction> {
@@ -203,6 +199,8 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
     TransactionQueue() = default;
     ~TransactionQueue() = default;
 
+    TransactionQueue(TransactionQueue&& other);
+
     // Returns the transaction that has been sent to the peer and is currently
     // pending completion.
     inline PendingTransaction* current() const { return current_.get(); }
@@ -214,7 +212,7 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
     // Tries to initiate the next transaction. Sends the PDU over |chan| if
     // successful.
     void TrySendNext(l2cap::Channel* chan,
-                     fxl::Closure timeout_cb,
+                     async::Task::Handler timeout_cb,
                      uint32_t timeout_ms);
 
     // Adds |next| to the transaction queue.
@@ -223,13 +221,13 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
     // Resets the contents of this queue to their default state.
     void Reset();
 
-    // Invokes the error callbacks of all transactions.
-    void InvokeErrorAll(bool timeout, ErrorCode error_code);
+    // Invokes the error callbacks of all transactions with |status|.
+    void InvokeErrorAll(Status status);
 
    private:
     common::LinkedList<PendingTransaction> queue_;
     PendingTransactionPtr current_;
-    common::CancelableTask timeout_task_;
+    async::Task timeout_task_;
   };
 
   bool SendInternal(common::ByteBufferPtr pdu,
@@ -278,7 +276,7 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
   void OnChannelClosed();
   void OnRxBFrame(const l2cap::SDU& sdu);
 
-  std::unique_ptr<l2cap::Channel> chan_;
+  l2cap::ScopedChannel chan_;
   uint16_t mtu_;
   uint16_t preferred_mtu_;
   uint16_t min_mtu_;
@@ -286,12 +284,11 @@ class Bearer final : public fxl::RefCountedThreadSafe<Bearer> {
   // Callback passed to l2cap::Channel::OnRxBFrame().
   fxl::CancelableCallback<void(const l2cap::SDU& sdu)> rx_task_;
 
-  // Channel closed callback.
-  fxl::Closure closed_cb_;
+  // Callback that wraps our internal OnChannelClosed handler.
+  fxl::CancelableClosure chan_closed_cb_;
 
-  // The timeout interval (in milliseconds) used for local initiated ATT
-  // transactions.
-  uint32_t transaction_timeout_ms_;
+  // Channel closed callback assigned to us via set_closed_callback().
+  fxl::Closure closed_cb_;
 
   // The state of outgoing ATT requests and indications
   TransactionQueue request_queue_;

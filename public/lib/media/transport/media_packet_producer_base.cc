@@ -12,8 +12,7 @@ MediaPacketProducerBase::MediaPacketProducerBase()
     : allocator_(ZX_VM_FLAG_PERM_READ | ZX_VM_FLAG_PERM_WRITE,
                  ZX_RIGHTS_BASIC | ZX_RIGHT_READ | ZX_RIGHT_MAP) {
   // No demand initially.
-  demand_.min_packets_outstanding = 0;
-  demand_.min_pts = MediaPacket::kNoTimestamp;
+  ResetDemand();
 }
 
 MediaPacketProducerBase::~MediaPacketProducerBase() {
@@ -33,8 +32,6 @@ void MediaPacketProducerBase::Connect(
   FXL_DCHECK_CREATION_THREAD_IS_CURRENT(thread_checker_);
   FXL_DCHECK(consumer);
 
-  FLOG(log_channel_, ConnectedTo(FLOG_PTR_KOID(consumer)));
-
   allocator_.Reset();
 
   consumer_ = std::move(consumer);
@@ -47,9 +44,13 @@ void MediaPacketProducerBase::Connect(
   callback();
 }
 
+void MediaPacketProducerBase::Disconnect() {
+  consumer_.Unbind();
+  ResetDemand();
+}
+
 void MediaPacketProducerBase::Reset() {
   FXL_DCHECK_CREATION_THREAD_IS_CURRENT(thread_checker_);
-  FLOG(log_channel_, Resetting());
   Disconnect();
   allocator_.Reset();
 }
@@ -60,34 +61,25 @@ void MediaPacketProducerBase::FlushConsumer(
   FXL_DCHECK_CREATION_THREAD_IS_CURRENT(thread_checker_);
   FXL_DCHECK(consumer_.is_bound());
 
-  FLOG(log_channel_, RequestingFlush());
-
   {
-    fxl::MutexLocker locker(&mutex_);
+    std::lock_guard<std::mutex> locker(mutex_);
     end_of_stream_ = false;
   }
 
   MediaPacketDemand demand;
   demand.min_packets_outstanding = 0;
-  demand.min_pts = MediaPacket::kNoTimestamp;
+  demand.min_pts = kNoTimestamp;
   UpdateDemand(demand);
 
   flush_in_progress_ = true;
   consumer_->Flush(hold_frame, [this, callback]() {
     flush_in_progress_ = false;
-    FLOG(log_channel_, FlushCompleted());
     callback();
   });
 }
 
 void* MediaPacketProducerBase::AllocatePayloadBuffer(size_t size) {
-  void* result = allocator_.AllocateRegion(size);
-
-  if (result == nullptr) {
-    FLOG(log_channel_, PayloadBufferAllocationFailure(0, size));
-  }
-
-  return result;
+  return allocator_.AllocateRegion(size);
 }
 
 void MediaPacketProducerBase::ReleasePayloadBuffer(void* buffer) {
@@ -113,32 +105,23 @@ void MediaPacketProducerBase::ProducePacket(
 
   SharedBufferSet::Locator locator = allocator_.LocatorFromPtr(payload);
 
-  MediaPacketPtr media_packet = MediaPacket::New();
-  media_packet->pts = pts;
-  media_packet->pts_rate_ticks = pts_rate.subject_delta();
-  media_packet->pts_rate_seconds = pts_rate.reference_delta();
-  media_packet->flags = (keyframe ? MediaPacket::kFlagKeyframe : 0) |
-                        (end_of_stream ? MediaPacket::kFlagEos : 0);
-  media_packet->revised_media_type = std::move(revised_media_type);
-  media_packet->payload_buffer_id = locator.buffer_id();
-  media_packet->payload_offset = locator.offset();
-  media_packet->payload_size = size;
-
-  uint32_t packets_outstanding;
+  MediaPacket media_packet;
+  media_packet.pts = pts;
+  media_packet.pts_rate_ticks = pts_rate.subject_delta();
+  media_packet.pts_rate_seconds = pts_rate.reference_delta();
+  media_packet.flags =
+      (keyframe ? kFlagKeyframe : 0) | (end_of_stream ? kFlagEos : 0);
+  media_packet.revised_media_type = std::move(revised_media_type);
+  media_packet.payload_buffer_id = locator.buffer_id();
+  media_packet.payload_offset = locator.offset();
+  media_packet.payload_size = size;
 
   {
-    fxl::MutexLocker locker(&mutex_);
-    packets_outstanding = ++packets_outstanding_;
+    std::lock_guard<std::mutex> locker(mutex_);
+    ++packets_outstanding_;
     pts_last_produced_ = pts;
     end_of_stream_ = end_of_stream;
   }
-
-  uint64_t label = ++prev_packet_label_;
-
-  FLOG(log_channel_,
-       ProducingPacket(label, media_packet.Clone(), FLOG_ADDRESS(payload),
-                       packets_outstanding));
-  (void)packets_outstanding;  // Avoids 'unused' error in release builds.
 
   // Make sure the consumer is up-to-date with respect to buffers.
   uint32_t buffer_id;
@@ -152,21 +135,13 @@ void MediaPacketProducerBase::ProducePacket(
   }
 
   consumer_->SupplyPacket(
-      std::move(media_packet),
-      [this, callback, label](MediaPacketDemandPtr demand) {
+      std::move(media_packet), [this, callback](MediaPacketDemandPtr demand) {
         FXL_DCHECK_CREATION_THREAD_IS_CURRENT(thread_checker_);
 
-        uint32_t packets_outstanding;
-
         {
-          fxl::MutexLocker locker(&mutex_);
-          packets_outstanding = --packets_outstanding_;
+          std::lock_guard<std::mutex> locker(mutex_);
+          --packets_outstanding_;
         }
-
-        FLOG(log_channel_, RetiringPacket(label, packets_outstanding));
-        // Avoids 'unused' error in release builds.
-        (void)label;
-        (void)packets_outstanding;
 
         if (demand) {
           UpdateDemand(*demand);
@@ -178,7 +153,7 @@ void MediaPacketProducerBase::ProducePacket(
 
 bool MediaPacketProducerBase::ShouldProducePacket(
     uint32_t additional_packets_outstanding) {
-  fxl::MutexLocker locker(&mutex_);
+  std::lock_guard<std::mutex> locker(mutex_);
 
   // Shouldn't send any more after end of stream.
   if (end_of_stream_) {
@@ -192,12 +167,19 @@ bool MediaPacketProducerBase::ShouldProducePacket(
   }
 
   // See if a higher PTS is demanded.
-  return demand_.min_pts != MediaPacket::kNoTimestamp &&
+  return demand_.min_pts != kNoTimestamp &&
          demand_.min_pts > pts_last_produced_;
 }
 
 void MediaPacketProducerBase::OnFailure() {
   FXL_DCHECK_CREATION_THREAD_IS_CURRENT(thread_checker_);
+}
+
+void MediaPacketProducerBase::ResetDemand() {
+  std::lock_guard<std::mutex> locker(mutex_);
+  packets_outstanding_ = 0;
+  demand_.min_packets_outstanding = 0;
+  demand_.min_pts = kNoTimestamp;
 }
 
 void MediaPacketProducerBase::HandleDemandUpdate(MediaPacketDemandPtr demand) {
@@ -226,7 +208,7 @@ void MediaPacketProducerBase::UpdateDemand(const MediaPacketDemand& demand) {
   bool updated = false;
 
   {
-    fxl::MutexLocker locker(&mutex_);
+    std::lock_guard<std::mutex> locker(mutex_);
     if (demand_.min_packets_outstanding != demand.min_packets_outstanding ||
         demand_.min_pts != demand.min_pts) {
       demand_.min_packets_outstanding = demand.min_packets_outstanding;
@@ -236,7 +218,6 @@ void MediaPacketProducerBase::UpdateDemand(const MediaPacketDemand& demand) {
   }
 
   if (updated) {
-    FLOG(log_channel_, DemandUpdated(demand.Clone()));
     OnDemandUpdated(demand.min_packets_outstanding, demand.min_pts);
   }
 }

@@ -40,9 +40,8 @@ void ICUDataProviderImpl::AddBinding(
   bindings_.AddBinding(this, std::move(request));
 }
 
-void ICUDataProviderImpl::ICUDataWithSha1(
-    const fidl::String& sha1hash,
-    const ICUDataWithSha1Callback& callback) {
+void ICUDataProviderImpl::ICUDataWithSha1(fidl::StringPtr sha1hash,
+                                          ICUDataWithSha1Callback callback) {
   if (!icu_data_vmo_) {
     callback(nullptr);
     return;

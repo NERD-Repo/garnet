@@ -9,7 +9,7 @@
 #include <virtio/virtio.h>
 #include <virtio/virtio_ring.h>
 
-#include "garnet/lib/machina/virtio.h"
+#include "garnet/lib/machina/virtio_queue.h"
 
 namespace machina {
 
@@ -26,15 +26,15 @@ class DescBuilder {
     return Append(reinterpret_cast<void*>(addr), size, writeable);
   }
 
-  // Adds a buffer to the chain that is flagged as device writeable.
-  DescBuilder& AppendWriteable(void* addr, size_t size) {
+  // Adds a buffer to the chain that is flagged as device writable.
+  DescBuilder& AppendWritable(void* addr, size_t size) {
     return Append(addr, size, true);
   }
-  DescBuilder& AppendWriteable(uintptr_t addr, size_t size) {
+  DescBuilder& AppendWritable(uintptr_t addr, size_t size) {
     return Append(addr, size, true);
   }
 
-  // Adds a buffer to the chain that is flagged as device writeable.
+  // Adds a buffer to the chain that is flagged as device readable.
   DescBuilder& AppendReadable(void* addr, size_t size) {
     return Append(addr, size, false);
   }
@@ -66,12 +66,15 @@ class DescBuilder {
 // simulated guest physical address space aliases our address space.
 class VirtioQueueFake {
  public:
-  explicit VirtioQueueFake(virtio_queue_t* queue) : queue_(queue) {}
+  explicit VirtioQueueFake(VirtioQueue* queue) : queue_(queue) {}
   ~VirtioQueueFake();
 
   // Allocate memory for a queue with the given size and wire up the queue
   // to use those buffers.
   zx_status_t Init(uint16_t size);
+
+  // Access the underlying VirtioQueue.
+  VirtioQueue* queue() const { return queue_; }
 
   // Allocate and write a descriptor. |addr|, |len|, and |flags| correspond
   // to the fields in vring_desc.
@@ -80,7 +83,7 @@ class VirtioQueueFake {
   //
   // Descriptors are not reclaimed and it is a programming error to attempt
   // to write to more than descriptors than the queue was initialized with.
-  // ZX_ERR_NO_MEMORY is returned if the pool of available desciptors has
+  // ZX_ERR_NO_MEMORY is returned if the pool of available descriptors has
   // been exhausted.
   zx_status_t WriteDescriptor(void* addr,
                               size_t len,
@@ -99,17 +102,28 @@ class VirtioQueueFake {
 
   DescBuilder BuildDescriptor() { return DescBuilder(this); }
 
+  // Returns |true| if the queue has returned descriptors in the used ring.
+  bool HasUsed() const;
+
+  // Returns the used element structure for the next used descriptor.
+  //
+  // The caller must validate that entries are available with |HasUsed| before
+  // calling this method.
+  struct vring_used_elem NextUsed();
+
  private:
   uint16_t queue_size_;
-  virtio_queue_t* queue_;
+  VirtioQueue* queue_;
   fbl::unique_ptr<uint8_t[]> desc_buf_;
   fbl::unique_ptr<uint8_t[]> avail_ring_buf_;
   fbl::unique_ptr<uint8_t[]> used_ring_buf_;
 
   // The next entry in the descriptor table that is available.
   uint16_t next_free_desc_ = 0;
+  // Index into the |used| ring for returned descriptors.
+  uint16_t used_index_ = 0;
 };
 
-#endif  // GARNET_LIB_MACHINA_VIRTIO_QUEUE_FAKE_H_
-
 }  // namespace machina
+
+#endif  // GARNET_LIB_MACHINA_VIRTIO_QUEUE_FAKE_H_

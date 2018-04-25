@@ -10,10 +10,10 @@
 #ifndef LIB_APP_CPP_CONNECT_H_
 #define LIB_APP_CPP_CONNECT_H_
 
-#include "lib/app/fidl/service_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/interface_request.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/interface_request.h"
 
-namespace app {
+namespace component {
 
 // Helper for using a |ServiceProvider|'s |ConnectToService()| that creates
 // a new channel and returns a fully-typed interface pointer (and can use
@@ -39,6 +39,6 @@ inline void ConnectToService(
                                      interface_request.TakeChannel());
 }
 
-}  // namespace app
+}  // namespace component
 
 #endif  // LIB_APP_CPP_CONNECT_H_

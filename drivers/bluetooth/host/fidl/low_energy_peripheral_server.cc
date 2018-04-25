@@ -8,7 +8,6 @@
 #include "garnet/drivers/bluetooth/lib/gap/remote_device.h"
 #include "garnet/drivers/bluetooth/lib/hci/hci_constants.h"
 #include "garnet/drivers/bluetooth/lib/hci/util.h"
-#include "lib/fxl/functional/make_copyable.h"
 #include "lib/fxl/logging.h"
 
 #include "helpers.h"
@@ -16,27 +15,27 @@
 using bluetooth::ErrorCode;
 using bluetooth::Status;
 
-using bluetooth::low_energy::AdvertisingData;
-using bluetooth::low_energy::AdvertisingDataPtr;
-using bluetooth::low_energy::Peripheral;
-using bluetooth::low_energy::PeripheralDelegate;
-using bluetooth::low_energy::PeripheralDelegatePtr;
-using bluetooth::low_energy::RemoteDevicePtr;
+using bluetooth_low_energy::AdvertisingData;
+using bluetooth_low_energy::AdvertisingDataPtr;
+using bluetooth_low_energy::Peripheral;
+using bluetooth_low_energy::PeripheralDelegate;
+using bluetooth_low_energy::PeripheralDelegatePtr;
+using bluetooth_low_energy::RemoteDevicePtr;
 
 namespace bthost {
 
 namespace {
 
-std::string ErrorToString(btlib::hci::Status error) {
-  switch (error) {
-    case ::btlib::hci::kSuccess:
+std::string MessageFromStatus(btlib::hci::Status status) {
+  switch (status.error()) {
+    case ::btlib::common::HostError::kNoError:
       return "Success";
-    case ::btlib::hci::kConnectionLimitExceeded:
+    case ::btlib::common::HostError::kNotSupported:
       return "Maximum advertisement amount reached";
-    case ::btlib::hci::kMemoryCapacityExceeded:
+    case ::btlib::common::HostError::kInvalidParameters:
       return "Advertisement exceeds maximum allowed length";
     default:
-      return ::btlib::hci::StatusToString(error);
+      return status.ToString();
   }
 }
 
@@ -48,7 +47,7 @@ LowEnergyPeripheralServer::InstanceData::InstanceData(const std::string& id,
 
 void LowEnergyPeripheralServer::InstanceData::RetainConnection(
     ConnectionRefPtr conn_ref,
-    RemoteDevicePtr peer) {
+    bluetooth_low_energy::RemoteDevice peer) {
   FXL_DCHECK(connectable());
   FXL_DCHECK(!conn_ref_);
 
@@ -67,7 +66,8 @@ void LowEnergyPeripheralServer::InstanceData::ReleaseConnection() {
 LowEnergyPeripheralServer::LowEnergyPeripheralServer(
     fxl::WeakPtr<::btlib::gap::Adapter> adapter,
     fidl::InterfaceRequest<Peripheral> request)
-    : ServerBase(adapter, this, std::move(request)), weak_ptr_factory_(this) {}
+    : AdapterServerBase(adapter, this, std::move(request)),
+      weak_ptr_factory_(this) {}
 
 LowEnergyPeripheralServer::~LowEnergyPeripheralServer() {
   auto* advertising_manager = adapter()->le_advertising_manager();
@@ -79,19 +79,19 @@ LowEnergyPeripheralServer::~LowEnergyPeripheralServer() {
 }
 
 void LowEnergyPeripheralServer::StartAdvertising(
-    AdvertisingDataPtr advertising_data,
+    AdvertisingData advertising_data,
     AdvertisingDataPtr scan_result,
     ::fidl::InterfaceHandle<PeripheralDelegate> delegate,
     uint32_t interval,
     bool anonymous,
-    const StartAdvertisingCallback& callback) {
+    StartAdvertisingCallback callback) {
   auto* advertising_manager = adapter()->le_advertising_manager();
   FXL_DCHECK(advertising_manager);
 
   ::btlib::gap::AdvertisingData ad_data, scan_data;
   ::btlib::gap::AdvertisingData::FromFidl(advertising_data, &ad_data);
   if (scan_result) {
-    ::btlib::gap::AdvertisingData::FromFidl(scan_result, &scan_data);
+    ::btlib::gap::AdvertisingData::FromFidl(*scan_result, &scan_data);
   }
 
   auto self = weak_ptr_factory_.GetWeakPtr();
@@ -108,44 +108,48 @@ void LowEnergyPeripheralServer::StartAdvertising(
   }
   // |delegate| is temporarily held by the result callback, which will close the
   // delegate channel if the advertising fails (after returning the status)
-  auto advertising_result_cb = fxl::MakeCopyable(
-      [self, callback, delegate = std::move(delegate)](
-          std::string ad_id, ::btlib::hci::Status status) mutable {
-        if (!self)
-          return;
+  auto advertising_status_cb = [self, callback, delegate = std::move(delegate)](
+                                   std::string ad_id,
+                                   ::btlib::hci::Status status) mutable {
+    if (!self)
+      return;
 
-        if (status != ::btlib::hci::kSuccess) {
-          auto fidlerror = fidl_helpers::NewErrorStatus(
-              ErrorCode::PROTOCOL_ERROR, ErrorToString(status));
-          fidlerror->error->protocol_error_code = status;
-          callback(std::move(fidlerror), "");
-          return;
+    if (!status) {
+      FXL_VLOG(1) << "Failed to start advertising: " << status.ToString();
+      callback(fidl_helpers::StatusToFidl(status, MessageFromStatus(status)),
+               "");
+      return;
+    }
+
+    auto delegate_ptr = delegate.Bind();
+
+    // Set the error handler for connectable advertisements only (i.e. if a
+    // delegate was provided).
+    if (delegate_ptr) {
+      delegate_ptr.set_error_handler([self, ad_id] {
+        if (self) {
+          self->StopAdvertisingInternal(ad_id);
         }
-
-        auto delegate_ptr = delegate.Bind();
-        delegate_ptr.set_error_handler([self, ad_id] {
-          if (self) {
-            self->StopAdvertisingInternal(ad_id);
-          }
-        });
-
-        self->instances_[ad_id] = InstanceData(ad_id, std::move(delegate_ptr));
-        callback(Status::New(), ad_id);
       });
+    }
+
+    self->instances_[ad_id] = InstanceData(ad_id, std::move(delegate_ptr));
+    callback(Status(), ad_id);
+  };
 
   advertising_manager->StartAdvertising(ad_data, scan_data, connect_cb,
                                         interval, anonymous,
-                                        advertising_result_cb);
+                                        std::move(advertising_status_cb));
 }
 
 void LowEnergyPeripheralServer::StopAdvertising(
-    const ::fidl::String& id,
-    const StopAdvertisingCallback& callback) {
+    ::fidl::StringPtr id,
+    StopAdvertisingCallback callback) {
   if (StopAdvertisingInternal(id)) {
-    callback(Status::New());
+    callback(Status());
   } else {
-    callback(fidl_helpers::NewErrorStatus(ErrorCode::NOT_FOUND,
-                                          "Unrecognized advertisement ID"));
+    callback(fidl_helpers::NewFidlError(ErrorCode::NOT_FOUND,
+                                        "Unrecognized advertisement ID"));
   }
 }
 
@@ -201,8 +205,10 @@ void LowEnergyPeripheralServer::OnConnected(std::string advertisement_id,
   FXL_DCHECK(device);
 
   FXL_VLOG(1) << "Central connected";
-  it->second.RetainConnection(std::move(conn),
-                              fidl_helpers::NewLERemoteDevice(*device));
+  ::bluetooth_low_energy::RemoteDevicePtr remote_device =
+      fidl_helpers::NewLERemoteDevice(std::move(*device));
+  FXL_DCHECK(remote_device);
+  it->second.RetainConnection(std::move(conn), std::move(*remote_device));
 }
 
 }  // namespace bthost

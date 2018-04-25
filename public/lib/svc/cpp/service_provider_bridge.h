@@ -7,19 +7,19 @@
 
 #include <fbl/ref_ptr.h>
 #include <fs/managed-vfs.h>
-#include <zx/channel.h>
+#include <lib/zx/channel.h>
 
 #include <functional>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
-#include "lib/app/fidl/service_provider.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/weak_ptr.h"
 
-namespace app {
+namespace component {
 
 // ServiceProviderBridge is a bridge between a service provider and a service
 // directory.
@@ -27,7 +27,7 @@ namespace app {
 // The bridge takes a service provider to use as a backend and exposes both the
 // service provider interface and the directory interface, which will make it
 // easier to migrate clients to the directory interface.
-class ServiceProviderBridge : public app::ServiceProvider {
+class ServiceProviderBridge : public component::ServiceProvider {
  public:
   ServiceProviderBridge();
   ~ServiceProviderBridge() override;
@@ -51,11 +51,15 @@ class ServiceProviderBridge : public app::ServiceProvider {
         service_name);
   }
 
-  void set_backend(app::ServiceProviderPtr backend) {
+  void set_backend(component::ServiceProviderPtr backend) {
     backend_ = std::move(backend);
   }
 
-  void AddBinding(fidl::InterfaceRequest<app::ServiceProvider> request);
+  void set_backing_dir(zx::channel backing_dir) {
+    backing_dir_ = std::move(backing_dir);
+  }
+
+  void AddBinding(fidl::InterfaceRequest<component::ServiceProvider> request);
   bool ServeDirectory(zx::channel channel);
 
   zx::channel OpenAsDirectory();
@@ -79,22 +83,23 @@ class ServiceProviderBridge : public app::ServiceProvider {
     fxl::WeakPtr<ServiceProviderBridge> const bridge_;
   };
 
-  // Overridden from |app::ServiceProvider|:
-  void ConnectToService(const fidl::String& service_name,
+  // Overridden from |component::ServiceProvider|:
+  void ConnectToService(fidl::StringPtr service_name,
                         zx::channel channel) override;
 
   fs::ManagedVfs vfs_;
-  fidl::BindingSet<app::ServiceProvider> bindings_;
+  fidl::BindingSet<component::ServiceProvider> bindings_;
   fbl::RefPtr<ServiceProviderDir> directory_;
 
   std::map<std::string, ServiceConnector> name_to_service_connector_;
-  app::ServiceProviderPtr backend_;
+  component::ServiceProviderPtr backend_;
+  zx::channel backing_dir_;
 
   fxl::WeakPtrFactory<ServiceProviderBridge> weak_factory_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(ServiceProviderBridge);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // LIB_SVC_CPP_SERVICE_PROVIDER_BRIDGE_H_

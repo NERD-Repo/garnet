@@ -6,10 +6,12 @@
 #include "magma_util/command_buffer.h"
 #include "magma_util/macros.h"
 #include "platform_connection.h"
+#include "platform_port.h"
 #include "platform_semaphore.h"
 #include "platform_thread.h"
 #include "platform_trace.h"
 #include "zircon/zircon_platform_ioctl.h"
+#include <chrono>
 #include <vector>
 
 magma_connection_t* magma_create_connection(int fd, uint32_t capabilities)
@@ -89,6 +91,12 @@ void magma_release_buffer(magma_connection_t* connection, magma_buffer_t buffer)
     delete platform_buffer;
 }
 
+magma_status_t magma_set_cache_policy(magma_buffer_t buffer, magma_cache_policy_t policy)
+{
+    bool result = reinterpret_cast<magma::PlatformBuffer*>(buffer)->SetCachePolicy(policy);
+    return result ? MAGMA_STATUS_OK : MAGMA_STATUS_INTERNAL_ERROR;
+}
+
 uint64_t magma_get_buffer_id(magma_buffer_t buffer)
 {
     return reinterpret_cast<magma::PlatformBuffer*>(buffer)->id();
@@ -159,30 +167,6 @@ magma_status_t magma_export(magma_connection_t* connection, magma_buffer_t buffe
     return MAGMA_STATUS_OK;
 }
 
-magma_status_t magma_export_fd(struct magma_connection_t* connection, magma_buffer_t buffer,
-                               int* fd_out)
-{
-    return reinterpret_cast<magma::PlatformBuffer*>(buffer)->GetFd(fd_out)
-               ? MAGMA_STATUS_OK
-               : MAGMA_STATUS_MEMORY_ERROR;
-}
-
-magma_status_t magma_import_fd(magma_connection_t* connection, int fd, magma_buffer_t* buffer_out)
-{
-    auto platform_buffer = magma::PlatformBuffer::ImportFromFd(fd);
-    if (!platform_buffer)
-        return DRET_MSG(MAGMA_STATUS_INVALID_ARGS, "PlatformBuffer::ImportFromFd failed");
-
-    magma_status_t result =
-        magma::PlatformIpcConnection::cast(connection)->ImportBuffer(platform_buffer.get());
-    if (result != MAGMA_STATUS_OK)
-        return DRET_MSG(result, "ImportBuffer failed");
-
-    *buffer_out = reinterpret_cast<magma_buffer_t>(platform_buffer.release());
-
-    return MAGMA_STATUS_OK;
-}
-
 magma_status_t magma_map(magma_connection_t* connection, magma_buffer_t buffer, void** addr_out)
 {
     auto platform_buffer = reinterpret_cast<magma::PlatformBuffer*>(buffer);
@@ -199,6 +183,17 @@ magma_status_t magma_map_aligned(magma_connection_t* connection, magma_buffer_t 
     auto platform_buffer = reinterpret_cast<magma::PlatformBuffer*>(buffer);
 
     if (!platform_buffer->MapCpu(addr_out, alignment))
+        return DRET(MAGMA_STATUS_MEMORY_ERROR);
+
+    return MAGMA_STATUS_OK;
+}
+
+magma_status_t magma_map_specific(magma_connection_t* connection, magma_buffer_t buffer,
+                                  uint64_t addr)
+{
+    auto platform_buffer = reinterpret_cast<magma::PlatformBuffer*>(buffer);
+
+    if (!platform_buffer->MapAtCpuAddr(addr))
         return DRET(MAGMA_STATUS_MEMORY_ERROR);
 
     return MAGMA_STATUS_OK;
@@ -308,6 +303,14 @@ void magma_submit_command_buffer(magma_connection_t* connection, magma_buffer_t 
     delete platform_buffer;
 }
 
+void magma_execute_immediate_commands(magma_connection_t* connection, uint32_t context_id,
+                                      uint64_t command_count,
+                                      magma_system_inline_command_buffer* command_buffers)
+{
+    magma::PlatformIpcConnection::cast(connection)
+        ->ExecuteImmediateCommands(context_id, command_count, command_buffers);
+}
+
 void magma_wait_rendering(magma_connection_t* connection, magma_buffer_t buffer)
 {
     auto platform_buffer = reinterpret_cast<magma::PlatformBuffer*>(buffer);
@@ -399,11 +402,46 @@ void magma_reset_semaphore(magma_semaphore_t semaphore)
     reinterpret_cast<magma::PlatformSemaphore*>(semaphore)->Reset();
 }
 
+magma_status_t magma_wait_semaphores(const magma_semaphore_t* semaphores, uint32_t count,
+                                     uint64_t timeout_ms, bool wait_all)
+{
+    if (count == 1) {
+        if (!reinterpret_cast<magma::PlatformSemaphore*>(semaphores[0])->WaitNoReset(timeout_ms))
+            return MAGMA_STATUS_TIMED_OUT;
+        return MAGMA_STATUS_OK;
+    }
+
+    std::unique_ptr<magma::PlatformPort> port = magma::PlatformPort::Create();
+    for (uint32_t i = 0; i < count; i++) {
+        if (!reinterpret_cast<magma::PlatformSemaphore*>(semaphores[i])->WaitAsync(port.get()))
+            return DRET_MSG(MAGMA_STATUS_INTERNAL_ERROR, "WaitAsync failed");
+    }
+
+    if (!wait_all) {
+        uint64_t key;
+        return port->Wait(&key, timeout_ms).get();
+    }
+
+    auto end_time = timeout_ms == UINT64_MAX
+                        ? std::chrono::steady_clock::time_point::max()
+                        : std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+
+    for (uint32_t i = 0; i < count; i++) {
+        uint64_t key;
+        auto time_remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            end_time - std::chrono::steady_clock::now());
+        magma::Status status =
+            port->Wait(&key, time_remaining.count() > 0 ? time_remaining.count() : 0);
+        if (!status)
+            return status.get();
+    }
+    return MAGMA_STATUS_OK;
+}
+
 magma_status_t magma_wait_semaphore(magma_semaphore_t semaphore, uint64_t timeout)
 {
     if (!reinterpret_cast<magma::PlatformSemaphore*>(semaphore)->Wait(timeout))
         return MAGMA_STATUS_TIMED_OUT;
-
     return MAGMA_STATUS_OK;
 }
 

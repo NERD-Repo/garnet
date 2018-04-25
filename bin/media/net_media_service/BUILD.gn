@@ -2,49 +2,44 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//garnet/public/build/test.gni")
+import("//build/test.gni")
 import("//build/package.gni")
 
 package("net_media_service") {
-  system_image = true
-
   deps = [
     ":bin",
   ]
 
-  binaries = [
-    {
-      name = "net_media_service"
-    },
-  ]
+  binary = "net_media_service"
 }
 
 executable("bin") {
   output_name = "net_media_service"
 
   sources = [
+    "factory_service_base.h",
     "main.cc",
-    "net_media_player_impl.cc",
-    "net_media_player_impl.h",
-    "net_media_player_messages.cc",
-    "net_media_player_messages.h",
-    "net_media_player_net_proxy.cc",
-    "net_media_player_net_proxy.h",
-    "net_media_player_net_stub.cc",
-    "net_media_player_net_stub.h",
+    "media_player_messages.cc",
+    "media_player_messages.h",
+    "media_player_net_proxy.cc",
+    "media_player_net_proxy.h",
+    "media_player_net_publisher.cc",
+    "media_player_net_publisher.h",
+    "media_player_net_stub.cc",
+    "media_player_net_stub.h",
     "net_media_service_impl.cc",
     "net_media_service_impl.h",
   ]
 
   deps = [
     ":serialization",
-    "//garnet/bin/media/media_service",
     "//garnet/bin/media/util",
     "//garnet/public/lib/app/cpp",
-    "//garnet/public/lib/fidl/cpp/bindings",
+    "//garnet/public/lib/fidl/cpp",
     "//garnet/public/lib/fsl",
     "//garnet/public/lib/fxl",
     "//garnet/public/lib/media/fidl",
+    "//garnet/public/lib/media/fidl:media_player",
     "//garnet/public/lib/media/timeline",
     "//garnet/public/lib/netconnector/cpp",
     "//garnet/public/lib/netconnector/fidl",
@@ -75,5 +70,6 @@ test("tests") {
 
   deps = [
     ":serialization",
+    "//third_party/googletest:gtest_main",
   ]
 }

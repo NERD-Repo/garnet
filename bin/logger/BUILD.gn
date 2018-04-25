@@ -1,0 +1,61 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/rust/rust_binary.gni")
+import("//build/package.gni")
+
+rust_binary("bin") {
+  with_unit_tests = true
+
+  name = "logger"
+}
+
+executable("logger_integration_cpp_tests") {
+  testonly = true
+
+  sources = [
+    "test/logger_tests.cc",
+    "test/run_all_tests.cc",
+  ]
+  deps = [
+    "//third_party/gtest",
+    "//zircon/public/lib/syslog",
+  ]
+}
+
+package("logger") {
+  deps = [
+    ":bin",
+  ]
+
+  binary = "logger"
+
+  meta = [{
+    path = rebase_path("//garnet/bin/appmgr/legacy_flat_exported_dir")
+    dest = "legacy_flat_exported_dir"
+  }]
+}
+
+package("logger_tests") {
+  deprecated_system_image = true
+  testonly = true
+
+  deps = [
+    ":bin",
+    ":logger_integration_cpp_tests",
+    "test/go/src/logger_integration_test:logger_integration_go_tests",
+  ]
+
+  tests = [
+    {
+      name = "logger-bin-unit-test"
+    },
+    {
+      name = "logger_integration_cpp_tests"
+    },
+    {
+      name = "logger_integration_go_tests"
+    },
+  ]
+}

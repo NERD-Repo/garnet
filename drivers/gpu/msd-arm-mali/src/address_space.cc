@@ -52,7 +52,8 @@ AddressSpace::Owner::~Owner() = default;
 
 std::unique_ptr<AddressSpace> AddressSpace::Create(Owner* owner, bool cache_coherent)
 {
-    auto page_directory = AddressSpace::PageTable::Create(kPageDirectoryLevels - 1, cache_coherent);
+    auto page_directory =
+        AddressSpace::PageTable::Create(owner, kPageDirectoryLevels - 1, cache_coherent);
     if (!page_directory)
         return DRETP(nullptr, "failed to create root page table");
     return std::unique_ptr<AddressSpace>(
@@ -61,8 +62,8 @@ std::unique_ptr<AddressSpace> AddressSpace::Create(Owner* owner, bool cache_cohe
 
 AddressSpace::~AddressSpace() { owner_->GetAddressSpaceObserver()->ReleaseSpaceMappings(this); }
 
-bool AddressSpace::Insert(uint64_t addr, magma::PlatformBuffer* buffer, uint64_t offset,
-                          uint64_t length, uint64_t flags)
+bool AddressSpace::Insert(uint64_t addr, magma::PlatformBusMapper::BusMapping* bus_mapping,
+                          uint64_t offset, uint64_t length, uint64_t flags)
 {
     DASSERT(magma::is_page_aligned(addr));
     DASSERT(magma::is_page_aligned(offset));
@@ -74,11 +75,15 @@ bool AddressSpace::Insert(uint64_t addr, magma::PlatformBuffer* buffer, uint64_t
     if ((addr / PAGE_SIZE) + num_pages > (1l << (kVirtualAddressSize - PAGE_SHIFT)))
         return DRETF(false, "Virtual address too large");
 
-    std::vector<uint64_t> bus_addr_array;
-    bus_addr_array.resize(num_pages);
+    std::vector<uint64_t>& bus_addr_array = bus_mapping->Get();
 
-    if (!buffer->MapPageRangeBus(start_page_index, num_pages, bus_addr_array.data()))
-        return DRETF(false, "failed obtaining bus addresses");
+    if (start_page_index < bus_mapping->page_offset())
+        return DRETF(false,
+                     "invalid bus mapping start_page_index %lu < bus_mapping page_offset %lu",
+                     start_page_index, bus_mapping->page_offset());
+
+    if (start_page_index + num_pages > bus_mapping->page_offset() + bus_mapping->page_count())
+        return DRETF(false, "invalid bus mapping");
 
     // TODO(MA-352): ensure the range isn't currently in use.
 
@@ -89,7 +94,8 @@ bool AddressSpace::Insert(uint64_t addr, magma::PlatformBuffer* buffer, uint64_t
         if (!page_table)
             return DRETF(false, "Faied to get page table");
 
-        mali_pte_t pte = bus_addr_array[i] | get_mmu_flags(flags) | kLpaeEntryTypeAte;
+        mali_pte_t pte = bus_addr_array[start_page_index - bus_mapping->page_offset() + i] |
+                         get_mmu_flags(flags) | kLpaeEntryTypeAte;
         page_table->WritePte(page_index, pte);
     }
 
@@ -177,7 +183,7 @@ AddressSpace::PageTable* AddressSpace::PageTable::GetPageTableLevel0(uint64_t pa
         if (!create)
             return nullptr;
 
-        auto directory = PageTable::Create(level_ - 1, cache_coherent_);
+        auto directory = PageTable::Create(owner_, level_ - 1, cache_coherent_);
         if (!directory)
             return DRETP(nullptr, "failed to create page table");
         gpu_->entry[offset] = get_directory_entry(directory->page_bus_address());
@@ -236,8 +242,8 @@ mali_pte_t AddressSpace::PageTable::get_directory_entry(uint64_t physical_addres
     return physical_address | kLpaeEntryTypePte;
 }
 
-std::unique_ptr<AddressSpace::PageTable> AddressSpace::PageTable::Create(uint32_t level,
-                                                                         bool cache_coherent)
+std::unique_ptr<AddressSpace::PageTable>
+AddressSpace::PageTable::Create(Owner* owner, uint32_t level, bool cache_coherent)
 {
     constexpr uint32_t kPageCount = 1;
 
@@ -245,26 +251,25 @@ std::unique_ptr<AddressSpace::PageTable> AddressSpace::PageTable::Create(uint32_
     if (!buffer)
         return DRETP(nullptr, "couldn't create buffer");
 
-    if (!buffer->PinPages(0, kPageCount))
-        return DRETP(nullptr, "failed to pin pages");
-
     PageTableGpu* gpu;
     if (!buffer->MapCpu(reinterpret_cast<void**>(&gpu)))
         return DRETP(nullptr, "failed to map cpu");
 
-    uint64_t page_bus_address;
-    if (!buffer->MapPageRangeBus(0, kPageCount, &page_bus_address))
+    std::unique_ptr<magma::PlatformBusMapper::BusMapping> bus_mapping =
+        owner->GetBusMapper()->MapPageRangeBus(buffer.get(), 0, kPageCount);
+    if (!bus_mapping)
         return DRETP(nullptr, "failed to map page range bus");
 
-    return std::unique_ptr<PageTable>(
-        new PageTable(level, cache_coherent, std::move(buffer), gpu, page_bus_address));
+    return std::unique_ptr<PageTable>(new PageTable(owner, level, cache_coherent, std::move(buffer),
+                                                    gpu, std::move(bus_mapping)));
 }
 
-AddressSpace::PageTable::PageTable(uint32_t level, bool cache_coherent,
-                                   std::unique_ptr<magma::PlatformBuffer> buffer, PageTableGpu* gpu,
-                                   uint64_t page_bus_address)
-    : level_(level), cache_coherent_(cache_coherent), buffer_(std::move(buffer)), gpu_(gpu),
-      page_bus_address_(page_bus_address)
+AddressSpace::PageTable::PageTable(
+    Owner* owner, uint32_t level, bool cache_coherent,
+    std::unique_ptr<magma::PlatformBuffer> buffer, PageTableGpu* gpu,
+    std::unique_ptr<magma::PlatformBusMapper::BusMapping> bus_mapping)
+    : owner_(owner), level_(level), cache_coherent_(cache_coherent), buffer_(std::move(buffer)),
+      gpu_(gpu), bus_mapping_(std::move(bus_mapping))
 {
     if (level_ != 0)
         next_levels_.resize(kPageTableEntries);

@@ -6,10 +6,10 @@
 
 #include <fbl/auto_call.h>
 #include <fcntl.h>
+#include <lib/async-loop/loop.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/logging.h"
 #include "lib/media/audio/types.h"
 
@@ -27,6 +27,7 @@ static const std::string kShowUsageOption2 = "help";
 static const std::string kVerboseOption = "v";
 static const std::string kLoopbackOption = "loopback";
 static const std::string kAsyncModeOption = "async-mode";
+static const std::string kFloatFormatOption = "float";
 static const std::string kFrameRateOption = "frame-rate";
 static const std::string kChannelsOption = "channels";
 
@@ -39,7 +40,7 @@ WavRecorder::~WavRecorder() {
   }
 }
 
-void WavRecorder::Run(app::ApplicationContext* app_context) {
+void WavRecorder::Run(component::ApplicationContext* app_context) {
   auto cleanup = fbl::MakeAutoCall([this]() { Shutdown(); });
   const auto& pos_args = cmd_line_.positional_args();
 
@@ -53,7 +54,7 @@ void WavRecorder::Run(app::ApplicationContext* app_context) {
   verbose_ = cmd_line_.HasOption(kVerboseOption);
   loopback_ = cmd_line_.HasOption(kLoopbackOption);
 
-  if (pos_args.size() != 1) {
+  if (pos_args.size() < 1) {
     Usage();
     return;
   }
@@ -71,7 +72,7 @@ void WavRecorder::Run(app::ApplicationContext* app_context) {
   });
 
   // Fetch the initial media type and figure out what we need to do from there.
-  capturer_->GetMediaType([this](media::MediaTypePtr type) {
+  capturer_->GetMediaType([this](media::MediaType type) {
     OnDefaultFormatFetched(std::move(type));
   });
 
@@ -86,7 +87,8 @@ void WavRecorder::Usage() {
   printf("Usage: %s [options] <filename>\n", cmd_line_.argv0().c_str());
   printf("  --%s : be verbose\n", kVerboseOption.c_str());
   printf("  --%s : record from loopback\n", kLoopbackOption.c_str());
-  printf("  --%s : capture using \"async-mode\"\n", kAsyncModeOption.c_str());
+  printf("  --%s : capture using 'async-mode'\n", kAsyncModeOption.c_str());
+  printf("  --%s : use floating-point format\n", kFloatFormatOption.c_str());
   printf("  --%s=<rate> : desired capture frame rate, on the range [%u, %u].\n",
          kFrameRateOption.c_str(), media::kMinLpcmFramesPerSecond,
          media::kMaxLpcmFramesPerSecond);
@@ -119,7 +121,7 @@ void WavRecorder::Shutdown() {
     }
   }
 
-  fsl::MessageLoop::GetCurrent()->PostQuitTask();
+  quit_callback_();
 }
 
 bool WavRecorder::SetupPayloadBuffer() {
@@ -158,7 +160,7 @@ void WavRecorder::SendCaptureJob() {
   capturer_->CaptureAt(
       capture_frame_offset_,
       capture_frames_per_chunk_,
-      [this](media::MediaPacketPtr packet) {
+      [this](media::MediaPacket packet) {
         OnPacketCaptured(std::move(packet));
       });
   // clang-format on
@@ -169,23 +171,26 @@ void WavRecorder::SendCaptureJob() {
   }
 }
 
-void WavRecorder::OnDefaultFormatFetched(media::MediaTypePtr type) {
+void WavRecorder::OnDefaultFormatFetched(media::MediaType type) {
   auto cleanup = fbl::MakeAutoCall([this]() { Shutdown(); });
   zx_status_t res;
 
-  if (!type->details->is_audio()) {
+  if (!type.details.is_audio()) {
     FXL_LOG(ERROR) << "default format is not audio!";
     return;
   }
 
-  const auto& fmt = type->details->get_audio();
-  sample_format_ = fmt->sample_format;
-  channel_count_ = fmt->channels;
-  frames_per_second_ = fmt->frames_per_second;
+  const auto& fmt = type.details.audio();
+
+  sample_format_ = cmd_line_.HasOption(kFloatFormatOption)
+                       ? media::AudioSampleFormat::FLOAT
+                       : media::AudioSampleFormat::SIGNED_16;
+  channel_count_ = fmt.channels;
+  frames_per_second_ = fmt.frames_per_second;
 
   bool change_format = false;
-  if (sample_format_ != media::AudioSampleFormat::SIGNED_16) {
-    sample_format_ = media::AudioSampleFormat::SIGNED_16;
+
+  if (fmt.sample_format != sample_format_) {
     change_format = true;
   }
 
@@ -229,11 +234,15 @@ void WavRecorder::OnDefaultFormatFetched(media::MediaTypePtr type) {
     }
   }
 
-  bytes_per_frame_ = channel_count_ * sizeof(int16_t);
+  uint32_t bytes_per_sample =
+      (sample_format_ == media::AudioSampleFormat::FLOAT) ? sizeof(float)
+                                                          : sizeof(int16_t);
+  bytes_per_frame_ = channel_count_ * bytes_per_sample;
+  uint32_t bits_per_sample = bytes_per_sample * 8;
 
   // Write the inital WAV header
-  if (!wav_writer_.Initialize(filename_, channel_count_, frames_per_second_,
-                              16)) {
+  if (!wav_writer_.Initialize(filename_, sample_format_, channel_count_,
+                              frames_per_second_, bits_per_sample)) {
     return;
   }
 
@@ -284,29 +293,31 @@ void WavRecorder::OnDefaultFormatFetched(media::MediaTypePtr type) {
                                  capture_frames_per_chunk_);
   }
 
-  printf("Recording 16-bit signed %u Hz %u channel LPCM from %s into \"%s\"\n",
+  printf("Recording %s, %u Hz, %u channel linear PCM from %s into '%s'\n",
+         sample_format_ == media::AudioSampleFormat::FLOAT ? "32-bit float"
+                                                           : "16-bit signed",
          frames_per_second_, channel_count_,
          loopback_ ? "loopback" : "default input", filename_);
 
   cleanup.cancel();
 }
 
-void WavRecorder::OnPacketCaptured(media::MediaPacketPtr pkt) {
+void WavRecorder::OnPacketCaptured(media::MediaPacket pkt) {
   if (verbose_) {
-    printf("PACKET [%6lu, %6lu] flags 0x%02x : ts %ld\n", pkt->payload_offset,
-           pkt->payload_size, pkt->flags, pkt->pts);
+    printf("PACKET [%6lu, %6lu] flags 0x%02x : ts %ld\n", pkt.payload_offset,
+           pkt.payload_size, pkt.flags, pkt.pts);
   }
 
-  FXL_DCHECK((pkt->payload_offset + pkt->payload_size) <=
+  FXL_DCHECK((pkt.payload_offset + pkt.payload_size) <=
              (payload_buf_frames_ * bytes_per_frame_));
 
-  if (pkt->payload_size) {
+  if (pkt.payload_size) {
     FXL_DCHECK(payload_buf_virt_);
 
     auto tgt =
-        reinterpret_cast<uint8_t*>(payload_buf_virt_) + pkt->payload_offset;
+        reinterpret_cast<uint8_t*>(payload_buf_virt_) + pkt.payload_offset;
     if (!wav_writer_.Write(reinterpret_cast<void* const>(tgt),
-                           pkt->payload_size)) {
+                           pkt.payload_size)) {
       printf("File write failed. Trying to save any already-written data.\n");
       if (!wav_writer_.Close()) {
         printf("File close failed as well.\n");
@@ -317,7 +328,7 @@ void WavRecorder::OnPacketCaptured(media::MediaPacketPtr pkt) {
 
   if (!clean_shutdown_ && !async_binding_.is_bound()) {
     SendCaptureJob();
-  } else if (pkt->flags & media::MediaPacket::kFlagEos) {
+  } else if (pkt.flags & media::kFlagEos) {
     Shutdown();
   }
 }

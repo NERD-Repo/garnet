@@ -5,52 +5,10 @@
 package wlan
 
 import (
-	bindings "fidl/bindings"
 	"fmt"
-	mlme "garnet/public/lib/wlan/fidl/wlan_mlme"
-	mlme_ext "garnet/public/lib/wlan/fidl/wlan_mlme_ext"
+	mlme "fuchsia/go/wlan_mlme"
 	"log"
 )
-
-type APIHeader struct {
-	txid    uint64
-	flags   uint32
-	ordinal int32
-}
-
-func (h *APIHeader) Encode(enc *bindings.Encoder) error {
-	// Create a method call header, similar to that of FIDL2
-	enc.StartStruct(16, 0)
-	defer enc.Finish()
-
-	if err := enc.WriteUint64(h.txid); err != nil {
-		return fmt.Errorf("could not encode txid: %v", err)
-	}
-	if err := enc.WriteUint32(h.flags); err != nil {
-		return fmt.Errorf("could not encode flags: %v", err)
-	}
-	if err := enc.WriteInt32(h.ordinal); err != nil {
-		return fmt.Errorf("could not encode ordinal: %v", err)
-	}
-	return nil
-}
-
-func (h *APIHeader) Decode(decoder *bindings.Decoder) error {
-	_, err := decoder.StartStruct()
-	if err != nil {
-		return err
-	}
-	defer decoder.Finish()
-
-	if h.txid, err = decoder.ReadUint64(); err != nil {
-		return err
-	}
-	if h.flags, err = decoder.ReadUint32(); err != nil {
-		return err
-	}
-	h.ordinal, err = decoder.ReadInt32()
-	return err
-}
 
 func PrintBssDescription(bss *mlme.BssDescription) {
 	log.Printf("  * BSSID: %02x:%02x:%02x:%02x:%02x:%02x",
@@ -58,13 +16,13 @@ func PrintBssDescription(bss *mlme.BssDescription) {
 	log.Print("    SSID: ", bss.Ssid)
 	var bssType string
 	switch bss.BssType {
-	case mlme.BssTypes_Infrastructure:
+	case mlme.BssTypesInfrastructure:
 		bssType = "Infrastructure"
-	case mlme.BssTypes_Personal:
+	case mlme.BssTypesPersonal:
 		bssType = "Personal"
-	case mlme.BssTypes_Independent:
+	case mlme.BssTypesIndependent:
 		bssType = "Independent"
-	case mlme.BssTypes_Mesh:
+	case mlme.BssTypesMesh:
 		bssType = "Mesh"
 	default:
 		bssType = fmt.Sprint("unknown (%v)", bss.BssType)
@@ -97,13 +55,13 @@ func PrintBssDescription(bss *mlme.BssDescription) {
 	}
 }
 
-func PrintScanResponse(resp *mlme.ScanResponse) {
-	log.Print("ScanResponse")
+func PrintScanConfirm(resp *mlme.ScanConfirm) {
+	log.Print("ScanConfirm")
 	var resCode string
 	switch resp.ResultCode {
-	case mlme.ScanResultCodes_Success:
+	case mlme.ScanResultCodesSuccess:
 		resCode = "Success"
-	case mlme.ScanResultCodes_NotSupported:
+	case mlme.ScanResultCodesNotSupported:
 		resCode = "Not supported"
 	}
 	log.Print("  Result code: ", resCode)
@@ -113,71 +71,71 @@ func PrintScanResponse(resp *mlme.ScanResponse) {
 	}
 }
 
-func PrintJoinResponse(resp *mlme.JoinResponse) {
-	log.Print("JoinResponse")
+func PrintJoinConfirm(resp *mlme.JoinConfirm) {
+	log.Print("JoinConfirm")
 	var resCode string
 	switch resp.ResultCode {
-	case mlme.JoinResultCodes_Success:
+	case mlme.JoinResultCodesSuccess:
 		resCode = "Success"
-	case mlme.JoinResultCodes_JoinFailureTimeout:
+	case mlme.JoinResultCodesJoinFailureTimeout:
 		resCode = "Join failure timeout"
 	}
 	log.Print("  Result code: ", resCode)
 }
 
-func PrintAuthenticateResponse(resp *mlme.AuthenticateResponse) {
-	log.Print("AuthenticateResponse")
+func PrintAuthenticateConfirm(resp *mlme.AuthenticateConfirm) {
+	log.Print("AuthenticateConfirm")
 	var authType string
 	switch resp.AuthType {
-	case mlme.AuthenticationTypes_OpenSystem:
+	case mlme.AuthenticationTypesOpenSystem:
 		authType = "Open"
-	case mlme.AuthenticationTypes_SharedKey:
+	case mlme.AuthenticationTypesSharedKey:
 		authType = "Shared key"
-	case mlme.AuthenticationTypes_FastBssTransition:
+	case mlme.AuthenticationTypesFastBssTransition:
 		authType = "Fast BSS transition"
-	case mlme.AuthenticationTypes_Sae:
+	case mlme.AuthenticationTypesSae:
 		authType = "SAE"
 	}
 	log.Print("  Authentication type: ", authType)
 	var resCode string
 	switch resp.ResultCode {
-	case mlme.AuthenticateResultCodes_Success:
+	case mlme.AuthenticateResultCodesSuccess:
 		resCode = "Success"
-	case mlme.AuthenticateResultCodes_Refused:
+	case mlme.AuthenticateResultCodesRefused:
 		resCode = "Refused"
-	case mlme.AuthenticateResultCodes_AntiCloggingTokenRequired:
+	case mlme.AuthenticateResultCodesAntiCloggingTokenRequired:
 		resCode = "Anti-clogging token required"
-	case mlme.AuthenticateResultCodes_FiniteCyclicGroupNotSupported:
+	case mlme.AuthenticateResultCodesFiniteCyclicGroupNotSupported:
 		resCode = "Finite cyclic group not supported"
-	case mlme.AuthenticateResultCodes_AuthenticationRejected:
+	case mlme.AuthenticateResultCodesAuthenticationRejected:
 		resCode = "Authentication rejected"
-	case mlme.AuthenticateResultCodes_AuthFailureTimeout:
+	case mlme.AuthenticateResultCodesAuthFailureTimeout:
 		resCode = "Authentication failure timeout"
 	}
 	log.Print("  Result code: ", resCode)
 }
 
-func PrintAssociateResponse(resp *mlme.AssociateResponse) {
-	log.Print("AssociateResponse")
+func PrintAssociateConfirm(resp *mlme.AssociateConfirm) {
+	log.Print("AssociateConfirm")
 	var resCode string
 	switch resp.ResultCode {
-	case mlme.AssociateResultCodes_Success:
+	case mlme.AssociateResultCodesSuccess:
 		resCode = "Success"
-	case mlme.AssociateResultCodes_RefusedReasonUnspecified:
+	case mlme.AssociateResultCodesRefusedReasonUnspecified:
 		resCode = "Refused (unspecified)"
-	case mlme.AssociateResultCodes_RefusedNotAuthenticated:
+	case mlme.AssociateResultCodesRefusedNotAuthenticated:
 		resCode = "Refused (not authenticated)"
-	case mlme.AssociateResultCodes_RefusedCapabilitiesMismatch:
+	case mlme.AssociateResultCodesRefusedCapabilitiesMismatch:
 		resCode = "Refused (capabilities mismatch)"
-	case mlme.AssociateResultCodes_RefusedExternalReason:
+	case mlme.AssociateResultCodesRefusedExternalReason:
 		resCode = "Refused (external reason)"
-	case mlme.AssociateResultCodes_RefusedApOutOfMemory:
+	case mlme.AssociateResultCodesRefusedApOutOfMemory:
 		resCode = "Refused (AP out of memory)"
-	case mlme.AssociateResultCodes_RefusedBasicRatesMismatch:
+	case mlme.AssociateResultCodesRefusedBasicRatesMismatch:
 		resCode = "Refused (basic rates mismatch)"
-	case mlme.AssociateResultCodes_RejectedEmergencyServicesNotSupported:
+	case mlme.AssociateResultCodesRejectedEmergencyServicesNotSupported:
 		resCode = "Rejected (emergency services not supported)"
-	case mlme.AssociateResultCodes_RefusedTemporarily:
+	case mlme.AssociateResultCodesRefusedTemporarily:
 		resCode = "Refused (temporarily)"
 	}
 	log.Print("  Result code: ", resCode)
@@ -193,8 +151,8 @@ func PrintDisassociateIndication(ind *mlme.DisassociateIndication) {
 	log.Print("  Reason code: ", ind.ReasonCode)
 }
 
-func PrintDeauthenticateResponse(ind *mlme.DeauthenticateResponse) {
-	log.Print("DeauthenticateResponse")
+func PrintDeauthenticateConfirm(ind *mlme.DeauthenticateConfirm) {
+	log.Print("DeauthenticateConfirm")
 	log.Printf("  MAC: %02x:%02x:%02x:%02x:%02x:%02x",
 		ind.PeerStaAddress[0], ind.PeerStaAddress[1], ind.PeerStaAddress[2],
 		ind.PeerStaAddress[3], ind.PeerStaAddress[4], ind.PeerStaAddress[5])
@@ -210,23 +168,24 @@ func PrintDeauthenticateIndication(ind *mlme.DeauthenticateIndication) {
 
 }
 
-func PrintSignalReportIndication(ind *mlme_ext.SignalReportIndication) {
+func PrintSignalReportIndication(ind *mlme.SignalReportIndication) {
 	log.Print("SignalReportIndication")
 	log.Printf("  RSSI: %d", int8(ind.Rssi))
 }
 
-func PrintDeviceQueryResponse(resp *mlme_ext.DeviceQueryResponse) {
-	log.Print("DeviceQueryResponse")
-	log.Print("  Modes:")
-	for _, mode := range resp.Modes {
-		switch mode {
-		case mlme_ext.MacMode_Sta:
-			log.Print("    STA")
-		case mlme_ext.MacMode_Ap:
-			log.Print("    AP")
-		default:
-			log.Printf("    Unknown(%v)", mode)
-		}
+func PrintDeviceQueryConfirm(resp *mlme.DeviceQueryConfirm) {
+	log.Print("DeviceQueryConfirm")
+	log.Printf("  MAC: %02x:%02x:%02x:%02x:%02x:%02x",
+		resp.MacAddr[0], resp.MacAddr[1], resp.MacAddr[2],
+		resp.MacAddr[3], resp.MacAddr[4], resp.MacAddr[5])
+	log.Print("  Role:")
+	switch resp.Role {
+	case mlme.MacRoleClient:
+		log.Print("    CLIENT")
+	case mlme.MacRoleAp:
+		log.Print("    AP")
+	default:
+		log.Printf("    Unknown(%v)", resp.Role)
 	}
 	for i, band := range resp.Bands {
 		log.Printf("  Band %v:", i)

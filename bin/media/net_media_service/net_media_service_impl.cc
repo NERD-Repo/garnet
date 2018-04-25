@@ -4,13 +4,13 @@
 
 #include "garnet/bin/media/net_media_service/net_media_service_impl.h"
 
-#include "garnet/bin/media/net_media_service/net_media_player_impl.h"
-#include "garnet/bin/media/net_media_service/net_media_player_net_proxy.h"
+#include "garnet/bin/media/net_media_service/media_player_net_proxy.h"
+#include "garnet/bin/media/net_media_service/media_player_net_publisher.h"
 
-namespace media {
+namespace media_player {
 
 NetMediaServiceImpl::NetMediaServiceImpl(
-    std::unique_ptr<app::ApplicationContext> application_context)
+    std::unique_ptr<component::ApplicationContext> application_context)
     : FactoryServiceBase(std::move(application_context)) {
   this->application_context()->outgoing_services()->AddService<NetMediaService>(
       [this](fidl::InterfaceRequest<NetMediaService> request) {
@@ -20,21 +20,19 @@ NetMediaServiceImpl::NetMediaServiceImpl(
 
 NetMediaServiceImpl::~NetMediaServiceImpl() {}
 
-void NetMediaServiceImpl::CreateNetMediaPlayer(
-    const fidl::String& service_name,
-    fidl::InterfaceHandle<MediaPlayer> media_player,
-    fidl::InterfaceRequest<NetMediaPlayer> net_media_player_request) {
-  AddProduct(NetMediaPlayerImpl::Create(service_name, std::move(media_player),
-                                        std::move(net_media_player_request),
-                                        this));
+void NetMediaServiceImpl::PublishMediaPlayer(
+    fidl::StringPtr service_name,
+    fidl::InterfaceHandle<MediaPlayer> media_player) {
+  AddProduct(MediaPlayerNetPublisher::Create(service_name,
+                                             std::move(media_player), this));
 }
 
-void NetMediaServiceImpl::CreateNetMediaPlayerProxy(
-    const fidl::String& device_name,
-    const fidl::String& service_name,
-    fidl::InterfaceRequest<NetMediaPlayer> net_media_player_request) {
-  AddProduct(NetMediaPlayerNetProxy::Create(
-      device_name, service_name, std::move(net_media_player_request), this));
+void NetMediaServiceImpl::CreateMediaPlayerProxy(
+    fidl::StringPtr device_name,
+    fidl::StringPtr service_name,
+    fidl::InterfaceRequest<MediaPlayer> media_player_request) {
+  AddProduct(MediaPlayerNetProxy::Create(
+      device_name, service_name, std::move(media_player_request), this));
 }
 
-}  // namespace media
+}  // namespace media_player

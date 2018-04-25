@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <limits>
 
-#include "garnet/bin/media/audio_server/audio_renderer_impl.h"
 #include "garnet/bin/media/audio_server/constants.h"
 #include "garnet/bin/media/audio_server/platform/generic/mixers/mixer_utils.h"
 #include "lib/fxl/logging.h"
@@ -44,6 +43,7 @@ class PointSamplerImpl : public PointSampler {
                          Gain::AScale amplitude_scale);
 };
 
+// TODO(mpuryear): MTWN-75 factor to minimize LinearSamplerImpl code duplication
 template <typename SType>
 class NxNPointSamplerImpl : public PointSampler {
  public:
@@ -74,6 +74,8 @@ class NxNPointSamplerImpl : public PointSampler {
   uint32_t chan_count_ = 0;
 };
 
+// If upper layers call with ScaleType MUTED, they must set DoAccumulate=TRUE.
+// They guarantee new buffers are cleared before usage; we optimize accordingly.
 template <size_t DChCount, typename SType, size_t SChCount>
 template <ScalerType ScaleType, bool DoAccumulate>
 inline bool PointSamplerImpl<DChCount, SType, SChCount>::Mix(
@@ -85,6 +87,18 @@ inline bool PointSamplerImpl<DChCount, SType, SChCount>::Mix(
     int32_t* frac_src_offset,
     uint32_t frac_step_size,
     Gain::AScale amplitude_scale) {
+  static_assert(
+      ScaleType != ScalerType::MUTED || DoAccumulate == true,
+      "Mixing muted streams without accumulation is explicitly unsupported");
+
+  // Although the number of source frames is expressed in fixed-point 20.12
+  // format, the actual number of frames must always be an integer.
+  FXL_DCHECK((frac_src_frames & kPtsFractionalMask) == 0);
+  // Interpolation offset is int32, so even though frac_src_frames is a uint32,
+  // callers should not exceed int32_t::max().
+  FXL_DCHECK(frac_src_frames <=
+             static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
+
   using SR = SrcReader<SType, SChCount, DChCount>;
   using DM = DstMixer<ScaleType, DoAccumulate>;
 
@@ -92,8 +106,6 @@ inline bool PointSamplerImpl<DChCount, SType, SChCount>::Mix(
   uint32_t doff = *dst_offset;
   int32_t soff = *frac_src_offset;
 
-  FXL_DCHECK(frac_src_frames <=
-             static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
   FXL_DCHECK(soff < static_cast<int32_t>(frac_src_frames));
   FXL_DCHECK(soff >= 0);
 
@@ -102,11 +114,8 @@ inline bool PointSamplerImpl<DChCount, SType, SChCount>::Mix(
   if (ScaleType != ScalerType::MUTED) {
     while ((doff < dst_frames) &&
            (soff < static_cast<int32_t>(frac_src_frames))) {
-      uint32_t src_iter;
-      int32_t* out;
-
-      src_iter = (soff >> kPtsFractionalBits) * SChCount;
-      out = dst + (doff * DChCount);
+      uint32_t src_iter = (soff >> kPtsFractionalBits) * SChCount;
+      int32_t* out = dst + (doff * DChCount);
 
       for (size_t dst_iter = 0; dst_iter < DChCount; ++dst_iter) {
         int32_t sample = SR::Read(src + src_iter + (dst_iter / SR::DstPerSrc));
@@ -133,6 +142,7 @@ inline bool PointSamplerImpl<DChCount, SType, SChCount>::Mix(
   *dst_offset = doff;
   *frac_src_offset = soff;
 
+  // If we passed the last valid source subframe, then we exhausted this source.
   return (soff >= static_cast<int32_t>(frac_src_frames));
 }
 
@@ -154,27 +164,22 @@ bool PointSamplerImpl<DChCount, SType, SChCount>::Mix(
                       : Mix<ScalerType::EQ_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
                             frac_src_offset, frac_step_size, amplitude_scale);
-  } else if (amplitude_scale < Gain::MuteThreshold(15)) {
-    return Mix<ScalerType::MUTED, false>(dst, dst_frames, dst_offset, src,
-                                         frac_src_frames, frac_src_offset,
-                                         frac_step_size, amplitude_scale);
-  } else if (amplitude_scale < Gain::kUnityScale) {
-    return accumulate ? Mix<ScalerType::LT_UNITY, true>(
-                            dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale)
-                      : Mix<ScalerType::LT_UNITY, false>(
-                            dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale);
+  } else if (amplitude_scale <= Gain::MuteThreshold(15)) {
+    return Mix<ScalerType::MUTED, true>(dst, dst_frames, dst_offset, src,
+                                        frac_src_frames, frac_src_offset,
+                                        frac_step_size, amplitude_scale);
   } else {
-    return accumulate ? Mix<ScalerType::GT_UNITY, true>(
+    return accumulate ? Mix<ScalerType::NE_UNITY, true>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
                             frac_src_offset, frac_step_size, amplitude_scale)
-                      : Mix<ScalerType::GT_UNITY, false>(
+                      : Mix<ScalerType::NE_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
                             frac_src_offset, frac_step_size, amplitude_scale);
   }
 }
 
+// If upper layers call with ScaleType MUTED, they must set DoAccumulate=TRUE.
+// They guarantee new buffers are cleared before usage; we optimize accordingly.
 template <typename SType>
 template <ScalerType ScaleType, bool DoAccumulate>
 inline bool NxNPointSamplerImpl<SType>::Mix(int32_t* dst,
@@ -186,14 +191,24 @@ inline bool NxNPointSamplerImpl<SType>::Mix(int32_t* dst,
                                             uint32_t frac_step_size,
                                             Gain::AScale amplitude_scale,
                                             uint32_t chan_count) {
+  static_assert(
+      ScaleType != ScalerType::MUTED || DoAccumulate == true,
+      "Mixing muted streams without accumulation is explicitly unsupported");
+
+  // Although the number of source frames is expressed in fixed-point 20.12
+  // format, the actual number of frames must always be an integer.
+  FXL_DCHECK((frac_src_frames & kPtsFractionalMask) == 0);
+  // Interpolation offset is int32, so even though frac_src_frames is a uint32,
+  // callers should not exceed int32_t::max().
+  FXL_DCHECK(frac_src_frames <=
+             static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
+
   using DM = DstMixer<ScaleType, DoAccumulate>;
 
   const SType* src = static_cast<const SType*>(src_void);
   uint32_t doff = *dst_offset;
   int32_t soff = *frac_src_offset;
 
-  FXL_DCHECK(frac_src_frames <=
-             static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
   FXL_DCHECK(soff < static_cast<int32_t>(frac_src_frames));
   FXL_DCHECK(soff >= 0);
 
@@ -231,6 +246,7 @@ inline bool NxNPointSamplerImpl<SType>::Mix(int32_t* dst,
   *dst_offset = doff;
   *frac_src_offset = soff;
 
+  // If we passed the last valid source subframe, then we exhausted this source.
   return (soff >= static_cast<int32_t>(frac_src_frames));
 }
 
@@ -253,25 +269,16 @@ bool NxNPointSamplerImpl<SType>::Mix(int32_t* dst,
                             dst, dst_frames, dst_offset, src, frac_src_frames,
                             frac_src_offset, frac_step_size, amplitude_scale,
                             chan_count_);
-  } else if (amplitude_scale < Gain::MuteThreshold(15)) {
-    return Mix<ScalerType::MUTED, false>(
+  } else if (amplitude_scale <= Gain::MuteThreshold(15)) {
+    return Mix<ScalerType::MUTED, true>(
         dst, dst_frames, dst_offset, src, frac_src_frames, frac_src_offset,
         frac_step_size, amplitude_scale, chan_count_);
-  } else if (amplitude_scale < Gain::kUnityScale) {
-    return accumulate ? Mix<ScalerType::LT_UNITY, true>(
-                            dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale,
-                            chan_count_)
-                      : Mix<ScalerType::LT_UNITY, false>(
-                            dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale,
-                            chan_count_);
   } else {
-    return accumulate ? Mix<ScalerType::GT_UNITY, true>(
+    return accumulate ? Mix<ScalerType::NE_UNITY, true>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
                             frac_src_offset, frac_step_size, amplitude_scale,
                             chan_count_)
-                      : Mix<ScalerType::GT_UNITY, false>(
+                      : Mix<ScalerType::NE_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
                             frac_src_offset, frac_step_size, amplitude_scale,
                             chan_count_);
@@ -281,15 +288,15 @@ bool NxNPointSamplerImpl<SType>::Mix(int32_t* dst,
 // Templates used to expand all of the different combinations of the possible
 // Point Sampler Mixer configurations.
 template <size_t DChCount, typename SType, size_t SChCount>
-static inline MixerPtr SelectPSM(const AudioMediaTypeDetailsPtr& src_format,
-                                 const AudioMediaTypeDetailsPtr& dst_format) {
+static inline MixerPtr SelectPSM(const AudioMediaTypeDetails& src_format,
+                                 const AudioMediaTypeDetails& dst_format) {
   return MixerPtr(new PointSamplerImpl<DChCount, SType, SChCount>());
 }
 
 template <size_t DChCount, typename SType>
-static inline MixerPtr SelectPSM(const AudioMediaTypeDetailsPtr& src_format,
-                                 const AudioMediaTypeDetailsPtr& dst_format) {
-  switch (src_format->channels) {
+static inline MixerPtr SelectPSM(const AudioMediaTypeDetails& src_format,
+                                 const AudioMediaTypeDetails& dst_format) {
+  switch (src_format.channels) {
     case 1:
       return SelectPSM<DChCount, SType, 1>(src_format, dst_format);
     case 2:
@@ -300,40 +307,40 @@ static inline MixerPtr SelectPSM(const AudioMediaTypeDetailsPtr& src_format,
 }
 
 template <size_t DChCount>
-static inline MixerPtr SelectPSM(const AudioMediaTypeDetailsPtr& src_format,
-                                 const AudioMediaTypeDetailsPtr& dst_format) {
-  switch (src_format->sample_format) {
+static inline MixerPtr SelectPSM(const AudioMediaTypeDetails& src_format,
+                                 const AudioMediaTypeDetails& dst_format) {
+  switch (src_format.sample_format) {
     case AudioSampleFormat::UNSIGNED_8:
       return SelectPSM<DChCount, uint8_t>(src_format, dst_format);
     case AudioSampleFormat::SIGNED_16:
       return SelectPSM<DChCount, int16_t>(src_format, dst_format);
+    case AudioSampleFormat::FLOAT:
+      return SelectPSM<DChCount, float>(src_format, dst_format);
     default:
       return nullptr;
   }
 }
 
-static inline MixerPtr SelectNxNPSM(
-    const AudioMediaTypeDetailsPtr& src_format) {
-  switch (src_format->sample_format) {
+static inline MixerPtr SelectNxNPSM(const AudioMediaTypeDetails& src_format) {
+  switch (src_format.sample_format) {
     case AudioSampleFormat::UNSIGNED_8:
-      FXL_LOG(INFO) << "Selected NxN PointSampler (u8)";
-      return MixerPtr(new NxNPointSamplerImpl<uint8_t>(src_format->channels));
+      return MixerPtr(new NxNPointSamplerImpl<uint8_t>(src_format.channels));
     case AudioSampleFormat::SIGNED_16:
-      FXL_LOG(INFO) << "Selected NxN PointSampler (s16)";
-      return MixerPtr(new NxNPointSamplerImpl<int16_t>(src_format->channels));
+      return MixerPtr(new NxNPointSamplerImpl<int16_t>(src_format.channels));
+    case AudioSampleFormat::FLOAT:
+      return MixerPtr(new NxNPointSamplerImpl<float>(src_format.channels));
     default:
       return nullptr;
   }
 }
 
-MixerPtr PointSampler::Select(const AudioMediaTypeDetailsPtr& src_format,
-                              const AudioMediaTypeDetailsPtr& dst_format) {
-  if (src_format->channels == dst_format->channels &&
-      src_format->channels > 2) {
+MixerPtr PointSampler::Select(const AudioMediaTypeDetails& src_format,
+                              const AudioMediaTypeDetails& dst_format) {
+  if (src_format.channels == dst_format.channels && src_format.channels > 2) {
     return SelectNxNPSM(src_format);
   }
 
-  switch (dst_format->channels) {
+  switch (dst_format.channels) {
     case 1:
       return SelectPSM<1>(src_format, dst_format);
     case 2:

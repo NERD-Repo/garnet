@@ -14,11 +14,11 @@ namespace network {
 
 class NetworkServiceDelegate {
  public:
-  NetworkServiceDelegate();
+  NetworkServiceDelegate(async_t* dispatcher);
   ~NetworkServiceDelegate();
 
  private:
-  std::unique_ptr<app::ApplicationContext> context_;
+  std::unique_ptr<component::ApplicationContext> context_;
   network::NetworkServiceImpl network_provider_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(NetworkServiceDelegate);

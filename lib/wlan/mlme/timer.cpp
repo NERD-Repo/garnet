@@ -25,10 +25,12 @@ zx_status_t Timer::CancelTimer() {
 SystemTimer::SystemTimer(uint64_t id, zx::timer timer) : Timer(id), timer_(std::move(timer)) {}
 
 zx_status_t SystemTimer::SetTimerImpl(zx::time deadline) {
-    return timer_.set(deadline, zx::duration());
+    if (!timer_) { return ZX_ERR_BAD_STATE; }
+    return timer_.set(deadline, zx::nsec(0));
 }
 
 zx_status_t SystemTimer::CancelTimerImpl() {
+    if (!timer_) { return ZX_ERR_BAD_STATE; }
     return timer_.cancel();
 }
 

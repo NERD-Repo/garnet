@@ -4,6 +4,10 @@
 
 #pragma once
 
+#ifdef __Fuchsia__
+#include <fbl/function.h>
+#endif
+
 #include "lib/escher/escher.h"
 #include "lib/escher/forward_declarations.h"
 #include "lib/escher/vk/image.h"
@@ -14,6 +18,14 @@ namespace impl {
 class GpuUploader;
 }
 namespace image_utils {
+
+#ifdef __Fuchsia__
+using ImageConversionFunction =
+    fbl::Function<void(void*, void*, uint32_t, uint32_t)>;
+#else
+using ImageConversionFunction =
+    std::function<void(void*, void*, uint32_t, uint32_t)>;
+#endif
 
 // Returns the number of bytes per pixel for the given format.
 size_t BytesPerPixel(vk::Format format);
@@ -47,21 +59,26 @@ ImagePtr NewColorAttachmentImage(ImageFactory* image_factory,
 // |image_factory| is a generic interface that could be an Image cache (in which
 // case a new Image might be created, or an existing one reused). Alternatively
 // the factory could allocate a new Image every time.
-ImagePtr NewImageFromPixels(
-    ImageFactory* image_factory,
-    impl::GpuUploader* gpu_uploader,
-    uint8_t* pixels,
-    vk::Format format,
-    uint32_t width,
-    uint32_t height,
-    vk::ImageUsageFlags additional_flags = vk::ImageUsageFlags());
+ImagePtr NewImage(ImageFactory* image_factory,
+                  vk::Format format,
+                  uint32_t width,
+                  uint32_t height,
+                  vk::ImageUsageFlags additional_flags = vk::ImageUsageFlags());
 
-// Write the contents of |pixels| into an existing |image|.
-// The VkFormat, width, and height of |pixels| is assumed to match that of
-// |image|.
+// Write the contents of |pixels| into an existing |gpu_image|.
+// The width, and height of |pixels| is assumed to match that of
+// |gpu_image|.
+// If the format of |pixels| is different from |gpu_image|, a conversion
+// function that can convert from |pixels| to |gpu_image| should be
+// provided as |convertion_func|.
+// Note that all echer images are stored in GPU memory.  The use of gpu_image
+// here is to specifically differentiate it from pixels, which may be stored in
+// host_memory.
 void WritePixelsToImage(impl::GpuUploader* gpu_uploader,
                         uint8_t* pixels,
-                        ImagePtr image);
+                        ImagePtr gpu_image,
+                        const escher::image_utils::ImageConversionFunction&
+                            convertion_func = nullptr);
 
 // Return new Image containing the provided pixels.  Uses transfer queue to
 // efficiently transfer image data to GPU.  If bytes is null, don't bother

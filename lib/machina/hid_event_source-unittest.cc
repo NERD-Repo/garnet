@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "garnet/lib/machina/hid_event_source.h"
-
 #include <fbl/vector.h>
 #include <hid/hid.h>
 #include <hid/usages.h>
 
+#include "garnet/lib/machina/hid_event_source.h"
 #include "gtest/gtest.h"
 
 // Yanked from system/ulib/hid/hid.c
@@ -19,7 +18,7 @@ namespace {
 
 static constexpr size_t kInputQueueSize = 8;
 
-static const hid_keys_t kAllKeysUp = {};
+static constexpr hid_keys_t kAllKeysUp = {};
 
 // Utility class for performing verifications on the state of an
 // InputDispatcher.
@@ -29,8 +28,8 @@ class InputDispatcherVerifier {
 
   void Reset(InputDispatcher* dispatcher) {
     queued_events_.reset();
-    while (dispatcher->size() > 0) {
-      InputEvent event = dispatcher->Wait();
+    while (dispatcher->Keyboard()->size() > 0) {
+      InputEvent event = dispatcher->Keyboard()->Wait();
       queued_events_.push_back(event);
     }
   }

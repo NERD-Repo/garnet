@@ -60,12 +60,12 @@ class Resource {
 // TODO(MZ-268): Make this class final, and add public move constructor.
 class Memory : public Resource {
  public:
-  Memory(Session* session, zx::vmo vmo, scenic::MemoryType memory_type);
+  Memory(Session* session, zx::vmo vmo, images::MemoryType memory_type);
   ~Memory();
 
   // Gets the underlying VMO's memory type, indicating whether it represents
   // host or GPU memory.
-  scenic::MemoryType memory_type() const { return memory_type_; }
+  images::MemoryType memory_type() const { return memory_type_; }
 
  protected:
   Memory(Memory&& moved);
@@ -73,7 +73,7 @@ class Memory : public Resource {
  private:
   FXL_DISALLOW_COPY_AND_ASSIGN(Memory);
 
-  scenic::MemoryType const memory_type_;
+  images::MemoryType const memory_type_;
 };
 
 // Represents an abstract shape resource in a session.
@@ -132,28 +132,28 @@ class RoundedRectangle final : public Shape {
 class Image : public Resource {
  public:
   // Creates an image resource bound to a session.
-  Image(const Memory& memory, off_t memory_offset, scenic::ImageInfoPtr info);
+  Image(const Memory& memory, off_t memory_offset, images::ImageInfo info);
   Image(Session* session,
         uint32_t memory_id,
         off_t memory_offset,
-        scenic::ImageInfoPtr info);
+        images::ImageInfo info);
   ~Image();
 
   // Returns the number of bytes needed to represent an image.
-  static size_t ComputeSize(const scenic::ImageInfo& image_info);
+  static size_t ComputeSize(const images::ImageInfo& image_info);
 
   // Gets the byte offset of the image within its memory resource.
   off_t memory_offset() const { return memory_offset_; }
 
   // Gets information about the image's layout.
-  const scenic::ImageInfo& info() const { return info_; }
+  const images::ImageInfo& info() const { return info_; }
 
  protected:
   Image(Image&& moved);
 
  private:
   off_t const memory_offset_;
-  scenic::ImageInfo const info_;
+  images::ImageInfo const info_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(Image);
 };
@@ -181,13 +181,14 @@ class Mesh final : public Shape {
   Mesh(Mesh&& moved);
   ~Mesh();
 
-  // These arguments are documented in ops.fidl; see BindMeshBuffersOp.
+  // These arguments are documented in commands.fidl; see
+  // BindMeshBuffersCommand.
   void BindBuffers(const Buffer& index_buffer,
-                   scenic::MeshIndexFormat index_format,
+                   gfx::MeshIndexFormat index_format,
                    uint64_t index_offset,
                    uint32_t index_count,
                    const Buffer& vertex_buffer,
-                   scenic::MeshVertexFormatPtr vertex_format,
+                   gfx::MeshVertexFormat vertex_format,
                    uint64_t vertex_offset,
                    uint32_t vertex_count,
                    const float bounding_box_min[3],
@@ -205,7 +206,10 @@ class Material final : public Resource {
   ~Material();
 
   // Sets the material's texture.
-  void SetTexture(const Image& image) { SetTexture(image.id()); }
+  void SetTexture(const Image& image) {
+    FXL_DCHECK(session() == image.session());
+    SetTexture(image.id());
+  }
   void SetTexture(uint32_t image_id);
 
   // Sets the material's color.
@@ -245,7 +249,7 @@ class Node : public Resource {
   void SetTag(uint32_t tag_value);
 
   // Sets the node's hit test behavior.
-  void SetHitTestBehavior(scenic::HitTestBehavior hit_test_behavior);
+  void SetHitTestBehavior(gfx::HitTestBehavior hit_test_behavior);
 
   // Detaches the node from its parent.
   void Detach();
@@ -267,11 +271,17 @@ class ShapeNode final : public Node {
   ~ShapeNode();
 
   // Sets the shape that the shape node should draw.
-  void SetShape(const Shape& shape) { SetShape(shape.id()); }
+  void SetShape(const Shape& shape) {
+    FXL_DCHECK(session() == shape.session());
+    SetShape(shape.id());
+  }
   void SetShape(uint32_t shape_id);
 
   // Sets the material with which to draw the shape.
-  void SetMaterial(const Material& material) { SetMaterial(material.id()); }
+  void SetMaterial(const Material& material) {
+    FXL_DCHECK(session() == material.session());
+    SetMaterial(material.id());
+  }
   void SetMaterial(uint32_t material_id);
 
  private:
@@ -283,10 +293,16 @@ class ShapeNode final : public Node {
 class ContainerNode : public Node {
  public:
   // Adds a child to the node.
-  void AddChild(const Node& child) { AddChild(child.id()); }
+  void AddChild(const Node& child) {
+   FXL_DCHECK(session() == child.session());
+   AddChild(child.id());
+ }
   void AddChild(uint32_t child_node_id);
 
-  void AddPart(const Node& part) { AddPart(part.id()); }
+  void AddPart(const Node& part) {
+    FXL_DCHECK(session() == part.session());
+    AddPart(part.id());
+  }
   void AddPart(uint32_t part_node_id);
 
   // Detaches all children from the node.
@@ -368,7 +384,7 @@ class OpacityNode final : public ContainerNode {
 // A value that can be used in place of a constant value.
 class Variable final : public Resource {
  public:
-  explicit Variable(Session* session, scenic::ValuePtr initial_value);
+  explicit Variable(Session* session, gfx::Value initial_value);
   Variable(Variable&& moved);
   ~Variable();
 
@@ -435,7 +451,10 @@ class Scene final : public ContainerNode {
   Scene(Scene&& moved);
   ~Scene();
 
-  void AddLight(const Light& light) { AddLight(light.id()); }
+  void AddLight(const Light& light) {
+    FXL_DCHECK(session() == light.session());
+    AddLight(light.id());
+  }
   void AddLight(uint32_t light_id);
   void DetachLights();
 
@@ -454,10 +473,12 @@ class Camera final : public Resource {
   ~Camera();
 
   // Sets the camera's projection parameters.
-  void SetProjection(const float eye_position[3],
-                     const float eye_look_at[3],
-                     const float eye_up[3],
-                     float fovy);
+  void SetTransform(const float eye_position[3],
+                    const float eye_look_at[3],
+                    const float eye_up[3]);
+
+  // Sets the camera's projection parameters.
+  void SetProjection(const float fovy);
 
   // Sets the camera pose buffer
   void SetPoseBuffer(const Buffer& buffer,
@@ -477,13 +498,16 @@ class Renderer final : public Resource {
   ~Renderer();
 
   // Sets the camera whose view will be rendered.
-  void SetCamera(const Camera& camera) { SetCamera(camera.id()); }
+  void SetCamera(const Camera& camera) {
+    FXL_DCHECK(session() == camera.session());
+    SetCamera(camera.id());
+  }
   void SetCamera(uint32_t camera_id);
 
-  void SetParam(scenic::RendererParamPtr param);
+  void SetParam(gfx::RendererParam param);
 
   // Convenient wrapper for SetParam().
-  void SetShadowTechnique(scenic::ShadowTechnique technique);
+  void SetShadowTechnique(gfx::ShadowTechnique technique);
 
   // Set whether clipping is disabled for this renderer.
   // NOTE: disabling clipping only has a visual effect; hit-testing is not
@@ -512,7 +536,10 @@ class Layer final : public Resource {
   }
   void SetSize(const float size[2]);
 
-  void SetRenderer(const Renderer& renderer) { SetRenderer(renderer.id()); }
+  void SetRenderer(const Renderer& renderer) {
+    FXL_DCHECK(session() == renderer.session());
+    SetRenderer(renderer.id());
+  }
   void SetRenderer(uint32_t renderer_id);
 
  private:
@@ -526,8 +553,17 @@ class LayerStack final : public Resource {
   LayerStack(LayerStack&& moved);
   ~LayerStack();
 
-  void AddLayer(const Layer& layer) { AddLayer(layer.id()); }
+  void AddLayer(const Layer& layer) {
+    FXL_DCHECK(session() == layer.session());
+    AddLayer(layer.id());
+  }
   void AddLayer(uint32_t layer_id);
+  void RemoveLayer(const Layer& layer) {
+    FXL_DCHECK(session() == layer.session());
+    RemoveLayer(layer.id());
+  }
+  void RemoveLayer(uint32_t layer_id);
+  void RemoveAllLayers();
 
  private:
   FXL_DISALLOW_COPY_AND_ASSIGN(LayerStack);
@@ -542,6 +578,7 @@ class DisplayCompositor final : public Resource {
 
   // Sets the layer-stack that is to be composited.
   void SetLayerStack(const LayerStack& layer_stack) {
+    FXL_DCHECK(session() == layer_stack.session());
     SetLayerStack(layer_stack.id());
   }
   void SetLayerStack(uint32_t layer_stack_id);

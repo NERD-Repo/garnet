@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "escher_examples": "//garnet/examples/escher:escher_examples"
+    }
+}

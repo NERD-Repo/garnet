@@ -1,8 +1,0 @@
-{
-    "languages": [
-        "rust"
-    ],
-    "packages": {
-        "zircon_rust_examples": "//garnet/public/rust/crates/fuchsia-zircon/examples:zircon_rust_examples"
-    }
-}

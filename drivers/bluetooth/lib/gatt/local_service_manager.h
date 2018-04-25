@@ -11,7 +11,6 @@
 #include "garnet/drivers/bluetooth/lib/gatt/types.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_ptr.h"
-#include "lib/fxl/tasks/task_runner.h"
 
 namespace btlib {
 namespace gatt {
@@ -96,6 +95,11 @@ class LocalServiceManager final {
                                IdType chrc_id,
                                const std::string& peer_id,
                                ClientCharacteristicConfig* out_config);
+
+  // Erase any client characteristic configuration associated to a specific
+  // client and invoke its ClientConfigCallback to signal that notifications and
+  // indications are now disabled.
+  void DisconnectClient(const std::string& peer_id);
 
   fxl::RefPtr<att::Database> database() const { return db_; }
 

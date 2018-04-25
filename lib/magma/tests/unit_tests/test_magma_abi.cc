@@ -175,67 +175,49 @@ public:
         test2->BufferImport(handle, id);
     }
 
-    void BufferExportFd(int* fd_out, uint64_t* id_out)
+    void Semaphore(uint32_t count)
     {
         ASSERT_NE(connection_, nullptr);
 
-        uint64_t size = PAGE_SIZE;
-        magma_buffer_t buffer;
+        std::vector<magma_semaphore_t> semaphore(count);
+        for (uint32_t i = 0; i < count; i++) {
+            EXPECT_EQ(MAGMA_STATUS_OK, magma_create_semaphore(connection_, &semaphore[i]));
+            EXPECT_NE(0u, magma_get_semaphore_id(semaphore[i]));
+        }
 
-        EXPECT_EQ(MAGMA_STATUS_OK, magma_create_buffer(connection_, size, &size, &buffer));
-
-        *id_out = magma_get_buffer_id(buffer);
-
-        EXPECT_EQ(MAGMA_STATUS_OK, magma_export_fd(connection_, buffer, fd_out));
-    }
-
-    void BufferImportFd(int fd, uint64_t id)
-    {
-        ASSERT_NE(connection_, nullptr);
-
-        magma_buffer_t buffer;
-        EXPECT_EQ(MAGMA_STATUS_OK, magma_import_fd(connection_, fd, &buffer));
-        EXPECT_EQ(magma_get_buffer_id(buffer), id);
-    }
-
-    static void BufferImportExportFd(TestConnection* test1, TestConnection* test2)
-    {
-        int fd;
-        uint64_t id;
-        test1->BufferExportFd(&fd, &id);
-        test2->BufferImportFd(fd, id);
-
-        // fd should still be open.
-        EXPECT_EQ(0, close(fd));
-    }
-
-    void Semaphore()
-    {
-        ASSERT_NE(connection_, nullptr);
-
-        magma_semaphore_t semaphore;
-        EXPECT_EQ(MAGMA_STATUS_OK, magma_create_semaphore(connection_, &semaphore));
-
-        EXPECT_NE(0u, magma_get_semaphore_id(semaphore));
-
-        std::thread thread([semaphore] {
-            EXPECT_EQ(MAGMA_STATUS_OK, magma_wait_semaphore_no_reset(semaphore, 0, 1000));
-            EXPECT_EQ(MAGMA_STATUS_OK, magma_wait_semaphore(semaphore, 0));
-            EXPECT_EQ(MAGMA_STATUS_TIMED_OUT, magma_wait_semaphore(semaphore, 100));
+        auto thread = std::thread([semaphore, wait_all = true] {
+            EXPECT_EQ(MAGMA_STATUS_OK, magma_wait_semaphores(semaphore.data(), semaphore.size(),
+                                                             UINT64_MAX, wait_all));
+            for (uint32_t i = 0; i < semaphore.size(); i++) {
+                magma_reset_semaphore(semaphore[i]);
+            }
+            EXPECT_EQ(MAGMA_STATUS_TIMED_OUT,
+                      magma_wait_semaphores(semaphore.data(), semaphore.size(), 100, wait_all));
         });
 
-        magma_signal_semaphore(semaphore);
+        for (uint32_t i = 0; i < semaphore.size(); i++) {
+            usleep(10 * 1000);
+            magma_signal_semaphore(semaphore[i]);
+        }
         thread.join();
 
-        magma_signal_semaphore(semaphore);
-        magma_reset_semaphore(semaphore);
-
-        thread = std::thread([semaphore] {
-            EXPECT_EQ(MAGMA_STATUS_TIMED_OUT, magma_wait_semaphore(semaphore, 100));
+        thread = std::thread([semaphore, wait_all = false] {
+            EXPECT_EQ(MAGMA_STATUS_OK, magma_wait_semaphores(semaphore.data(), semaphore.size(),
+                                                             UINT64_MAX, wait_all));
+            for (uint32_t i = 0; i < semaphore.size(); i++) {
+                magma_reset_semaphore(semaphore[i]);
+            }
+            EXPECT_EQ(MAGMA_STATUS_TIMED_OUT,
+                      magma_wait_semaphores(semaphore.data(), semaphore.size(), 100, wait_all));
         });
+
+        usleep(10 * 1000);
+        magma_signal_semaphore(semaphore[semaphore.size() - 1]);
         thread.join();
 
-        magma_release_semaphore(connection_, semaphore);
+        for (uint32_t i = 0; i < semaphore.size(); i++) {
+            magma_release_semaphore(connection_, semaphore[i]);
+        }
     }
 
     void SemaphoreExport(uint32_t* handle_out, uint64_t* id_out)
@@ -330,12 +312,13 @@ public:
 
             if (frame > 0) {
                 uint32_t last_index = (frame - 1) % buffers.size();
-                status = magma_wait_semaphore(buffer_presented_semaphores[last_index], 1000);
+                status =
+                    magma_wait_semaphores(&buffer_presented_semaphores[last_index], 1, 1000, true);
                 if (status != MAGMA_STATUS_OK)
                     return DRETF(false, "wait on signal semaphore failed");
                 DLOG("buffer presented");
 
-                status = magma_wait_semaphore(signal_semaphores[last_index], 1000);
+                status = magma_wait_semaphores(&signal_semaphores[last_index], 1, 1000, true);
                 if (status != MAGMA_STATUS_OK)
                     return DRETF(false, "wait on signal semaphore failed");
             }
@@ -394,17 +377,12 @@ TEST(MagmaAbi, BufferImportExport)
     TestConnection::BufferImportExport(&test1, &test2);
 }
 
-TEST(MagmaAbi, BufferImportExportFd)
-{
-    TestConnection test1;
-    TestConnection test2;
-    TestConnection::BufferImportExportFd(&test1, &test2);
-}
-
 TEST(MagmaAbi, Semaphore)
 {
     TestConnection test;
-    test.Semaphore();
+    test.Semaphore(1);
+    test.Semaphore(2);
+    test.Semaphore(3);
 }
 
 TEST(MagmaAbi, SemaphoreImportExport)

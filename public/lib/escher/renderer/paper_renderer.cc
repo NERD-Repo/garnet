@@ -13,6 +13,7 @@
 #include "lib/escher/impl/model_depth_pass.h"
 #include "lib/escher/impl/model_display_list.h"
 #include "lib/escher/impl/model_lighting_pass.h"
+#include "lib/escher/impl/model_moment_shadow_map_lighting_pass.h"
 #include "lib/escher/impl/model_pipeline_cache.h"
 #include "lib/escher/impl/model_render_pass.h"
 #include "lib/escher/impl/model_renderer.h"
@@ -21,6 +22,7 @@
 #include "lib/escher/impl/ssdo_sampler.h"
 #include "lib/escher/impl/vulkan_utils.h"
 #include "lib/escher/renderer/frame.h"
+#include "lib/escher/renderer/moment_shadow_map.h"
 #include "lib/escher/renderer/shadow_map.h"
 #include "lib/escher/scene/camera.h"
 #include "lib/escher/scene/model.h"
@@ -237,6 +239,16 @@ void PaperRenderer::UpdateRenderPasses(vk::Format prepass_color_format,
             escher()->resource_recycler(), model_data_, prepass_color_format,
             depth_format_, kLightingPassSampleCount);
   }
+
+  if (!moment_shadow_map_lighting_pass_ ||
+      moment_shadow_map_lighting_pass_->color_format() !=
+          lighting_pass_color_format) {
+    FXL_VLOG(1) << "PaperRenderer: updating ModelLightingPass.";
+    moment_shadow_map_lighting_pass_ =
+        fxl::MakeRefCounted<impl::ModelMomentShadowMapLightingPass>(
+            escher()->resource_recycler(), model_data_, prepass_color_format,
+            depth_format_, kLightingPassSampleCount);
+  }
 }
 
 void PaperRenderer::DrawLightingPass(
@@ -397,9 +409,13 @@ void PaperRenderer::DrawFrame(const FramePtr& frame,
                                overlay_model);
       break;
     case PaperRendererShadowType::kShadowMap:
-      FXL_DCHECK(shadow_map);
       DrawFrameWithShadowMapShadows(frame, stage, model, camera,
                                     color_image_out, shadow_map, overlay_model);
+      break;
+    case PaperRendererShadowType::kMomentShadowMap:
+      DrawFrameWithMomentShadowMapShadows(frame, stage, model, camera,
+                                          color_image_out, shadow_map,
+                                          overlay_model);
       break;
   }
 
@@ -459,6 +475,7 @@ void PaperRenderer::DrawFrameWithShadowMapShadows(
     const ShadowMapPtr& shadow_map,
     const Model* overlay_model) {
   FXL_DCHECK(shadow_map);
+  FXL_DCHECK(shadow_map->IsKindOf<ShadowMap>());
 
   uint32_t width = color_image_out->width();
   uint32_t height = color_image_out->height();
@@ -485,6 +502,47 @@ void PaperRenderer::DrawFrameWithShadowMapShadows(
                    stage.fill_light().color(), shadow_map->light_color(),
                    shadow_map_lighting_pass_, stage, model, camera,
                    overlay_model);
+
+  frame->AddTimestamp("finished shadow map lighting pass");
+}
+
+void PaperRenderer::DrawFrameWithMomentShadowMapShadows(
+    const FramePtr& frame,
+    const Stage& stage,
+    const Model& model,
+    const Camera& camera,
+    const ImagePtr& color_image_out,
+    const ShadowMapPtr& shadow_map,
+    const Model* overlay_model) {
+  FXL_DCHECK(shadow_map);
+  FXL_DCHECK(shadow_map->IsKindOf<MomentShadowMap>());
+
+  uint32_t width = color_image_out->width();
+  uint32_t height = color_image_out->height();
+
+  frame->command_buffer()->TakeWaitSemaphore(
+      color_image_out, vk::PipelineStageFlagBits::eColorAttachmentOutput);
+
+  frame->command_buffer()->TransitionImageLayout(
+      color_image_out, vk::ImageLayout::eUndefined,
+      vk::ImageLayout::eColorAttachmentOptimal);
+
+  ImagePtr depth_image = image_utils::NewDepthImage(
+      image_cache_, depth_format_, width, height,
+      vk::ImageUsageFlagBits::eSampled | vk::ImageUsageFlagBits::eTransferSrc);
+
+  FramebufferPtr framebuffer = fxl::MakeRefCounted<Framebuffer>(
+      escher(), width, height,
+      std::vector<ImagePtr>{color_image_out, depth_image},
+      moment_shadow_map_lighting_pass_->vk());
+
+  DrawLightingPass(frame, kLightingPassSampleCount, framebuffer,
+                   shadow_map->texture(), shadow_map->matrix(),
+                   stage.fill_light().color(), shadow_map->light_color(),
+                   moment_shadow_map_lighting_pass_, stage, model, camera,
+                   overlay_model);
+
+  frame->AddTimestamp("finished moment shadow map lighting pass");
 }
 
 void PaperRenderer::DrawFrameWithSsdoShadows(const FramePtr& frame,

@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "fidl_tests": "//garnet/public/lib/fidl/cpp:fidl_tests"
+    }
+}

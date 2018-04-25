@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "garnet/lib/machina/arch/x86/page_table.h"
-
 #include <limits.h>
 #include <stdlib.h>
 #include <cinttypes>
 
+#include "garnet/lib/machina/arch/x86/page_table.h"
 #include "garnet/lib/machina/phys_mem_fake.h"
 #include "gtest/gtest.h"
 
@@ -97,11 +96,11 @@ enum {
 };
 
 TEST(PageTableTest, 1gb) {
-  uintptr_t pte_off;
   page_table actual[4] = INITIALIZE_PAGE_TABLE;
   page_table expected[4] = INITIALIZE_PAGE_TABLE;
 
-  ASSERT_EQ(machina::create_page_table(PhysMemFake((uintptr_t)actual, 1 << 30), &pte_off),
+  ASSERT_EQ(machina::create_page_table(
+                machina::PhysMemFake((uintptr_t)actual, 1 << 30)),
             ZX_OK);
 
   // pml4
@@ -109,15 +108,14 @@ TEST(PageTableTest, 1gb) {
   // pdp
   expected[1].entries[0] = X86_PTE_P | X86_PTE_RW | X86_PTE_PS;
   ASSERT_EPT_EQ(actual, expected, sizeof(actual));
-  ASSERT_EQ(pte_off, PAGE_SIZE * 2u);
 }
 
 TEST(PageTableTest, 2mb) {
-  uintptr_t pte_off;
   page_table actual[4] = INITIALIZE_PAGE_TABLE;
   page_table expected[4] = INITIALIZE_PAGE_TABLE;
 
-  ASSERT_EQ(machina::create_page_table(PhysMemFake((uintptr_t)actual, 2 << 20), &pte_off),
+  ASSERT_EQ(machina::create_page_table(
+                machina::PhysMemFake((uintptr_t)actual, 2 << 20)),
             ZX_OK);
 
   // pml4
@@ -127,17 +125,15 @@ TEST(PageTableTest, 2mb) {
   // pd
   expected[2].entries[0] = X86_PTE_P | X86_PTE_RW | X86_PTE_PS;
   ASSERT_EPT_EQ(actual, expected, sizeof(actual));
-  ASSERT_EQ(pte_off, PAGE_SIZE * 3u);
 }
 
 TEST(PageTableTest, 4kb) {
-  uintptr_t pte_off;
   page_table actual[4] = INITIALIZE_PAGE_TABLE;
   page_table expected[4] = INITIALIZE_PAGE_TABLE;
 
-  ASSERT_EQ(
-      machina::create_page_table(PhysMemFake((uintptr_t)actual, 4 * 4 << 10), &pte_off),
-      ZX_OK);
+  ASSERT_EQ(machina::create_page_table(
+                machina::PhysMemFake((uintptr_t)actual, 4 * 4 << 10)),
+            ZX_OK);
 
   // pml4
   expected[0].entries[0] = PAGE_SIZE | X86_PTE_P | X86_PTE_RW;
@@ -151,16 +147,14 @@ TEST(PageTableTest, 4kb) {
   expected[3].entries[2] = PAGE_SIZE * 2 | X86_PTE_P | X86_PTE_RW;
   expected[3].entries[3] = PAGE_SIZE * 3 | X86_PTE_P | X86_PTE_RW;
   ASSERT_EPT_EQ(actual, expected, sizeof(actual));
-  ASSERT_EQ(pte_off, PAGE_SIZE * 4u);
 }
 
 TEST(PageTableTest, MixedPages) {
-  uintptr_t pte_off;
   page_table actual[4] = INITIALIZE_PAGE_TABLE;
   page_table expected[4] = INITIALIZE_PAGE_TABLE;
 
-  ASSERT_EQ(machina::create_page_table(PhysMemFake((uintptr_t)actual, (2 << 20) + (4 << 10)),
-                                       &pte_off),
+  ASSERT_EQ(machina::create_page_table(
+                machina::PhysMemFake((uintptr_t)actual, (2 << 20) + (4 << 10))),
             ZX_OK);
 
   // pml4
@@ -175,12 +169,10 @@ TEST(PageTableTest, MixedPages) {
   // pt
   expected[3].entries[0] = (2 << 20) | X86_PTE_P | X86_PTE_RW;
   ASSERT_EPT_EQ(actual, expected, sizeof(actual));
-  ASSERT_EQ(pte_off, PAGE_SIZE * 4u);
 }
 
 // Create a page table for 2gb + 123mb + 32kb bytes.
 TEST(PageTableTest, Complex) {
-  uintptr_t pte_off;
   page_table actual[4] = INITIALIZE_PAGE_TABLE;
   page_table expected[4] = INITIALIZE_PAGE_TABLE;
 
@@ -191,7 +183,7 @@ TEST(PageTableTest, Complex) {
   //
   // PDPT
   // > 2 direct-mapped 1gb regions
-  // > 1 ponter to a PD
+  // > 1 pointer to a PD
   //
   // PD
   // > 61 direct-mapped 2mb regions
@@ -199,7 +191,8 @@ TEST(PageTableTest, Complex) {
   //
   // PT
   // >  264 mapped pages
-  ASSERT_EQ(machina::create_page_table(PhysMemFake((uintptr_t)actual, 0x87B08000), &pte_off),
+  ASSERT_EQ(machina::create_page_table(
+                machina::PhysMemFake((uintptr_t)actual, 0x87B08000)),
             ZX_OK);
 
   // pml4
@@ -224,5 +217,4 @@ TEST(PageTableTest, Complex) {
     expected[3].entries[i] = (pd_offset + (i << 12)) | X86_PTE_P | X86_PTE_RW;
   }
   ASSERT_EPT_EQ(actual, expected, sizeof(actual));
-  ASSERT_EQ(pte_off, PAGE_SIZE * 4u);
 }

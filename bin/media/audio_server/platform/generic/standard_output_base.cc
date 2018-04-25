@@ -12,9 +12,9 @@
 #include "garnet/bin/media/audio_server/audio_renderer_format_info.h"
 #include "garnet/bin/media/audio_server/audio_renderer_impl.h"
 #include "garnet/bin/media/audio_server/platform/generic/mixer.h"
+#include "garnet/bin/media/audio_server/platform/generic/mixers/no_op.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/time/time_delta.h"
-#include "lib/media/flog/flog.h"
 
 namespace media {
 namespace audio {
@@ -158,11 +158,16 @@ zx_status_t StandardOutputBase::InitializeSourceLink(const AudioLinkPtr& link) {
     return ZX_ERR_INTERNAL;
   }
 
-  // Pick a mixer based on the input and output formats.
+  // If we have an output, pick a mixer based on the input and output formats.
+  // Otherwise, we only need a NoOp mixer (for the time being).
   auto& packet_link = *(static_cast<AudioLinkPacketSource*>(link.get()));
-  bk->mixer =
-      Mixer::Select(packet_link.format_info().format(),
-                    output_formatter_ ? &output_formatter_->format() : nullptr);
+  if (output_formatter_) {
+    bk->mixer = Mixer::Select(packet_link.format_info().format(),
+                              *(output_formatter_->format()));
+  } else {
+    bk->mixer = MixerPtr(new audio::mixers::NoOp());
+  }
+
   if (bk->mixer == nullptr) {
     FXL_LOG(ERROR) << "*** Audio system mixer cannot convert between formats "
                       "*** (could not select mixer while linking to output). "
@@ -240,23 +245,11 @@ void StandardOutputBase::ForeachLink(TaskType task_type) {
     info->UpdateRendererTrans(renderer, packet_link->format_info());
 
     bool setup_done = false;
-    AudioPipe::AudioPacketRefPtr pkt_ref;
+    fbl::RefPtr<AudioPacketRef> pkt_ref;
 
-#ifdef FLOG_ENABLED
-    if (task_type == TaskType::Mix) {
-      setup_done = SetupMix(renderer, info);
-      if (!setup_done)
-        return;
-
-      // Just starting the job. Report consumption.
-      renderer->OnRenderRange(
-          info->output_frames_to_renderer_frames(cur_mix_job_.start_pts_of),
-          cur_mix_job_.buf_frames *
-              info->output_frames_to_renderer_frames.rate());
-    }
-#endif
-
+    bool release_renderer_packet;
     while (true) {
+      release_renderer_packet = false;
       // Try to grab the front of the packet queue.  If it has been flushed
       // since the last time we grabbed it, be sure to reset our mixer's
       // internal filter state.
@@ -288,19 +281,29 @@ void StandardOutputBase::ForeachLink(TaskType task_type) {
       // Now process the packet which is at the front of the renderer's queue.
       // If the packet has been entirely consumed, pop it off the front and
       // proceed to the next one.  Otherwise, we are finished.
-      bool process_result = (task_type == TaskType::Mix)
-                                ? ProcessMix(renderer, info, pkt_ref)
-                                : ProcessTrim(renderer, info, pkt_ref);
-      if (!process_result) {
+      release_renderer_packet = (task_type == TaskType::Mix)
+                                    ? ProcessMix(renderer, info, pkt_ref)
+                                    : ProcessTrim(renderer, info, pkt_ref);
+      // If we produced enough output frames, then we are done with this mix,
+      // regardless of what we should now do with the renderer packet.
+      if (cur_mix_job_.frames_produced == cur_mix_job_.buf_frames) {
         break;
       }
-      packet_link->UnlockPendingQueueFront(&pkt_ref, true);
+      // If we still need more output, but could not complete this renderer
+      // packet (we're paused, or packet is in the future), then we are done.
+      if (!release_renderer_packet) {
+        break;
+      }
+      // We did consume this entire renderer packet, and we should keep mixing.
+      pkt_ref.reset();
+      packet_link->UnlockPendingQueueFront(release_renderer_packet);
     }
 
-    // Unlock the queue and proceed to the next renderer.
-    packet_link->UnlockPendingQueueFront(&pkt_ref, false);
+    // Unlock queue (completing packet if needed) and proceed to next renderer.
+    pkt_ref.reset();
+    packet_link->UnlockPendingQueueFront(release_renderer_packet);
 
-    // Note: there is no point in doing this for the trim task, but it dosn't
+    // Note: there is no point in doing this for the trim task, but it doesn't
     // hurt anything, and its easier then introducing another function to the
     // ForeachLink arguments to run after each renderer is processed just for
     // the purpose of setting this flag.
@@ -323,7 +326,7 @@ bool StandardOutputBase::SetupMix(
 bool StandardOutputBase::ProcessMix(
     const fbl::RefPtr<AudioRendererImpl>& renderer,
     RendererBookkeeping* info,
-    const AudioPipe::AudioPacketRefPtr& packet) {
+    const fbl::RefPtr<AudioPacketRef>& packet) {
   // Sanity check our parameters.
   FXL_DCHECK(info);
   FXL_DCHECK(packet);
@@ -419,28 +422,24 @@ bool StandardOutputBase::ProcessMix(
   FXL_DCHECK(packet->frac_frame_len() <=
              static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
 
-  if (frac_input_offset >= static_cast<int32_t>(packet->frac_frame_len())) {
-    frac_input_offset -= packet->frac_frame_len();
-  } else {
-    bool consumed_source = info->mixer->Mix(
-        buf, frames_left, &output_offset, packet->supplied_packet()->payload(),
+  bool consumed_source = false;
+  if (frac_input_offset < static_cast<int32_t>(packet->frac_frame_len())) {
+    consumed_source = info->mixer->Mix(
+        buf, frames_left, &output_offset, packet->payload(),
         packet->frac_frame_len(), &frac_input_offset, info->step_size,
         info->amplitude_scale, cur_mix_job_.accumulate);
     FXL_DCHECK(output_offset <= frames_left);
+  }
 
-    if (!consumed_source) {
-      // Looks like we didn't consume all of this region.  Assert that we have
-      // produced all of our frames and we are done.
-      FXL_DCHECK(output_offset == frames_left);
-      return false;
-    }
-
-    frac_input_offset -= packet->frac_frame_len();
+  if (consumed_source) {
+    FXL_DCHECK(frac_input_offset + info->mixer->pos_filter_width() >=
+               packet->frac_frame_len());
   }
 
   cur_mix_job_.frames_produced += output_offset;
+
   FXL_DCHECK(cur_mix_job_.frames_produced <= cur_mix_job_.buf_frames);
-  return true;
+  return consumed_source;
 }
 
 bool StandardOutputBase::SetupTrim(
@@ -468,7 +467,7 @@ bool StandardOutputBase::SetupTrim(
 bool StandardOutputBase::ProcessTrim(
     const fbl::RefPtr<AudioRendererImpl>& renderer,
     RendererBookkeeping* info,
-    const AudioPipe::AudioPacketRefPtr& pkt_ref) {
+    const fbl::RefPtr<AudioPacketRef>& pkt_ref) {
   FXL_DCHECK(pkt_ref);
 
   // If the presentation end of this packet is in the future, stop trimming.
@@ -484,33 +483,22 @@ void StandardOutputBase::RendererBookkeeping::UpdateRendererTrans(
     const AudioRendererFormatInfo& format_info) {
   FXL_DCHECK(renderer != nullptr);
   TimelineFunction timeline_function;
-  uint32_t gen;
+  uint32_t gen = local_time_to_renderer_subframes_gen;
 
-  renderer->timeline_control_point().SnapshotCurrentFunction(
-      Timeline::local_now(), &timeline_function, &gen);
+  renderer->SnapshotCurrentTimelineFunction(
+      Timeline::local_now(), &local_time_to_renderer_subframes, &gen);
 
   // If the local time -> media time transformation has not changed since the
-  // last time we examines it, just get out now.
+  // last time we examined it, just get out now.
   if (local_time_to_renderer_subframes_gen == gen) {
     return;
   }
 
-  // The control point works in ns units. We want the rate in frames per
-  // nanosecond, so we convert here.
-  TimelineRate rate_in_frames_per_ns =
-      timeline_function.rate() * format_info.frames_per_ns();
-
-  local_time_to_renderer_frames = TimelineFunction(
-      timeline_function.reference_time(),
-      timeline_function.subject_time() * format_info.frames_per_ns(),
-      rate_in_frames_per_ns.reference_delta(),
-      rate_in_frames_per_ns.subject_delta());
-
   // The transformation has changed, re-compute the local time -> renderer frame
   // transformation.
-  local_time_to_renderer_subframes =
-      TimelineFunction(format_info.frame_to_media_ratio()) *
-      local_time_to_renderer_frames;
+  local_time_to_renderer_frames =
+      local_time_to_renderer_subframes *
+      TimelineFunction(TimelineRate(1u, 1u << kPtsFractionalBits));
 
   // Update the generation, and invalidate the output to renderer generation.
   local_time_to_renderer_subframes_gen = gen;

@@ -8,19 +8,24 @@
 #include <hid/hid.h>
 #include <hid/usages.h>
 #include <stdint.h>
+#include <zx/time.h>
 
 #include <vector>
 
-#include "lib/ui/input/fidl/input_events.fidl.h"
-#include "lib/ui/input/fidl/input_device_registry.fidl.h"
-#include "lib/ui/input/fidl/input_reports.fidl.h"
+#include <fuchsia/cpp/geometry.h>
+#include <fuchsia/cpp/input.h>
 #include "lib/fxl/memory/ref_counted.h"
 #include "lib/fxl/memory/weak_ptr.h"
-#include "lib/fsl/tasks/message_loop.h"
 
 namespace mozart {
 
-using OnEventCallback = std::function<void(mozart::InputEventPtr event)>;
+using OnEventCallback = std::function<void(input::InputEvent event)>;
+// In contrast to keyboard and mouse devices, which require extra state to
+// correctly interpret their data, sensor devices are simpler, so we just pass
+// through the raw InputReport. We do need a device_id to understand which
+// sensor the report came from.
+using OnSensorEventCallback =
+    std::function<void(uint32_t device_id, input::InputReport event)>;
 
 class DeviceState;
 
@@ -33,31 +38,31 @@ class State {
 class KeyboardState : public State {
  public:
   KeyboardState(DeviceState* device_state);
-  void Update(mozart::InputReportPtr report);
+  void Update(input::InputReport report);
 
  private:
-  void SendEvent(mozart::KeyboardEvent::Phase phase,
+  void SendEvent(input::KeyboardEventPhase phase,
                  uint32_t key,
                  uint64_t modifiers,
                  uint64_t timestamp);
   void Repeat(uint64_t sequence);
-  void ScheduleRepeat(uint64_t sequence, fxl::TimeDelta delta);
+  void ScheduleRepeat(uint64_t sequence, zx::duration delta);
 
   DeviceState* device_state_;
   keychar_t* keymap_;  // assigned to a global static qwerty_map or dvorak_map
-  fxl::WeakPtrFactory<KeyboardState> weak_ptr_factory_;
-  fxl::RefPtr<fxl::TaskRunner> task_runner_;
 
   std::vector<uint32_t> keys_;
   std::vector<uint32_t> repeat_keys_;
   uint64_t modifiers_ = 0;
   uint64_t repeat_sequence_ = 0;
+
+  fxl::WeakPtrFactory<KeyboardState> weak_ptr_factory_;
 };
 
 class MouseState : public State {
  public:
   MouseState(DeviceState* device_state) : device_state_(device_state) {}
-  void Update(mozart::InputReportPtr report, mozart::Size display_size);
+  void Update(input::InputReport report, geometry::Size display_size);
   void OnRegistered();
   void OnUnregistered();
 
@@ -65,23 +70,23 @@ class MouseState : public State {
   void SendEvent(float rel_x,
                  float rel_y,
                  int64_t timestamp,
-                 mozart::PointerEvent::Phase phase,
+                 input::PointerEventPhase phase,
                  uint32_t buttons);
 
   DeviceState* device_state_;
   uint8_t buttons_ = 0;
-  mozart::PointF position_;
+  geometry::PointF position_;
 };
 
 class StylusState : public State {
  public:
   StylusState(DeviceState* device_state) : device_state_(device_state) {}
-  void Update(mozart::InputReportPtr report, mozart::Size display_size);
+  void Update(input::InputReport report, geometry::Size display_size);
 
  private:
   void SendEvent(int64_t timestamp,
-                 mozart::PointerEvent::Phase phase,
-                 mozart::PointerEvent::Type type,
+                 input::PointerEventPhase phase,
+                 input::PointerEventType type,
                  float x,
                  float y,
                  uint32_t buttons);
@@ -90,55 +95,76 @@ class StylusState : public State {
   bool stylus_down_ = false;
   bool stylus_in_range_ = false;
   bool inverted_stylus_ = false;
-  mozart::PointerEvent stylus_;
+  input::PointerEvent stylus_;
 };
 
 class TouchscreenState : public State {
  public:
   TouchscreenState(DeviceState* device_state) : device_state_(device_state) {}
-  void Update(mozart::InputReportPtr report, mozart::Size display_size);
+  void Update(input::InputReport report, geometry::Size display_size);
 
  private:
   DeviceState* device_state_;
-  std::vector<mozart::PointerEvent> pointers_;
+  std::vector<input::PointerEvent> pointers_;
+};
+
+class SensorState : public State {
+ public:
+  SensorState(DeviceState* device_state) : device_state_(device_state) {}
+  void Update(input::InputReport report);
+
+ private:
+  DeviceState* device_state_;
+  // TODO(SCN-627): Remember sampling frequency and physical units.
 };
 
 class DeviceState {
  public:
   DeviceState(uint32_t device_id,
-              mozart::DeviceDescriptor* descriptor,
+              input::DeviceDescriptor* descriptor,
               OnEventCallback callback);
+  DeviceState(uint32_t device_id,
+              input::DeviceDescriptor* descriptor,
+              OnSensorEventCallback callback);
   ~DeviceState();
 
   void OnRegistered();
   void OnUnregistered();
 
-  void Update(mozart::InputReportPtr report, mozart::Size display_size);
+  void Update(input::InputReport report, geometry::Size display_size);
 
   uint32_t device_id() { return device_id_; }
   OnEventCallback callback() { return callback_; }
+  OnSensorEventCallback sensor_callback() { return sensor_callback_; }
 
-  mozart::KeyboardDescriptor* keyboard_descriptor() {
+  input::KeyboardDescriptor* keyboard_descriptor() {
     return descriptor_->keyboard.get();
   }
-  mozart::MouseDescriptor* mouse_descriptor() {
+  input::MouseDescriptor* mouse_descriptor() {
     return descriptor_->mouse.get();
   }
-  mozart::StylusDescriptor* stylus_descriptor() {
+  input::StylusDescriptor* stylus_descriptor() {
     return descriptor_->stylus.get();
   }
-  mozart::TouchscreenDescriptor* touchscreen_descriptor() {
+  input::TouchscreenDescriptor* touchscreen_descriptor() {
     return descriptor_->touchscreen.get();
+  }
+  input::SensorDescriptor* sensor_descriptor() {
+    return descriptor_->sensor.get();
   }
 
  private:
   uint32_t device_id_;
-  mozart::DeviceDescriptor* descriptor_;
-  OnEventCallback callback_;
+  input::DeviceDescriptor* descriptor_;
+
   KeyboardState keyboard_;
   MouseState mouse_;
   StylusState stylus_;
   TouchscreenState touchscreen_;
+  OnEventCallback callback_;
+
+  SensorState sensor_;
+  OnSensorEventCallback sensor_callback_;
 };
 
 }  // namespace mozart

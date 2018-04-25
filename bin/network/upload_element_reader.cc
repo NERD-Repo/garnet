@@ -70,22 +70,24 @@ size_t VmoUploadElementReader::size() {
 }
 
 bool VmoUploadElementReader::ReadAvailable(std::ostream* os) {
-  size_t num_bytes = buf_.size();
-  err_ = vmo_.read(buf_.data(), offset_, num_bytes, &num_bytes);
+  const size_t remaining_bytes = size_ - offset_;
+  const size_t bytes_to_process = std::min(remaining_bytes, BUFSIZE);
+
+  err_ = vmo_.read(buf_.data(), offset_, bytes_to_process);
   if (err_ != ZX_OK) {
     FXL_VLOG(1) << "VmoUploadElementReader: result=" << err_;
     return false;
   }
 
-  if (num_bytes > 0) {
-    os->write(buf_.data(), num_bytes);
+  if (bytes_to_process > 0) {
+    os->write(buf_.data(), bytes_to_process);
     if (!*os) {
       FXL_VLOG(1) << "VmoUploadElementReader: Unable to write to stream.";
       // TODO(toshik): better result code?
       err_ = ZX_ERR_BUFFER_TOO_SMALL;
       return false;
     }
-    offset_ += num_bytes;
+    offset_ += bytes_to_process;
 
     return true;
   } else {

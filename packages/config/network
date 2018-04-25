@@ -1,0 +1,8 @@
+{
+    "imports": [
+        "garnet/packages/config/services"
+    ],
+    "packages": {
+        "network_config": "//garnet/bin/sysmgr:network_config"
+    }
+}

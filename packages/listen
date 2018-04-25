@@ -1,8 +1,0 @@
-{
-    "languages": [
-        "cpp"
-    ],
-    "packages": {
-        "listen": "//garnet/bin/listen"
-    }
-}

@@ -8,18 +8,18 @@
 #include <fbl/mutex.h>
 #include <fbl/unique_ptr.h>
 #include <virtio/block.h>
+#include <virtio/virtio_ids.h>
 
 #include "garnet/lib/machina/block_dispatcher.h"
-#include "garnet/lib/machina/virtio.h"
-
-typedef struct file_state file_state_t;
+#include "garnet/lib/machina/virtio_device.h"
 
 namespace machina {
 
 // Stores the state of a block device.
-class VirtioBlock : public VirtioDevice {
+class VirtioBlock
+    : public VirtioDeviceBase<VIRTIO_ID_BLOCK, 1, virtio_blk_config_t> {
  public:
-  static const size_t kSectorSize = 512;
+  static constexpr size_t kSectorSize = 512;
 
   VirtioBlock(const PhysMem& phys_mem);
   ~VirtioBlock() override = default;
@@ -27,7 +27,7 @@ class VirtioBlock : public VirtioDevice {
   // Set the dispatcher to use to interface with the back-end.
   zx_status_t SetDispatcher(fbl::unique_ptr<BlockDispatcher> dispatcher);
 
-  // Starts a thread to monitor the queue for incomming block requests.
+  // Starts a thread to monitor the queue for incoming block requests.
   zx_status_t Start();
 
   // Our config space is read-only.
@@ -35,20 +35,16 @@ class VirtioBlock : public VirtioDevice {
     return ZX_ERR_NOT_SUPPORTED;
   }
 
-  zx_status_t HandleBlockRequest(virtio_queue_t* queue,
+  zx_status_t HandleBlockRequest(VirtioQueue* queue,
                                  uint16_t head,
                                  uint32_t* used);
 
   bool is_read_only() { return has_device_features(VIRTIO_BLK_F_RO); }
 
-  // The queue used for handling block reauests.
-  virtio_queue_t& queue() { return queue_; }
+  // The queue used for handling block requests.
+  VirtioQueue* request_queue() { return queue(0); }
 
  private:
-  // Queue for handling block requests.
-  virtio_queue_t queue_;
-  // Device configuration fields.
-  virtio_blk_config_t config_ = {};
   fbl::unique_ptr<BlockDispatcher> dispatcher_;
 };
 

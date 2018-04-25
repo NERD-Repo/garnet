@@ -1,0 +1,62 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+static_library("console") {
+  sources = [
+    "command.cc",
+    "command.h",
+    "command_parser.cc",
+    "command_parser.h",
+    "command_utils.cc",
+    "command_utils.h",
+    "console.cc",
+    "console.h",
+    "console_context.cc",
+    "console_context.h",
+    "line_input.cc",
+    "line_input.h",
+    "memory_format.cc",
+    "memory_format.h",
+    "nouns.cc",
+    "nouns.h",
+    "output_buffer.cc",
+    "output_buffer.h",
+    "verbs.h",
+    "verbs_breakpoint.cc",
+    "verbs_control.cc",
+    "verbs_memory.cc",
+    "verbs_process.cc",
+    "verbs_system.cc",
+    "verbs_thread.cc",
+  ]
+
+  deps = []
+  public_deps = [
+    "//garnet/bin/zxdb/client",
+    "//garnet/public/lib/fxl",
+  ]
+
+  if (current_toolchain != host_toolchain) {
+    deps += [
+      "//garnet/public/lib/fxl",
+      "//zircon/public/lib/fdio",
+      "//zircon/public/lib/zx",
+    ]
+  }
+}
+
+source_set("tests") {
+  testonly = true
+  sources = [
+    "command_parser_unittest.cc",
+    "command_utils_unittest.cc",
+    "line_input_unittest.cc",
+    "memory_format_unittest.cc",
+  ]
+
+  deps = [
+    ":console",
+    "//third_party/googletest:gtest",
+  ]
+}

@@ -5,6 +5,7 @@
 #ifndef LIB_FSL_HANDLES_OBJECT_INFO_H_
 #define LIB_FSL_HANDLES_OBJECT_INFO_H_
 
+#include <lib/zx/time.h>
 #include <zircon/syscalls/object.h>
 #include <zircon/types.h>
 
@@ -48,6 +49,25 @@ FXL_EXPORT std::string GetCurrentThreadName();
 // Sets the name of the current thread.
 // Note: The kernel truncates names to |ZX_MAX_NAME_LEN|.
 FXL_EXPORT zx_status_t SetCurrentThreadName(const std::string& name);
+
+// Gets the total runtime of the current thread.
+FXL_EXPORT zx::duration GetCurrentThreadTotalRuntime();
+
+// Gets the total size of mapped memory ranges in the current process in bytes.
+// Not all will be backed by physical memory.
+FXL_EXPORT size_t GetCurrentProcessMemoryMappedBytes();
+
+// Gets the committed memory that is only mapped into the current process in
+// bytes.
+FXL_EXPORT size_t GetCurrentProcessMemoryPrivateBytes();
+
+// Gets the committed memory that is mapped into the current process and at
+// least one other process.
+FXL_EXPORT size_t GetCurrentProcessMemorySharedBytes();
+
+// Gets a number that estimates the fraction of shared bytes that the current
+// process is responsible for keeping alive.
+FXL_EXPORT size_t GetCurrentProcessMemoryScaledSharedBytes();
 
 }  // namespace fsl
 

@@ -6,11 +6,11 @@
 
 #include <thread>
 
+#include <lib/zx/channel.h>
+#include <lib/zx/event.h>
 #include <zircon/process.h>
 #include <zircon/syscalls/object.h>
 #include <zircon/threads.h>
-#include <zx/channel.h>
-#include <zx/event.h>
 
 #include "gtest/gtest.h"
 
@@ -101,6 +101,31 @@ TEST(ObjectInfo, GetAndSetNameOfCurrentThread) {
   EXPECT_EQ(new_name, GetCurrentThreadName());
 
   SetCurrentThreadName(old_name);
+}
+
+TEST(ObjectInfo, GetCurrentThreadTotalRuntime) {
+  zx::duration result = GetCurrentThreadTotalRuntime();
+  EXPECT_NE(0u, result.get());
+}
+
+TEST(ObjectInfo, GetCurrentProcessMemoryMappedBytes) {
+  size_t result = GetCurrentProcessMemoryMappedBytes();
+  EXPECT_NE(0u, result);
+}
+
+TEST(ObjectInfo, GetCurrentProcessMemoryPrivateBytes) {
+  size_t result = GetCurrentProcessMemoryPrivateBytes();
+  EXPECT_NE(0u, result);
+}
+
+TEST(ObjectInfo, GetCurrentProcessMemorySharedBytes) {
+  // Expect this not to blow up.
+  GetCurrentProcessMemorySharedBytes();
+}
+
+TEST(ObjectInfo, GetCurrentProcessMemoryScaledSharedBytes) {
+  // Expect this not to blow up.
+  GetCurrentProcessMemoryScaledSharedBytes();
 }
 
 }  // namespace

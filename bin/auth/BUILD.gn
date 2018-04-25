@@ -11,21 +11,38 @@ package("token_manager") {
 
   binary = "token_manager"
 
-  meta = [ {
-    path = rebase_path("meta/sandbox")
-    dest = "sandbox"
-  } ]
+  meta = [
+    {
+      path = rebase_path("meta/sandbox")
+      dest = "sandbox"
+    },
+  ]
+}
+
+package("oauth_examples") {
+  testonly = true
+  deprecated_system_image = true
+
+  deps = [
+    "//garnet/bin/auth/testing/e2e_manual:google_oauth_demo",
+  ]
+
+  binaries = [
+    {
+      name = "google_oauth_demo"
+    },
+  ]
 }
 
 package("tests") {
   testonly = true
-  system_image = true
+  deprecated_system_image = true
 
   package_name = "token_manager_tests"
 
   deps = [
     ":token_manager_unittests",
-    "//garnet/bin/auth/test:e2e_dev",
+    "//garnet/bin/auth/testing/e2e_local:e2e_dev",
     "//garnet/bin/auth/token_manager/test:dev_auth_provider",
   ]
 
@@ -40,10 +57,7 @@ package("tests") {
       name = "token_manager_unittests"
     },
     {
-      name = "dev_token_manager_e2e_test"
-
-      # Disabled because it fails when fvm.blk is used instead of bootfs.
-      disabled = true
+      name = "dev_token_mgr_e2e_test"
     },
   ]
 }
@@ -52,10 +66,9 @@ executable("token_manager_unittests") {
   testonly = true
 
   deps = [
-    "//garnet/public/lib/fxl:fxl_printers",
-    "//garnet/public/lib/test_runner/cpp:gtest_main",
     "//garnet/bin/auth/cache:unittests",
     "//garnet/bin/auth/store:unittests",
-    "//garnet/bin/auth/test:unittests",
+    "//garnet/public/lib/fxl:fxl_printers",
+    "//garnet/public/lib/test_runner/cpp:gtest_main",
   ]
 }

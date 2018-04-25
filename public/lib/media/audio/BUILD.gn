@@ -4,10 +4,6 @@
 
 source_set("audio") {
   sources = [
-    "lpcm_output_stream.cc",
-    "lpcm_output_stream.h",
-    "lpcm_payload.cc",
-    "lpcm_payload.h",
     "perceived_level.cc",
     "perceived_level.h",
     "types.cc",
@@ -19,6 +15,7 @@ source_set("audio") {
   ]
 
   deps = [
+    "//garnet/public/lib/fsl",
     "//garnet/public/lib/fxl",
     "//garnet/public/lib/media/fidl",
     "//garnet/public/lib/media/timeline",

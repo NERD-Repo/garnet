@@ -4,33 +4,30 @@
 
 #include "garnet/bin/appmgr/namespace_builder.h"
 
-#include <zircon/processargs.h>
 #include <fdio/limits.h>
 #include <fdio/util.h>
+#include <zircon/processargs.h>
 
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "lib/fxl/files/unique_fd.h"
 #include "lib/fsl/io/fd.h"
+#include "lib/fxl/files/unique_fd.h"
 
-namespace app {
+namespace component {
 
 NamespaceBuilder::NamespaceBuilder() = default;
 
 NamespaceBuilder::~NamespaceBuilder() = default;
 
 void NamespaceBuilder::AddFlatNamespace(FlatNamespacePtr ns) {
-  if (!ns.is_null() && ns->paths.size() == ns->directories.size()) {
-    for (size_t i = 0; i < ns->paths.size(); ++i) {
-      AddDirectoryIfNotPresent(ns->paths[i], std::move(ns->directories[i]));
+  if (ns && ns->paths->size() == ns->directories->size()) {
+    for (size_t i = 0; i < ns->paths->size(); ++i) {
+      AddDirectoryIfNotPresent(ns->paths->at(i),
+                               std::move(ns->directories->at(i)));
     }
   }
-}
-
-void NamespaceBuilder::AddRoot() {
-  PushDirectoryFromPath("/");
 }
 
 void NamespaceBuilder::AddPackage(zx::channel package) {
@@ -48,13 +45,16 @@ void NamespaceBuilder::AddServices(zx::channel services) {
   PushDirectoryFromChannel("/svc", std::move(services));
 }
 
-void NamespaceBuilder::AddDev() {
-  PushDirectoryFromPath("/dev");
-}
-
-void NamespaceBuilder::AddSandbox(const SandboxMetadata& sandbox) {
-  for (const auto& path : sandbox.dev())
+void NamespaceBuilder::AddSandbox(
+    const SandboxMetadata& sandbox,
+    const HubDirectoryFactory& hub_directory_factory) {
+  for (const auto& path : sandbox.dev()) {
+    if (path == "class") {
+      FXL_LOG(WARNING) << "Ignoring request for all device classes";
+      continue;
+    }
     PushDirectoryFromPath("/dev/" + path);
+  }
 
   for (const auto& path : sandbox.system())
     PushDirectoryFromPath("/system/" + path);
@@ -66,21 +66,43 @@ void NamespaceBuilder::AddSandbox(const SandboxMetadata& sandbox) {
     if (feature == "persistent-storage") {
       // TODO(flowerhack): Make this feature more fine-grained.
       PushDirectoryFromPath("/data");
-    } else if (feature == "root-ssl-certificates") {
-      PushDirectoryFromPath("/system/data/boringssl");
-      PushDirectoryFromPathAs("/system/data/boringssl", "/etc/ssl");
-    } else if (feature == "shell") {
-      // TODO(abarth): These permissions should depend on the envionment
-      // in some way so that a shell running at a user-level scope doesn't
-      // have access to all the device drivers and such.
-      AddRoot();
-      AddDev();
+    } else if (feature == "root-ssl-certificates" || feature == "shell") {
+      // "shell" implies "root-ssl-certificates"
+      PushDirectoryFromPathAs("/pkgfs/packages/root_ssl_certificates/0/data", "/config/ssl");
+      if (feature == "root-ssl-certificates") {
+        // This is a temporary hack to make BoringSSL work until we update it to use the new
+        // path in /config/ssl. Since the old path is in /system, but the "shell" feature also
+        // mounts into /system, we will break things if we run this for the "shell" feature.
+
+        // TODO(joshlf): Remove this mount once BoringSSL is updated to use the new path in /config/ssl
+        PushDirectoryFromPathAs("/pkgfs/packages/root_ssl_certificates/0/data", "/system/data/boringssl");
+      }
+
+      if (feature == "shell") {
+        // TODO(abarth): These permissions should depend on the envionment
+        // in some way so that a shell running at a user-level scope doesn't
+        // have access to all the device drivers and such.
+        PushDirectoryFromPath("/blob");
+        PushDirectoryFromPath("/boot");
+        PushDirectoryFromPath("/data");
+        PushDirectoryFromPath("/dev");
+        PushDirectoryFromChannel("/hub", hub_directory_factory());
+        PushDirectoryFromPath("/install");
+        PushDirectoryFromPath("/pkgfs");
+        PushDirectoryFromPath("/system");
+        PushDirectoryFromPath("/tmp");
+        PushDirectoryFromPath("/volume");
+      }
     } else if (feature == "system-temp") {
       PushDirectoryFromPath("/tmp");
     } else if (feature == "vulkan") {
       PushDirectoryFromPath("/dev/class/display");
       PushDirectoryFromPath("/dev/class/gpu");
       PushDirectoryFromPath("/system/data/vulkan");
+      // TODO(abarth): Teach the gpu devices to provide a protocol for fetching
+      // the device specific vulkan library by message, rather than loading it
+      // from the filesystem.
+      PushDirectoryFromPath("/system/lib");
     }
   }
 }
@@ -90,8 +112,6 @@ void NamespaceBuilder::AddDeprecatedDefaultDirectories() {
   PushDirectoryFromPathIfNotPresent("/data");
   PushDirectoryFromPathIfNotPresent("/system");
   PushDirectoryFromPathIfNotPresent("/tmp");
-  // TODO(jmatt): Remove access to /pkgfs once F5-3 is resolved
-  PushDirectoryFromPathIfNotPresent("/pkgfs/packages");
 }
 
 void NamespaceBuilder::PushDirectoryFromPath(std::string path) {
@@ -142,13 +162,15 @@ fdio_flat_namespace_t* NamespaceBuilder::Build() {
   return &flat_ns_;
 }
 
-FlatNamespacePtr NamespaceBuilder::BuildForRunner() {
-  auto flat_namespace = FlatNamespace::New();
+FlatNamespace NamespaceBuilder::BuildForRunner() {
+  FlatNamespace flat_namespace;
+
   for (auto& path : paths_) {
-    flat_namespace->paths.push_back(std::move(path));
+    flat_namespace.paths.push_back(std::move(path));
   }
+
   for (auto& handle : handle_pool_) {
-    flat_namespace->directories.push_back(std::move(handle));
+    flat_namespace.directories.push_back(std::move(handle));
   }
   return flat_namespace;
 }
@@ -159,4 +181,4 @@ void NamespaceBuilder::Release() {
   handle_pool_.clear();
 }
 
-}  // namespace app
+}  // namespace component

@@ -9,12 +9,13 @@
 #include "address_space.h"
 #include "msd_arm_connection.h"
 
-// Normal memory, outer non-cacheable, inner cacheable read+write alloc. The
-// definition of this is similar to normal LPAE memory attributes, but is
-// undocumented.
-constexpr uint8_t kMmuNormalMemoryAttr = 0x4d;
-// Memory with this attribute is also outer cacheable read+write alloc.
-constexpr uint8_t kMmuOuterCacheableMemoryAttr = 0x8d;
+// Normal memory, outer non-cacheable, inner cacheable with
+// implementation-defined allocation. The definition of this is similar to
+// normal LPAE memory attributes, but is undocumented.
+constexpr uint8_t kMmuNormalMemoryAttr = 0x48;
+// Memory with this attribute is also outer cacheable with
+// implementation-defined allocation.
+constexpr uint8_t kMmuOuterCacheableMemoryAttr = 0x88;
 
 // The memory attribute register has 8 8-bit slots.
 static constexpr uint64_t SlotAttribute(int slot, uint8_t attributes)
@@ -54,6 +55,7 @@ void AddressManager::AtomFinished(MsdArmAtom* atom)
     if (!atom->address_slot_mapping())
         return;
     atom->set_address_slot_mapping(nullptr);
+    address_slot_free_.notify_one();
 }
 
 std::shared_ptr<AddressSlotMapping> AddressManager::GetMappingForSlot(uint32_t slot_number)
@@ -64,7 +66,7 @@ std::shared_ptr<AddressSlotMapping> AddressManager::GetMappingForSlot(uint32_t s
 }
 
 std::shared_ptr<AddressSlotMapping>
-AddressManager::GetMappingForAddressSpaceUnlocked(AddressSpace* address_space)
+AddressManager::GetMappingForAddressSpaceUnlocked(const AddressSpace* address_space)
 {
     DASSERT(address_space);
     for (size_t i = 0; i < address_slots_.size(); ++i) {
@@ -105,32 +107,73 @@ void AddressManager::FlushAddressMappingRange(AddressSpace* address_space, uint6
     // The mapping will be released before the hardware lock, so that we
     // can be sure that the mapping will be expired after ReleaseSpaceMappings
     // acquires the hardware lock.
+    mapping.reset();
+    address_slot_free_.notify_one();
     slot->lock.unlock();
 }
 
-std::shared_ptr<AddressSlotMapping>
-AddressManager::AllocateMappingForAddressSpace(std::shared_ptr<MsdArmConnection> connection)
+void AddressManager::UnlockAddressSpace(AddressSpace* address_space)
 {
-    std::lock_guard<std::mutex> lock(address_slot_lock_);
-    std::shared_ptr<AddressSlotMapping> mapping =
-        GetMappingForAddressSpaceUnlocked(connection->address_space());
-    if (mapping)
-        return mapping;
-
-    // Allocate new mapping (trying to avoid evicting).
-    for (size_t i = 0; i < address_slots_.size(); ++i) {
-        if (!address_slots_[i].address_space)
-            return AssignToSlot(connection, i);
+    HardwareSlot* slot;
+    std::shared_ptr<AddressSlotMapping> mapping;
+    {
+        std::lock_guard<std::mutex> lock(address_slot_lock_);
+        mapping = AddressManager::GetMappingForAddressSpaceUnlocked(address_space);
+        if (!mapping)
+            return;
+        slot = registers_[mapping->slot_number()].get();
+        // Grab the hardware lock inside the address slot lock so we can be
+        // sure the address slot still maps to the same address space.
+        // std::unique_lock can't be used because it interacts poorly with
+        // thread-safety analysis
+        slot->lock.lock();
     }
+    slot->UnlockMmu(owner_->register_io());
 
-    // TODO(MA-386): Evict the LRU slot.
-    for (size_t i = 0; i < address_slots_.size(); ++i) {
-        if (address_slots_[i].mapping.expired())
-            return AssignToSlot(connection, i);
+    // The mapping will be released before the hardware lock, so that we
+    // can be sure that the mapping will be expired after ReleaseSpaceMappings
+    // acquires the hardware lock.
+    mapping.reset();
+    address_slot_free_.notify_one();
+    slot->lock.unlock();
+}
+
+// Disable thread safety analysis because it doesn't understand unique_lock.
+std::shared_ptr<AddressSlotMapping> AddressManager::AllocateMappingForAddressSpace(
+    std::shared_ptr<MsdArmConnection> connection) FXL_NO_THREAD_SAFETY_ANALYSIS
+{
+    std::unique_lock<std::mutex> lock(address_slot_lock_);
+    while (true) {
+        std::shared_ptr<AddressSlotMapping> mapping =
+            GetMappingForAddressSpaceUnlocked(connection->const_address_space());
+        if (mapping)
+            return mapping;
+
+        // Allocate new mapping (trying to avoid evicting).
+        for (size_t i = 0; i < address_slots_.size(); ++i) {
+            if (!address_slots_[i].address_space)
+                return AssignToSlot(connection, i);
+        }
+
+        // TODO(MA-386): Evict the LRU slot.
+        for (size_t i = 0; i < address_slots_.size(); ++i) {
+            if (address_slots_[i].mapping.expired())
+                return AssignToSlot(connection, i);
+        }
+
+        // There are normally 8 hardware address slots but only 6 jobs can be running in hardware at
+        // a time (and also the profiler can use an address slot). So the only way we can be
+        // completely out of address slots is that a connection thread is flushing the MMU. Because
+        // of that there's no deadlock if we block the device thread, because the connection can
+        // finish flushing and release its mapping without the device thread. Starvation is still
+        // possible, though.
+        if (address_slot_free_.wait_for(lock,
+                                        std::chrono::seconds(acquire_slot_timeout_seconds_)) ==
+            std::cv_status::timeout) {
+            magma::log(magma::LOG_WARNING, "Timeout waiting for address slot");
+            return DRETP(nullptr, "Timeout waiting for address slot");
+        }
     }
-
-    // TODO(MA-386): Wait until an address space is free.
-    return DRETP(nullptr, "All address slots in use");
 }
 
 std::shared_ptr<AddressSlotMapping>
@@ -147,12 +190,12 @@ AddressManager::AssignToSlot(std::shared_ptr<MsdArmConnection> connection, uint3
         hardware_slot.InvalidateSlot(io);
     auto mapping = std::make_shared<AddressSlotMapping>(slot_number, connection);
     slot.mapping = mapping;
-    slot.address_space = connection->address_space();
+    slot.address_space = connection->const_address_space();
 
     registers::AsRegisters& as_reg = hardware_slot.registers;
     hardware_slot.WaitForMmuIdle(io);
 
-    uint64_t translation_table_entry = connection->address_space()->translation_table_entry();
+    uint64_t translation_table_entry = connection->const_address_space()->translation_table_entry();
     as_reg.TranslationTable().FromValue(translation_table_entry).WriteTo(io);
 
     as_reg.MemoryAttributes().FromValue(kMemoryAttributes).WriteTo(io);
@@ -161,7 +204,7 @@ AddressManager::AssignToSlot(std::shared_ptr<MsdArmConnection> connection, uint3
     return mapping;
 }
 
-void AddressManager::ReleaseSpaceMappings(AddressSpace* address_space)
+void AddressManager::ReleaseSpaceMappings(const AddressSpace* address_space)
 {
     std::lock_guard<std::mutex> lock(address_slot_lock_);
     for (size_t i = 0; i < address_slots_.size(); ++i) {
@@ -240,4 +283,10 @@ void AddressManager::HardwareSlot::FlushMmuRange(RegisterIo* io, uint64_t start,
         registers.Command().FromValue(registers::AsCommand::kCmdFlushPageTable).WriteTo(io);
     }
     WaitForMmuIdle(io);
+}
+
+void AddressManager::HardwareSlot::UnlockMmu(RegisterIo* io)
+{
+    WaitForMmuIdle(io);
+    registers.Command().FromValue(registers::AsCommand::kCmdUnlock).WriteTo(io);
 }

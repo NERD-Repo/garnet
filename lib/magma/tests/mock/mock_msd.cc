@@ -94,6 +94,13 @@ magma_status_t msd_context_execute_command_buffer(msd_context_t* ctx, msd_buffer
     return MsdMockContext::cast(ctx)->ExecuteCommandBuffer(cmd_buf, exec_resources);
 }
 
+magma_status_t msd_context_execute_immediate_commands(msd_context_t* ctx, uint64_t commands_size,
+                                                      void* commands, uint64_t semaphore_count,
+                                                      msd_semaphore_t** semaphores)
+{
+    return MAGMA_STATUS_OK;
+}
+
 void msd_context_release_buffer(msd_context_t* context, msd_buffer_t* buffer) {}
 
 void MsdMockBufferManager::SetTestBufferManager(std::unique_ptr<MsdMockBufferManager> bufmgr)
@@ -123,20 +130,25 @@ void msd_semaphore_release(msd_semaphore_t* semaphore)
 
 void msd_connection_release_buffer(msd_connection_t* connection, msd_buffer_t* buffer) {}
 
-void msd_connection_map_buffer_gpu(struct msd_connection_t* connection, struct msd_buffer_t* buffer,
-                                   uint64_t gpu_va, uint64_t page_offset, uint64_t page_count,
-                                   uint64_t flags)
+magma_status_t msd_connection_map_buffer_gpu(struct msd_connection_t* connection,
+                                             struct msd_buffer_t* buffer, uint64_t gpu_va,
+                                             uint64_t page_offset, uint64_t page_count,
+                                             uint64_t flags)
 {
+    return MAGMA_STATUS_OK;
 }
 
-void msd_connection_unmap_buffer_gpu(struct msd_connection_t* connection,
-                                     struct msd_buffer_t* buffer, uint64_t gpu_va)
+magma_status_t msd_connection_unmap_buffer_gpu(struct msd_connection_t* connection,
+                                               struct msd_buffer_t* buffer, uint64_t gpu_va)
 {
+    return MAGMA_STATUS_OK;
 }
 
-void msd_connection_commit_buffer(struct msd_connection_t* connection, struct msd_buffer_t* buffer,
-                                  uint64_t page_offset, uint64_t page_count)
+magma_status_t msd_connection_commit_buffer(struct msd_connection_t* connection,
+                                            struct msd_buffer_t* buffer, uint64_t page_offset,
+                                            uint64_t page_count)
 {
+    return MAGMA_STATUS_OK;
 }
 
 void msd_connection_set_notification_channel(msd_connection_t* abi_connection,

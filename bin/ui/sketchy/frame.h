@@ -5,11 +5,12 @@
 #ifndef GARNET_BIN_UI_SKETCHY_FRAME_H_
 #define GARNET_BIN_UI_SKETCHY_FRAME_H_
 
+#include <lib/zx/event.h>
+
 #include "lib/escher/impl/command_buffer.h"
 #include "lib/escher/profiling/timestamp_profiler.h"
 #include "lib/escher/vk/buffer_factory.h"
 #include "lib/ui/scenic/client/session.h"
-#include "zx/event.h"
 
 namespace sketchy_service {
 
@@ -26,7 +27,7 @@ class Frame final {
   void RequestScenicPresent(
       scenic_lib::Session* session,
       uint64_t presentation_time,
-      const scenic_lib::Session::PresentCallback& callback);
+      scenic_lib::Session::PresentCallback callback);
 
   SharedBufferPool* shared_buffer_pool() const { return shared_buffer_pool_; }
   escher::impl::CommandBuffer* command() const { return command_; }

@@ -2,14 +2,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/cpp/sdk_source_set.gni")
-
-sdk_source_set("threading") {
+source_set("threading") {
   visibility = [ "//garnet/public/lib/fsl/*" ]
 
   sources = [
-    "create_thread.cc",
-    "create_thread.h",
     "thread.cc",
     "thread.h",
   ]

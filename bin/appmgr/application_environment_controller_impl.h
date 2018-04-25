@@ -7,11 +7,11 @@
 
 #include <memory>
 
-#include "lib/app/fidl/application_environment_controller.fidl.h"
-#include "lib/fidl/cpp/bindings/binding.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fxl/macros.h"
 
-namespace app {
+namespace component {
 class JobHolder;
 
 class ApplicationEnvironmentControllerImpl
@@ -26,7 +26,7 @@ class ApplicationEnvironmentControllerImpl
 
   // ApplicationEnvironmentController implementation:
 
-  void Kill(const KillCallback& callback) override;
+  void Kill(KillCallback callback) override;
 
   void Detach() override;
 
@@ -37,6 +37,6 @@ class ApplicationEnvironmentControllerImpl
   FXL_DISALLOW_COPY_AND_ASSIGN(ApplicationEnvironmentControllerImpl);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // GARNET_BIN_APPMGR_APPLICATION_ENVIRONMENT_CONTROLLER_IMPL_H_

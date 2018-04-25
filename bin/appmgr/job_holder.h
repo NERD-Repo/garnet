@@ -5,36 +5,32 @@
 #ifndef GARNET_BIN_APPMGR_JOB_HOLDER_H_
 #define GARNET_BIN_APPMGR_JOB_HOLDER_H_
 
+#include <fs/managed-vfs.h>
+#include <zx/channel.h>
+
 #include <iosfwd>
 #include <memory>
 #include <string>
 #include <unordered_map>
 
-#include <fs/pseudo-dir.h>
-#include <fs/vfs.h>
-
 #include "garnet/bin/appmgr/application_controller_impl.h"
 #include "garnet/bin/appmgr/application_environment_controller_impl.h"
 #include "garnet/bin/appmgr/application_namespace.h"
 #include "garnet/bin/appmgr/application_runner_holder.h"
-#include "lib/app/fidl/application_environment.fidl.h"
-#include "lib/app/fidl/application_loader.fidl.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include <fuchsia/cpp/component.h>
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_ptr.h"
 #include "lib/fxl/strings/string_view.h"
 #include "lib/svc/cpp/service_provider_bridge.h"
 
-namespace app {
-
-class NamespaceBuilder;
+namespace component {
 
 class JobHolder {
  public:
   JobHolder(JobHolder* parent,
-            fs::Vfs* vfs,
-            fidl::InterfaceHandle<ApplicationEnvironmentHost> host,
-            const fidl::String& label);
+            zx::channel host_directory,
+            fidl::StringPtr label);
   ~JobHolder();
 
   JobHolder* parent() const { return parent_; }
@@ -43,13 +39,13 @@ class JobHolder {
   const fbl::RefPtr<fs::PseudoDir>& info_dir() const { return info_dir_; }
 
   void CreateNestedJob(
-      fidl::InterfaceHandle<ApplicationEnvironmentHost> host,
+      zx::channel host_directory,
       fidl::InterfaceRequest<ApplicationEnvironment> environment,
       fidl::InterfaceRequest<ApplicationEnvironmentController> controller,
-      const fidl::String& label);
+      fidl::StringPtr label);
 
   void CreateApplication(
-      ApplicationLaunchInfoPtr launch_info,
+      ApplicationLaunchInfo launch_info,
       fidl::InterfaceRequest<ApplicationController> controller);
 
   // Removes the child job holder from this job holder and returns the owning
@@ -73,32 +69,20 @@ class JobHolder {
 
   ApplicationRunnerHolder* GetOrCreateRunner(const std::string& runner);
 
-  void CreateApplicationWithRunner(
-      ApplicationPackagePtr package,
-      ApplicationLaunchInfoPtr launch_info,
-      std::string runner,
-      fidl::InterfaceRequest<ApplicationController> controller,
-      fxl::RefPtr<ApplicationNamespace> application_namespace);
   void CreateApplicationWithProcess(
       ApplicationPackagePtr package,
-      ApplicationLaunchInfoPtr launch_info,
+      ApplicationLaunchInfo launch_info,
       fidl::InterfaceRequest<ApplicationController> controller,
       fxl::RefPtr<ApplicationNamespace> application_namespace);
   void CreateApplicationFromPackage(
       ApplicationPackagePtr package,
-      ApplicationLaunchInfoPtr launch_info,
+      ApplicationLaunchInfo launch_info,
       fidl::InterfaceRequest<ApplicationController> controller,
       fxl::RefPtr<ApplicationNamespace> application_namespace);
 
-  // TODO(ZX-1036): For scaffolding purposes, we make the information available
-  // to all applications started within the scope of the job.  Once we have
-  // the means to do so, we should lock this down to prevent undesirable
-  // information leakage.
-  void AddInfoDir(NamespaceBuilder* builder);
+  zx::channel OpenRootInfoDir();
 
   JobHolder* const parent_;
-  fs::Vfs* const vfs_;
-  ApplicationEnvironmentHostPtr host_;
   ApplicationLoaderPtr loader_;
   std::string label_;
 
@@ -110,6 +94,7 @@ class JobHolder {
   // A pseudo-directory which describes the components within the scope of
   // this job.
   fbl::RefPtr<fs::PseudoDir> info_dir_;
+  fs::ManagedVfs info_vfs_;
 
   std::unordered_map<JobHolder*,
                      std::unique_ptr<ApplicationEnvironmentControllerImpl>>
@@ -125,6 +110,6 @@ class JobHolder {
   FXL_DISALLOW_COPY_AND_ASSIGN(JobHolder);
 };
 
-}  // namespace app
+}  // namespace component
 
 #endif  // GARNET_BIN_APPMGR_JOB_HOLDER_H_

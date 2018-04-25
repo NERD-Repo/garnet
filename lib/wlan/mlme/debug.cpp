@@ -4,6 +4,7 @@
 
 #include <wlan/mlme/debug.h>
 
+#include <wlan/common/channel.h>
 #include <wlan/mlme/mac_frame.h>
 
 #include <cstring>
@@ -82,7 +83,12 @@ std::string Describe(const FrameHeader& hdr) {
     char buf[1024];
     size_t offset = 0;
 
-    BUFFER("fc: %s dur:%u\n        ", Describe(hdr.fc).c_str(), hdr.duration);
+    BUFFER("[fc] %s dur:%u", Describe(hdr.fc).c_str(), hdr.duration);
+    if (hdr.fc.type() == FrameType::kManagement || hdr.fc.type() == FrameType::kData) {
+        BUFFER("[seq] %s", Describe(hdr.sc).c_str());
+    }
+    BUFFER("\n        ");
+
     // IEEE Std 802.11-2016, Table 9-26
     uint8_t ds = (hdr.fc.to_ds() << 1) + hdr.fc.from_ds();
     switch (ds) {
@@ -105,6 +111,14 @@ std::string Describe(const FrameHeader& hdr) {
     default:
         break;
     }
+
+    return std::string(buf);
+}
+
+std::string Describe(const MgmtFrameHeader& hdr) {
+    char buf[1024];
+    size_t offset = 0;
+    BUFFER("%s", Describe(*reinterpret_cast<const FrameHeader*>(&hdr)).c_str());
 
     return std::string(buf);
 }
@@ -154,7 +168,7 @@ std::string HexDump(const uint8_t bytes[], size_t bytes_len) {
     if (bytes == nullptr || bytes_len == 0) { return "(empty)"; }
 
     // TODO(porce): Support other than 64
-    const size_t kLenLimit = 64;
+    const size_t kLenLimit = 400;
     char buf[kLenLimit * 8];
     size_t offset = 0;
     size_t dump_len = std::min(kLenLimit, bytes_len);
@@ -229,6 +243,84 @@ std::string Describe(const AddBaResponseFrame& resp) {
     BUFFER("params: %s", Describe(resp.params).c_str());
     BUFFER("timeout:%u", resp.timeout);
     return std::string(buf);
+}
+
+std::string Describe(const wlan_rx_info_t& rxinfo) {
+    char buf[256];
+    size_t offset = 0;
+    BUFFER("flags:0x%0x8", rxinfo.rx_flags);
+    BUFFER("valid_fields:0x%0x8", rxinfo.valid_fields);
+    BUFFER("phy:%u", rxinfo.phy);
+    BUFFER("data_rate:%u", rxinfo.data_rate);
+    BUFFER("chan:%s", common::ChanStr(rxinfo.chan).c_str());
+    BUFFER("mcs:%u", rxinfo.mcs);
+    BUFFER("rssi:%u", rxinfo.rssi);
+    BUFFER("rcpi:%u", rxinfo.rcpi);
+    BUFFER("snr:%u", rxinfo.snr);
+    return std::string(buf);
+}
+
+std::string Describe(Packet::Peer peer) {
+    switch (peer) {
+    case Packet::Peer::kUnknown:
+        return "Unknown";
+    case Packet::Peer::kDevice:
+        return "Device";
+    case Packet::Peer::kWlan:
+        return "WLAN";
+    case Packet::Peer::kEthernet:
+        return "Ethernet";
+    case Packet::Peer::kService:
+        return "Service";
+    default:
+        return "Undefined";
+    }
+}
+
+std::string Describe(const Packet& p) {
+    std::string suppress_msg = DescribeSuppressed(p);
+    if (!suppress_msg.empty()) { return suppress_msg; }
+
+    char buf[2048];
+    size_t offset = 0;
+    auto has_rxinfo = p.has_ctrl_data<wlan_rx_info_t>();
+
+    BUFFER("len:%zu", p.len());
+    BUFFER("peer:%s", Describe(p.peer()).c_str());
+    BUFFER("has_ext_data:%u", p.has_ext_data());
+    BUFFER("ext_offset:%u", p.ext_offset());
+    BUFFER("has_rxinfo:%u", has_rxinfo);
+
+    if (has_rxinfo) {
+        auto rxinfo = p.ctrl_data<wlan_rx_info_t>();
+        BUFFER("\n  rxinfo:%s", Describe(*rxinfo).c_str());
+    }
+
+    switch (p.peer()) {
+    case Packet::Peer::kWlan: {
+        auto hdr = p.field<FrameHeader>(0);
+        if (hdr->fc.type() == FrameType::kManagement || hdr->fc.type() == FrameType::kData) {
+            BUFFER("\n  wlan hdr:%s ", Describe(*hdr).c_str());
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    BUFFER("\n  packet data: %s", debug::HexDump(p.data(), p.len()).c_str());
+    return std::string(buf);
+}
+
+std::string DescribeSuppressed(const Packet& p) {
+    auto hdr = p.field<FrameHeader>(0);
+
+    if (hdr->fc.type() == FrameType::kManagement &&
+        hdr->fc.subtype() == ManagementSubtype::kBeacon) {
+        return "Beacon. Decoding suppressed.";
+    }
+
+    return "";
 }
 
 }  // namespace debug

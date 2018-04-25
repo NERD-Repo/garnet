@@ -7,22 +7,30 @@
 #include <condition_variable>
 #include <mutex>
 
+#include <lib/async/cpp/task.h>
+#include <lib/async/default.h>
+
 #include "lib/fxl/logging.h"
 
 namespace btlib {
 namespace common {
 
-void RunTaskSync(const fxl::Closure& callback,
-                 fxl::RefPtr<fxl::TaskRunner> task_runner) {
+void RunTaskSync(const fxl::Closure& callback, async_t* dispatcher) {
   FXL_DCHECK(callback);
-  FXL_DCHECK(task_runner);
-  FXL_DCHECK(!task_runner->RunsTasksOnCurrentThread());
+
+  // TODO(armansito) This check is risky. async_get_default() could return
+  // a dispatcher that goes to another thread. We don't have any current
+  // instances of a multi threaded dispatcher but we could.
+  if (dispatcher == async_get_default()) {
+    callback();
+    return;
+  }
 
   std::mutex mtx;
   std::condition_variable cv;
   bool done = false;
 
-  task_runner->PostTask([callback, &mtx, &cv, &done] {
+  async::PostTask(dispatcher, [callback, &mtx, &cv, &done] {
     callback();
 
     {

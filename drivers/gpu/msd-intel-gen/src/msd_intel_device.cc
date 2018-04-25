@@ -164,6 +164,17 @@ std::unique_ptr<MsdIntelConnection> MsdIntelDevice::Open(msd_client_id_t client_
 
 bool MsdIntelDevice::Init(void* device_handle)
 {
+    if (!BaseInit(device_handle))
+        return DRETF(false, "BaseInit failed");
+
+    if (!RenderEngineInit(true))
+        return DRETF(false, "RenderEngineInit failed");
+
+    return true;
+}
+
+bool MsdIntelDevice::BaseInit(void* device_handle)
+{
     DASSERT(!platform_device_);
 
     DLOG("Init device_handle %p", device_handle);
@@ -200,6 +211,10 @@ bool MsdIntelDevice::Init(void* device_handle)
         return false;
     }
 
+    bus_mapper_ = magma::PlatformBusMapper::Create(platform_device_->GetBusTransactionInitiator());
+    if (!bus_mapper_)
+        return DRETF(false, "failed to create bus mapper");
+
     // Clear faults
     registers::AllEngineFault::clear(register_io_.get());
 
@@ -229,9 +244,6 @@ bool MsdIntelDevice::Init(void* device_handle)
     if (!global_context_->Map(gtt_, render_engine_cs_->id()))
         return DRETF(false, "global context init failed");
 
-    if (!RenderEngineInit())
-        return DRETF(false, "failed to init render engine");
-
     device_request_semaphore_ = magma::PlatformSemaphore::Create();
 
 #if MSD_INTEL_ENABLE_MODESETTING
@@ -243,7 +255,7 @@ bool MsdIntelDevice::Init(void* device_handle)
     return true;
 }
 
-bool MsdIntelDevice::RenderEngineInit()
+bool MsdIntelDevice::RenderEngineInit(bool execute_init_batch)
 {
     CHECK_THREAD_IS_CURRENT(device_thread_id_);
 
@@ -251,12 +263,14 @@ bool MsdIntelDevice::RenderEngineInit()
 
     render_engine_cs_->InitHardware();
 
-    auto init_batch = render_engine_cs_->CreateRenderInitBatch(device_id_);
-    if (!init_batch)
-        return DRETF(false, "failed to create render init batch");
+    if (execute_init_batch) {
+        auto init_batch = render_engine_cs_->CreateRenderInitBatch(device_id_);
+        if (!init_batch)
+            return DRETF(false, "failed to create render init batch");
 
-    if (!render_engine_cs_->RenderInit(global_context_, std::move(init_batch), gtt_))
-        return DRETF(false, "render_engine_cs failed RenderInit");
+        if (!render_engine_cs_->RenderInit(global_context_, std::move(init_batch), gtt_))
+            return DRETF(false, "render_engine_cs failed RenderInit");
+    }
 
     return true;
 }
@@ -269,7 +283,7 @@ bool MsdIntelDevice::RenderEngineReset()
 
     registers::AllEngineFault::clear(register_io_.get());
 
-    return RenderEngineInit();
+    return RenderEngineInit(true);
 }
 
 void MsdIntelDevice::StartDeviceThread()
@@ -687,6 +701,10 @@ magma_status_t msd_device_query(msd_device_t* device, uint64_t id, uint64_t* val
         case kMsdIntelGenQuerySubsliceAndEuTotal:
             *value_out = MsdIntelDevice::cast(device)->subslice_total();
             *value_out = (*value_out << 32) | MsdIntelDevice::cast(device)->eu_total();
+            return MAGMA_STATUS_OK;
+
+        case kMsdIntelGenQueryGttSize:
+            *value_out = 1ul << 48;
             return MAGMA_STATUS_OK;
     }
     return DRET_MSG(MAGMA_STATUS_INVALID_ARGS, "unhandled id %" PRIu64, id);

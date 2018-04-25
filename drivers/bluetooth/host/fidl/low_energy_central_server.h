@@ -7,11 +7,12 @@
 #include <memory>
 #include <unordered_map>
 
-#include "lib/bluetooth/fidl/low_energy.fidl.h"
-#include "lib/fidl/cpp/bindings/binding.h"
+#include <fuchsia/cpp/bluetooth_low_energy.h>
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fxl/macros.h"
 
 #include "garnet/drivers/bluetooth/host/fidl/server_base.h"
+#include "garnet/drivers/bluetooth/host/gatt_host.h"
 #include "garnet/drivers/bluetooth/lib/gap/low_energy_connection_manager.h"
 #include "garnet/drivers/bluetooth/lib/gap/low_energy_discovery_manager.h"
 
@@ -19,30 +20,33 @@ namespace bthost {
 
 // Implements the low_energy::Central FIDL interface.
 class LowEnergyCentralServer
-    : public ServerBase<bluetooth::low_energy::Central> {
+    : public AdapterServerBase<bluetooth_low_energy::Central> {
  public:
   LowEnergyCentralServer(
       fxl::WeakPtr<::btlib::gap::Adapter> adapter,
-      ::fidl::InterfaceRequest<::bluetooth::low_energy::Central> request);
+      ::fidl::InterfaceRequest<::bluetooth_low_energy::Central> request,
+      fbl::RefPtr<GattHost> gatt_host);
   ~LowEnergyCentralServer() override = default;
 
  private:
-  // ::bluetooth::low_energy::Central overrides:
+  // ::bluetooth_low_energy::Central overrides:
   void SetDelegate(
-      ::fidl::InterfaceHandle<::bluetooth::low_energy::CentralDelegate>
+      ::fidl::InterfaceHandle<::bluetooth_low_energy::CentralDelegate>
           delegate) override;
-  void GetPeripherals(::fidl::Array<::fidl::String> service_uuids,
-                      const GetPeripheralsCallback& callback) override;
-  void GetPeripheral(const ::fidl::String& identifier,
-                     const GetPeripheralCallback& callback) override;
-  void StartScan(::bluetooth::low_energy::ScanFilterPtr filter,
-                 const StartScanCallback& callback) override;
+  void GetPeripherals(::fidl::VectorPtr<::fidl::StringPtr> service_uuids,
+                      GetPeripheralsCallback callback) override;
+  void GetPeripheral(::fidl::StringPtr identifier,
+                     GetPeripheralCallback callback) override;
+  void StartScan(::bluetooth_low_energy::ScanFilterPtr filter,
+                 StartScanCallback callback) override;
   void StopScan() override;
-  void ConnectPeripheral(const ::fidl::String& identifier,
-                         const ConnectPeripheralCallback& callback) override;
+  void ConnectPeripheral(
+      ::fidl::StringPtr identifier,
+      ::fidl::InterfaceRequest<bluetooth_gatt::Client> client_request,
+      ConnectPeripheralCallback callback) override;
   void DisconnectPeripheral(
-      const ::fidl::String& identifier,
-      const DisconnectPeripheralCallback& callback) override;
+      ::fidl::StringPtr identifier,
+      DisconnectPeripheralCallback callback) override;
 
   // Called by |scan_session_| when a device is discovered.
   void OnScanResult(const ::btlib::gap::RemoteDevice& remote_device);
@@ -53,6 +57,9 @@ class LowEnergyCentralServer
   // Notifies the delegate that the device with the given identifier has been
   // disconnected.
   void NotifyPeripheralDisconnected(const std::string& identifier);
+
+  // The GATT host is used to instantiate GATT Clients upon connection.
+  fbl::RefPtr<GattHost> gatt_host_;
 
   // The currently active LE discovery session. This is initialized when a
   // client requests to perform a scan.
@@ -68,7 +75,7 @@ class LowEnergyCentralServer
       connections_;
 
   // The delegate that is set via SetDelegate()
-  ::bluetooth::low_energy::CentralDelegatePtr delegate_;
+  ::bluetooth_low_energy::CentralDelegatePtr delegate_;
 
   // Keep this as the last member to make sure that all weak pointers are
   // invalidated before other members get destroyed.

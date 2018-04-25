@@ -12,12 +12,12 @@
 #include <zircon/syscalls.h>
 #include <zircon/syscalls/port.h>
 
-#include "lib/fidl/cpp/bindings/binding.h"
+#include "lib/fidl/cpp/binding.h"
 #include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/logging.h"
 
+#include <fuchsia/cpp/zircon_benchmarks.h>
 #include "channels.h"
-#include "garnet/bin/zircon_benchmarks/round_trip_service.fidl.h"
 #include "round_trips.h"
 #include "test_runner.h"
 
@@ -180,7 +180,7 @@ class ChannelPortTest {
                                    ZX_WAIT_ASYNC_ONCE) == ZX_OK);
 
     zx_port_packet_t packet;
-    FXL_CHECK(zx_port_wait(port, ZX_TIME_INFINITE, &packet, 0) == ZX_OK);
+    FXL_CHECK(zx_port_wait(port, ZX_TIME_INFINITE, &packet, 1) == ZX_OK);
     if (packet.signal.observed & ZX_CHANNEL_PEER_CLOSED)
       return false;
 
@@ -295,7 +295,7 @@ class PortTest {
     zx_port_packet_t packet = {};
     packet.type = ZX_PKT_TYPE_USER;
     packet.user.u32[0] = 1;
-    FXL_CHECK(zx_port_queue(ports_[0], &packet, 0) == ZX_OK);
+    FXL_CHECK(zx_port_queue(ports_[0], &packet, 1) == ZX_OK);
 
     zx_handle_close(ports_[0]);
     zx_handle_close(ports_[1]);
@@ -305,11 +305,11 @@ class PortTest {
     FXL_CHECK(ports.size() == 2);
     for (;;) {
       zx_port_packet_t packet;
-      FXL_CHECK(zx_port_wait(ports[0], ZX_TIME_INFINITE, &packet, 0) == ZX_OK);
+      FXL_CHECK(zx_port_wait(ports[0], ZX_TIME_INFINITE, &packet, 1) == ZX_OK);
       // Check for a request to shut down.
       if (packet.user.u32[0])
         break;
-      FXL_CHECK(zx_port_queue(ports[1], &packet, 0) == ZX_OK);
+      FXL_CHECK(zx_port_queue(ports[1], &packet, 1) == ZX_OK);
     }
     zx_handle_close(ports[0]);
     zx_handle_close(ports[1]);
@@ -318,8 +318,8 @@ class PortTest {
   void Run() {
     zx_port_packet_t packet = {};
     packet.type = ZX_PKT_TYPE_USER;
-    FXL_CHECK(zx_port_queue(ports_[0], &packet, 0) == ZX_OK);
-    FXL_CHECK(zx_port_wait(ports_[1], ZX_TIME_INFINITE, &packet, 0) == ZX_OK);
+    FXL_CHECK(zx_port_queue(ports_[0], &packet, 1) == ZX_OK);
+    FXL_CHECK(zx_port_wait(ports_[1], ZX_TIME_INFINITE, &packet, 1) == ZX_OK);
   }
 
  private:
@@ -328,10 +328,9 @@ class PortTest {
 };
 
 // Implementation of FIDL interface for testing round trip IPCs.
-class RoundTripServiceImpl : public RoundTripService {
+class RoundTripServiceImpl : public zircon_benchmarks::RoundTripService {
  public:
-  void RoundTripTest(uint32_t arg,
-                     const RoundTripTestCallback& callback) override {
+  void RoundTripTest(uint32_t arg, RoundTripTestCallback callback) override {
     FXL_CHECK(arg == 123);
     callback(456);
   }
@@ -342,8 +341,7 @@ class RoundTripServiceImpl : public RoundTripService {
 class FidlTest {
  public:
   FidlTest(MultiProc multiproc) {
-    zx_handle_t server =
-        GetSynchronousProxy(&service_ptr_).TakeChannel().release();
+    zx_handle_t server = service_ptr_.NewRequest().TakeChannel().release();
     thread_or_process_.Launch("FidlTest::ThreadFunc", &server, 1, multiproc);
   }
 
@@ -353,7 +351,8 @@ class FidlTest {
 
     fsl::MessageLoop loop;
     RoundTripServiceImpl service_impl;
-    fidl::Binding<RoundTripService> binding(&service_impl, std::move(channel));
+    fidl::Binding<zircon_benchmarks::RoundTripService> binding(
+        &service_impl, std::move(channel));
     binding.set_error_handler(
         [] { fsl::MessageLoop::GetCurrent()->QuitNow(); });
     loop.Run();
@@ -367,7 +366,7 @@ class FidlTest {
 
  private:
   ThreadOrProcess thread_or_process_;
-  RoundTripServiceSyncPtr service_ptr_;
+  zircon_benchmarks::RoundTripServiceSyncPtr service_ptr_;
 };
 
 // Test the round trip time for waking up threads using Zircon futexes.
@@ -514,15 +513,12 @@ ThreadFunc GetThreadFunc(const char* name) {
 template <class TestClass>
 void RegisterTestMultiProc(const char* base_name) {
   fbenchmark::RegisterTest<TestClass>(
-      (std::string(base_name) + "_SingleProcess").c_str(),
-      SingleProcess);
+      (std::string(base_name) + "_SingleProcess").c_str(), SingleProcess);
   fbenchmark::RegisterTest<TestClass>(
-      (std::string(base_name) + "_MultiProcess").c_str(),
-      MultiProcess);
+      (std::string(base_name) + "_MultiProcess").c_str(), MultiProcess);
 }
 
-__attribute__((constructor))
-void RegisterTests() {
+__attribute__((constructor)) void RegisterTests() {
   RegisterTestMultiProc<BasicChannelTest>("RoundTrip_BasicChannel");
   RegisterTestMultiProc<ChannelPortTest>("RoundTrip_ChannelPort");
   RegisterTestMultiProc<ChannelCallTest>("RoundTrip_ChannelCall");

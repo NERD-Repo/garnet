@@ -6,27 +6,22 @@
 
 extern crate failure;
 extern crate fidl;
-extern crate fuchsia_app;
+extern crate fuchsia_app as component;
+extern crate fuchsia_async as async;
+extern crate fuchsia_zircon as zx;
 extern crate futures;
-extern crate garnet_public_lib_network_fidl;
-extern crate tokio_core;
-extern crate tokio_fuchsia;
-extern crate tokio_io;
+extern crate fidl_network as netsvc;
 
-use failure::Error;
-use fidl::FidlService;
-use futures::{Future, IntoFuture};
-use garnet_public_lib_network_fidl as netsvc;
-use std::io;
-use tokio_core::reactor;
-use tokio_io::io::{AllowStdIo, copy};
+use failure::{Error, ResultExt};
+use futures::prelude::*;
+use futures::io::AllowStdIo;
 
-fn print_headers(resp: &netsvc::URLResponse) {
+fn print_headers(resp: &netsvc::UrlResponse) {
     println!(">>> Headers <<<");
-    if let Some(ref status) = resp.status_line {
+    if let Some(status) = &resp.status_line {
         println!("  {}", status);
     }
-    if let Some(ref hdrs) = resp.headers {
+    if let Some(hdrs) = &resp.headers {
         for hdr in hdrs {
             println!("  {}={}", hdr.name, hdr.value);
         }
@@ -55,30 +50,33 @@ fn main_res() -> Result<(), Error> {
         }
     };
 
-    // Set up tokio reactor
-    let mut core = reactor::Core::new()?;
-    let handle = core.handle();
+    // Set up async executor
+    let mut exec = async::Executor::new()?;
 
     // Connect to the network service
-    let net = fuchsia_app::client::connect_to_service::<netsvc::NetworkService::Service>(&handle)?;
+    let net = component::client::connect_to_service::<netsvc::NetworkServiceMarker>()?;
 
-    // Create a URLLoader instance
-    let (loader_proxy, loader_server) = netsvc::URLLoader::Service::new_pair(&handle)?;
-    net.create_url_loader(loader_server)?;
+    // Create a UrlLoader instance
+    let (s, p) = zx::Channel::create().context("failed to create zx channel")?;
+    let proxy = async::Channel::from_channel(p).context("failed to make async channel")?;
 
-    // Send the URLRequest to fetch the webpage
-    let req = netsvc::URLRequest {
+    let mut loader_server = fidl::endpoints2::ServerEnd::<netsvc::UrlLoaderMarker>::new(s);
+    net.create_url_loader(&mut loader_server)?;
+
+    // Send the UrlRequest to fetch the webpage
+    let mut req = netsvc::UrlRequest {
         url: url,
         method: String::from("GET"),
         headers: None,
         body: None,
         response_body_buffer_size: 0,
         auto_follow_redirects: true,
-        cache_mode: netsvc::URLRequestCacheMode::Default,
-        response_body_mode: netsvc::URLRequestResponseBodyMode::Stream,
+        cache_mode: netsvc::CacheMode::Default,
+        response_body_mode: netsvc::ResponseBodyMode::Stream,
     };
 
-    let fut = loader_proxy.start(req).map_err(Error::from).and_then(|resp| {
+	let loader_proxy = netsvc::UrlLoaderProxy::new(proxy);
+    let fut = loader_proxy.start(&mut req).err_into().and_then(|resp| {
         if let Some(e) = resp.error {
             let code = e.code;
             println!("Got error: {} ({})",
@@ -89,13 +87,13 @@ fn main_res() -> Result<(), Error> {
         print_headers(&resp);
 
         match resp.body.map(|x| *x) {
-            Some(netsvc::URLBody::Stream(s)) => {
-                Some(tokio_fuchsia::Socket::from_socket(s, &handle)
-                        .map_err(Error::from)
-                        .into_future())
+            Some(netsvc::UrlBody::Stream(s)) => {
+                Some(async::Socket::from_socket(s)
+                        .into_future()
+                        .err_into())
             }
-            Some(netsvc::URLBody::Buffer(_)) |
-            Some(netsvc::URLBody::SizedBuffer(_)) |
+            Some(netsvc::UrlBody::Buffer(_)) |
+            Some(netsvc::UrlBody::SizedBuffer(_)) |
             None =>  None,
         }
     }).and_then(|socket_opt| {
@@ -104,18 +102,12 @@ fn main_res() -> Result<(), Error> {
             println!(">>> Body <<<");
 
             // Copy the bytes from the socket to stdout
-            copy(socket, AllowStdIo::new(io::stdout()))
-                .map(|_| ())
-                .or_else(|e| if e.kind() == io::ErrorKind::ConnectionAborted {
-                    println!("\n>>> EOF <<<");
-                    Ok(())
-                } else {
-                    Err(e)
-                })
-                .map_err(Error::from)
+            socket.copy_into(AllowStdIo::new(::std::io::stdout()))
+                .map(|_| println!("\n>>> EOF <<<"))
+                .err_into()
         })
     }).map(|_| ());
 
     //// Run the future to completion
-    core.run(fut)
+    exec.run_singlethreaded(fut)
 }

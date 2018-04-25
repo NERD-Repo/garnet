@@ -5,17 +5,16 @@
 package wlan
 
 import (
-	"fidl/bindings"
+	bindings "fidl/bindings"
 	"fmt"
-	mlme "garnet/public/lib/wlan/fidl/wlan_mlme"
-	mlme_ext "garnet/public/lib/wlan/fidl/wlan_mlme_ext"
-	"garnet/public/lib/wlan/fidl/wlan_service"
+	mlme "fuchsia/go/wlan_mlme"
+	"fuchsia/go/wlan_service"
 	"log"
-	"netstack/link/eth"
 	"os"
 	"syscall"
 	"syscall/zx"
 	"syscall/zx/mxerror"
+	"syscall/zx/zxwait"
 	"time"
 	"wlan/eapol"
 )
@@ -49,10 +48,10 @@ type Client struct {
 	cfg      *Config
 	apCfg    *APConfig
 	ap       *AP
-	staAddr  [6]byte
-	txid     uint64
+	staAddr  [6]uint8
+	txid     uint32
 	eapolC   *eapol.Client
-	wlanInfo *mlme_ext.DeviceQueryResponse
+	wlanInfo *mlme.DeviceQueryConfirm
 
 	state state
 }
@@ -72,14 +71,6 @@ func NewClient(path string, config *Config, apConfig *APConfig) (*Client, error)
 	if m == nil {
 		return nil, fmt.Errorf("wlan: no fdio for %s fd: %d", path, f.Fd())
 	}
-	info, err := eth.IoctlGetInfo(m)
-	if err != nil {
-		return nil, err
-	}
-
-	if info.Features&eth.FeatureWlan == 0 {
-		return nil, nil
-	}
 
 	log.Printf("found wlan device %q", path)
 	ch, err := ioctlGetChannel(m)
@@ -91,11 +82,10 @@ func NewClient(path string, config *Config, apConfig *APConfig) (*Client, error)
 		mlmeC:    make(chan *mlmeResult, 1),
 		path:     path,
 		f:        f,
-		mlmeChan: zx.Channel{ch},
+		mlmeChan: zx.Channel(ch),
 		cfg:      config,
 		apCfg:    apConfig,
 		state:    nil,
-		staAddr:  info.MAC,
 	}
 	success = true
 	return c, nil
@@ -104,6 +94,56 @@ func NewClient(path string, config *Config, apConfig *APConfig) (*Client, error)
 func (c *Client) Close() {
 	c.f.Close()
 	c.mlmeChan.Close()
+}
+
+func ConvertWapToAp(ap AP) wlan_service.Ap {
+	bssid := make([]uint8, len(ap.BSSID))
+	copy(bssid, ap.BSSID[:])
+	// Currently we indicate the AP is secure if it supports RSN.
+	// TODO: Check if AP supports other types of security mechanism (e.g. WEP)
+	is_secure := ap.BSSDesc.Rsn != nil
+	// TODO: Revisit this RSSI conversion.
+	last_rssi := int8(ap.LastRSSI)
+	return wlan_service.Ap{bssid, ap.SSID, int32(last_rssi), is_secure}
+}
+
+func (c *Client) Status() wlan_service.WlanStatus {
+	var state = wlan_service.StateUnknown
+
+	switch c.state.(type) {
+	case *startBSSState:
+		state = wlan_service.StateBss
+	case *queryState:
+		state = wlan_service.StateQuerying
+	case *scanState:
+		state = wlan_service.StateScanning
+	case *joinState:
+		state = wlan_service.StateJoining
+	case *authState:
+		state = wlan_service.StateAuthenticating
+	case *assocState:
+		state = wlan_service.StateAssociating
+	case *associatedState:
+		state = wlan_service.StateAssociated
+	default:
+		state = wlan_service.StateUnknown
+	}
+
+	var current_ap *wlan_service.Ap = nil
+
+	if c.ap != nil &&
+		state != wlan_service.StateScanning &&
+		state != wlan_service.StateBss &&
+		state != wlan_service.StateQuerying {
+		ap := ConvertWapToAp(*c.ap)
+		current_ap = &ap
+	}
+
+	return wlan_service.WlanStatus{
+		wlan_service.Error{wlan_service.ErrCodeOk, "OK"},
+		state,
+		current_ap,
+	}
 }
 
 func (c *Client) PostCommand(cmd Command, arg interface{}, respC chan *CommandResult) {
@@ -198,27 +238,21 @@ event_loop:
 	log.Printf("exiting event loop for %v", c.path)
 }
 
-func (c *Client) SendMessage(msg bindings.Payload, ordinal int32) error {
-	h := &APIHeader{
-		txid:    c.nextTxid(),
-		flags:   0,
-		ordinal: ordinal,
+func (c *Client) SendMessage(msg bindings.Payload, ordinal uint32) error {
+	h := &bindings.MessageHeader{
+		Txid:    c.nextTxid(),
+		Flags:   0,
+		Ordinal: ordinal,
 	}
 
-	enc := bindings.NewEncoder()
-	if err := h.Encode(enc); err != nil {
-		return fmt.Errorf("could not encode header: %v", err)
+	msgBuf := make([]byte, zx.ChannelMaxMessageBytes)
+	nb, _, err := bindings.MarshalMessage(h, msg, msgBuf, nil)
+	if err != nil {
+		return fmt.Errorf("could not encode message %T: %v", msg, err)
 	}
-	if err := msg.Encode(enc); err != nil {
-		return fmt.Errorf("could not encode %T: %v", msg, err)
-	}
-
-	msgBuf, _, encErr := enc.Data()
-	if encErr != nil {
-		return fmt.Errorf("could not get encoding data: %v", encErr)
-	}
+	msgBuf = msgBuf[:nb]
 	if debug {
-		log.Printf("encoded message: %v", msgBuf)
+		log.Printf("encoded message (%v bytes): %v", nb, msgBuf)
 	}
 	if err := c.mlmeChan.Write(msgBuf, nil, 0); err != nil {
 		return fmt.Errorf("could not write to wlan channel: %v", err)
@@ -233,7 +267,7 @@ func (c *Client) watchMLMEChan(timeout time.Duration) *mlmeResult {
 		deadline = zx.Sys_deadline_after(
 			zx.Duration(timeout.Nanoseconds()))
 	}
-	obs, err := c.mlmeChan.Handle.WaitOne(
+	obs, err := zxwait.Wait(*c.mlmeChan.Handle(),
 		zx.SignalChannelReadable|zx.SignalChannelPeerClosed,
 		deadline)
 	return &mlmeResult{obs, err}
@@ -279,83 +313,83 @@ func (c *Client) handleResponse(obs zx.Signals, err error) (state, error) {
 	return nextState, nil
 }
 
-func (c *Client) nextTxid() (txid uint64) {
+func (c *Client) nextTxid() (txid uint32) {
 	txid = c.txid
 	c.txid++
 	return
 }
 
 func parseResponse(buf []byte) (interface{}, error) {
-	dec := bindings.NewDecoder(buf, nil)
-	var header APIHeader
-	if err := header.Decode(dec); err != nil {
+	var header bindings.MessageHeader
+	if err := bindings.UnmarshalHeader(buf, &header); err != nil {
 		return nil, fmt.Errorf("could not decode api header: %v", err)
 	}
-	switch header.ordinal {
-	case int32(mlme.Method_ScanConfirm):
-		var resp mlme.ScanResponse
-		if err := resp.Decode(dec); err != nil {
-			return nil, fmt.Errorf("could not decode ScanResponse: %v", err)
+	buf = buf[bindings.MessageHeaderSize:]
+	switch header.Ordinal {
+	case uint32(mlme.MethodScanConfirm):
+		var resp mlme.ScanConfirm
+		if err := bindings.Unmarshal(buf, nil, &resp); err != nil {
+			return nil, fmt.Errorf("could not decode ScanConfirm: %v", err)
 		}
 		return &resp, nil
-	case int32(mlme.Method_JoinConfirm):
-		var resp mlme.JoinResponse
-		if err := resp.Decode(dec); err != nil {
-			return nil, fmt.Errorf("could not decode JoinResponse: %v", err)
+	case uint32(mlme.MethodJoinConfirm):
+		var resp mlme.JoinConfirm
+		if err := bindings.Unmarshal(buf, nil, &resp); err != nil {
+			return nil, fmt.Errorf("could not decode JoinConfirm: %v", err)
 		}
 		return &resp, nil
-	case int32(mlme.Method_AuthenticateConfirm):
-		var resp mlme.AuthenticateResponse
-		if err := resp.Decode(dec); err != nil {
-			return nil, fmt.Errorf("could not decode AuthenticateResponse: %v", err)
+	case uint32(mlme.MethodAuthenticateConfirm):
+		var resp mlme.AuthenticateConfirm
+		if err := bindings.Unmarshal(buf, nil, &resp); err != nil {
+			return nil, fmt.Errorf("could not decode AuthenticateConfirm: %v", err)
 		}
 		return &resp, nil
-	case int32(mlme.Method_DeauthenticateConfirm):
-		var resp mlme.DeauthenticateResponse
-		if err := resp.Decode(dec); err != nil {
-			return nil, fmt.Errorf("could not decode DeauthenticateResponse: %v", err)
+	case uint32(mlme.MethodDeauthenticateConfirm):
+		var resp mlme.DeauthenticateConfirm
+		if err := bindings.Unmarshal(buf, nil, &resp); err != nil {
+			return nil, fmt.Errorf("could not decode DeauthenticateConfirm: %v", err)
 		}
 		return &resp, nil
-	case int32(mlme.Method_DeauthenticateIndication):
+	case uint32(mlme.MethodDeauthenticateIndication):
 		var ind mlme.DeauthenticateIndication
-		if err := ind.Decode(dec); err != nil {
+		if err := bindings.Unmarshal(buf, nil, &ind); err != nil {
 			return nil, fmt.Errorf("could not decode DeauthenticateIndication: %v", err)
 		}
 		return &ind, nil
-	case int32(mlme.Method_AssociateConfirm):
-		var resp mlme.AssociateResponse
-		if err := resp.Decode(dec); err != nil {
-			return nil, fmt.Errorf("could not decode AssociateResponse: %v", err)
+	case uint32(mlme.MethodAssociateConfirm):
+		var resp mlme.AssociateConfirm
+		if err := bindings.Unmarshal(buf, nil, &resp); err != nil {
+			return nil, fmt.Errorf("could not decode AssociateConfirm: %v", err)
 		}
 		return &resp, nil
-	case int32(mlme.Method_DisassociateIndication):
+	case uint32(mlme.MethodDisassociateIndication):
 		var ind mlme.DisassociateIndication
-		if err := ind.Decode(dec); err != nil {
+		if err := bindings.Unmarshal(buf, nil, &ind); err != nil {
 			return nil, fmt.Errorf("could not decode DisassociateIndication: %v", err)
 		}
 		return &ind, nil
-	case int32(mlme.Method_SignalReportIndication):
-		var ind mlme_ext.SignalReportIndication
-		if err := ind.Decode(dec); err != nil {
+	case uint32(mlme.MethodSignalReportIndication):
+		var ind mlme.SignalReportIndication
+		if err := bindings.Unmarshal(buf, nil, &ind); err != nil {
 			return nil, fmt.Errorf("could not decode SignalReportIndication: %v", err)
 		}
 		return &ind, nil
-	case int32(mlme.Method_EapolIndication):
-		var ind mlme_ext.EapolIndication
-		if err := ind.Decode(dec); err != nil {
+	case uint32(mlme.MethodEapolIndication):
+		var ind mlme.EapolIndication
+		if err := bindings.Unmarshal(buf, nil, &ind); err != nil {
 			return nil, fmt.Errorf("could not decode EapolIndication: %v", err)
 		}
 		return &ind, nil
-	case int32(mlme.Method_EapolConfirm):
-		var resp mlme.EapolResponse
+	case uint32(mlme.MethodEapolConfirm):
+		var resp mlme.EapolConfirm
 		return &resp, nil
-	case int32(mlme.Method_DeviceQueryConfirm):
-		var resp mlme_ext.DeviceQueryResponse
-		if err := resp.Decode(dec); err != nil {
-			return nil, fmt.Errorf("could not decode DeviceQueryResponse: %v", err)
+	case uint32(mlme.MethodDeviceQueryConfirm):
+		var resp mlme.DeviceQueryConfirm
+		if err := bindings.Unmarshal(buf, nil, &resp); err != nil {
+			return nil, fmt.Errorf("could not decode DeviceQueryConfirm: %v", err)
 		}
 		return &resp, nil
 	default:
-		return nil, fmt.Errorf("unknown ordinal: %v", header.ordinal)
+		return nil, fmt.Errorf("unknown ordinal: %v", header.Ordinal)
 	}
 }

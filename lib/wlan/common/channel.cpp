@@ -170,5 +170,40 @@ std::string BandStr(const wlan_channel_t& chan) {
     return Is2Ghz(chan) ? "2GHz" : "5GHz";
 }
 
+wlan_channel_t FromFidl(const wlan_mlme::WlanChan& fidl_chan) {
+    // Translate wlan::WlanChan class defined in wlan-mlme.fidl
+    // to wlan_channel_t struct defined in wlan.h
+    return wlan_channel_t{
+        .primary = fidl_chan.primary,
+        .cbw = static_cast<uint8_t>(fidl_chan.cbw),
+    };
+}
+
+// Sanitizes the user-providing channel value, and always returns a valid one,
+// with respect to the primary channel.
+// TODO(NET-449): Move this logic to policy engine
+uint8_t GetValidCbw(const wlan_channel_t& chan) {
+    if (IsValidChan(chan)) { return chan.cbw; }
+
+    wlan_channel_t attempt = {
+        .primary = chan.primary,
+        .cbw = CBW20,  // To be tested
+        //.secondary80 = 0,
+    };
+
+    // Search a valid combination in decreasing order of bandwidth.
+    // No precedence among CBW40*
+    attempt.cbw = CBW40ABOVE;
+    if (IsValidChan(attempt)) { return attempt.cbw; }
+
+    attempt.cbw = CBW40BELOW;
+    if (IsValidChan(attempt)) { return attempt.cbw; }
+
+    attempt.cbw = CBW20;
+    if (IsValidChan(attempt)) { return attempt.cbw; }
+
+    return CBW20;  // Fallback to the minimum bandwidth
+}
+
 }  // namespace common
 }  // namespace wlan

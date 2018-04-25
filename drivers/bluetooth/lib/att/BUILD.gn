@@ -13,6 +13,8 @@ static_library("att") {
     "database.h",
     "packet.cc",
     "packet.h",
+    "status.cc",
+    "status.h",
   ]
 
   public_deps = [
@@ -39,6 +41,6 @@ source_set("tests") {
     ":att",
     "//garnet/drivers/bluetooth/lib/l2cap:testing",
     "//garnet/public/lib/fsl",
-    "//third_party/gtest",
+    "//third_party/googletest:gtest",
   ]
 }

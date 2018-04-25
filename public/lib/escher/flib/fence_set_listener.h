@@ -2,13 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef LIB_ESCHER_FLIB_FENCE_SET_LISTENER_H_
+#define LIB_ESCHER_FLIB_FENCE_SET_LISTENER_H_
 
-#include <zx/event.h>
+#include <lib/zx/event.h>
 
-#include <async/cpp/auto_wait.h>
+#include <lib/async/cpp/wait.h>
 #include "lib/escher/flib/fence.h"
-#include "lib/fidl/cpp/bindings/array.h"
+#include "lib/fidl/cpp/vector.h"
 #include "lib/fxl/functional/closure.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/time/time_delta.h"
@@ -20,7 +21,7 @@ class FenceSetListener {
  public:
   // Takes ownership of the fences.
   // |fence_listeners| must be valid handles.
-  explicit FenceSetListener(::fidl::Array<zx::event> fence_listeners);
+  explicit FenceSetListener(::fidl::VectorPtr<zx::event> fence_listeners);
 
   // Invokes the callback when all the fences have been signalled. The callback
   // will be invoked on the current message loop.
@@ -29,21 +30,21 @@ class FenceSetListener {
   void WaitReadyAsync(fxl::Closure ready_callback);
 
   // Returns whether all the fences have been signalled.
-  bool ready() const { return num_signalled_fences_ == fences_.size(); }
+  bool ready() const { return num_signalled_fences_ == fences_->size(); }
 
  private:
-  async_wait_result_t OnFenceSignalled(zx_koid_t import_koid,
-                                       zx_status_t status,
-                                       const zx_packet_signal* signal);
+  void OnFenceSignalled(zx_koid_t import_koid,
+                        zx_status_t status,
+                        const zx_packet_signal* signal);
 
   void ClearHandlers();
 
-  ::fidl::Array<zx::event> fences_;
+  ::fidl::VectorPtr<zx::event> fences_;
   uint32_t num_signalled_fences_ = 0;
 
-  // async::AutoWait-ers, each corresponding to an |zx::event| with the same
+  // Each wait corresponds to an |zx::event| with the same
   // index in |fences_|. The size of this array must match that of |fences_|.
-  std::vector<std::unique_ptr<async::AutoWait>> waiters_;
+  std::vector<std::unique_ptr<async::Wait>> waiters_;
 
   fxl::Closure ready_callback_;
 
@@ -51,3 +52,5 @@ class FenceSetListener {
 };
 
 }  // namespace escher
+
+#endif  // LIB_ESCHER_FLIB_FENCE_SET_LISTENER_H_

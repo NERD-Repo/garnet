@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "services_config": "//garnet/bin/sysmgr:services_config"
+    }
+}

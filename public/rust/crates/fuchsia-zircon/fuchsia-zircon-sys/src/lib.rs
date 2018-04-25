@@ -70,7 +70,6 @@ multiconst!(u32, [
     ZX_VMO_OP_DECOMMIT = 2;
     ZX_VMO_OP_LOCK = 3;
     ZX_VMO_OP_UNLOCK = 4;
-    ZX_VMO_OP_LOOKUP = 5;
     ZX_VMO_OP_CACHE_SYNC = 6;
     ZX_VMO_OP_CACHE_INVALIDATE = 7;
     ZX_VMO_OP_CACHE_CLEAN = 8;
@@ -191,9 +190,6 @@ multiconst!(zx_signals_t, [
     ZX_SOCKET_READABLE          = ZX_OBJECT_SIGNAL_0;
     ZX_SOCKET_WRITABLE          = ZX_OBJECT_SIGNAL_1;
     ZX_SOCKET_PEER_CLOSED       = ZX_OBJECT_SIGNAL_2;
-
-    // Port
-    ZX_PORT_READABLE            = ZX_OBJECT_READABLE;
 
     // Resource
     ZX_RESOURCE_DESTROYED       = ZX_OBJECT_SIGNAL_3;

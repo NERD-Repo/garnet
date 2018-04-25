@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "magma": "//garnet/lib/magma"
+    }
+}

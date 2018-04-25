@@ -21,18 +21,23 @@ import (
 	"amber/ipcserver"
 	"amber/pkg"
 	"amber/source"
-	"garnet/amber/api/amber"
 
-	"application/lib/app/context"
+	amber_fidl "fuchsia/go/amber"
 
-	tuf "github.com/flynn/go-tuf/client"
+	"app/context"
+	"syscall/zx"
+
+	tuf_data "github.com/flynn/go-tuf/data"
 )
+
+const lhIP = "http://127.0.0.1"
+const port = 8083
 
 var (
 	// TODO(jmatt) replace hard-coded values with something better/more flexible
 	usage = "usage: amber [-k=<path>] [-s=<path>] [-u=<url>]"
 	store = flag.String("s", "/data/amber/tuf", "The path to the local file store")
-	addr  = flag.String("u", "http://192.168.3.1:8083", "The URL (including port if not using port 80)  of the update server.")
+	addr  = flag.String("u", fmt.Sprintf("%s:%d", lhIP, port), "The URL (including port if not using port 80)  of the update server.")
 	keys  = flag.String("k", "/pkg/data/keys", "Path to use to initialize the client's keys. This is only needed the first time the command is run.")
 	delay = flag.Duration("d", 0*time.Second, "Set a delay before Amber does its work")
 
@@ -57,7 +62,31 @@ func main() {
 		return
 	}
 
-	client, _, err := source.InitNewTUFClient(*addr, *store, keys)
+	ticker := source.NewTickGenerator(source.InitBackoff)
+	dp := daemon.NewDaemonProvider()
+	go ticker.Run()
+
+	go startFIDLSvr(dp, ticker)
+
+	go startupDaemon(*addr, *store, keys, ticker, dp)
+	defer dp.Daemon().CancelAll()
+
+	//block forever
+	select {}
+}
+
+func startFIDLSvr(d *daemon.DaemonProvider, t *source.TickGenerator) {
+	cxt := context.CreateFromStartupInfo()
+	apiSrvr := ipcserver.NewControlSrvr(d, t)
+	cxt.OutgoingService.AddService(amber_fidl.ControlName, func(c zx.Channel) error {
+		return apiSrvr.Bind(c)
+	})
+	cxt.Serve()
+}
+
+func startupDaemon(srvAddr, store string, keys []*tuf_data.Key,
+	ticker *source.TickGenerator, dp *daemon.DaemonProvider) *daemon.Daemon {
+	client, _, err := source.InitNewTUFClient(srvAddr, store, keys, ticker)
 	if err != nil {
 		log.Printf("client initialization failed: %s\n", err)
 	}
@@ -67,23 +96,6 @@ func main() {
 		os.Exit(2)
 	}
 
-	d := startupDaemon(client, *addr)
-	log.Println("amber: monitoring for updates")
-	defer d.CancelAll()
-
-	startFIDLSvr(d)
-	//block forever
-	select {}
-}
-
-func startFIDLSvr(d *daemon.Daemon) {
-	cxt := context.CreateFromStartupInfo()
-	apiSrvr := ipcserver.NewControlSrvr(d)
-	cxt.OutgoingService.AddService(&amber.Control_ServiceBinder{apiSrvr})
-	cxt.Serve()
-}
-
-func startupDaemon(client *tuf.Client, srvAddr string) *daemon.Daemon {
 	files := []string{"/pkg/bin/app"}
 	reqSet := pkg.NewPackageSet()
 
@@ -108,8 +120,7 @@ func startupDaemon(client *tuf.Client, srvAddr string) *daemon.Daemon {
 		Interval: time.Second * 5,
 		Limit:    50,
 	}
-	checker := daemon.NewDaemon(reqSet, daemon.ProcessPackage)
-	checker.AddSource(fetcher)
+	checker := daemon.NewDaemon(reqSet, daemon.ProcessPackage, []source.Source{fetcher})
 	u, err := url.Parse(srvAddr)
 	if err == nil {
 		u.Path = filepath.Join(u.Path, "blobs")
@@ -117,6 +128,8 @@ func startupDaemon(client *tuf.Client, srvAddr string) *daemon.Daemon {
 	} else {
 		log.Printf("amber: bad blob repo address %s\n", err)
 	}
+	dp.SetDaemon(checker)
+	log.Println("amber: monitoring for updates")
 	return checker
 }
 

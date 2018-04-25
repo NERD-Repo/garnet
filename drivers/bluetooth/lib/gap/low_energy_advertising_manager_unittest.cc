@@ -48,10 +48,7 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
       size_t max_ads,
       size_t max_ad_size,
       std::map<common::DeviceAddress, AdvertisementStatus>* ad_store)
-      : max_ads_(max_ads),
-        max_ad_size_(max_ad_size),
-        ads_(ad_store),
-        pending_error_(hci::kSuccess) {
+      : max_ads_(max_ads), max_ad_size_(max_ad_size), ads_(ad_store) {
     FXL_CHECK(ads_);
   }
 
@@ -67,18 +64,18 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
                         const ConnectionCallback& connect_callback,
                         uint32_t interval_ms,
                         bool anonymous,
-                        const AdvertisingResultCallback& callback) override {
-    if (pending_error_ != hci::kSuccess) {
+                        AdvertisingStatusCallback callback) override {
+    if (!pending_error_) {
       callback(0, pending_error_);
-      pending_error_ = hci::kSuccess;
+      pending_error_ = hci::Status();
       return;
     }
     if (data.size() > max_ad_size_) {
-      callback(0, hci::kMemoryCapacityExceeded);
+      callback(0, hci::Status(common::HostError::kInvalidParameters));
       return;
     }
     if (scan_rsp.size() > max_ad_size_) {
-      callback(0, hci::kMemoryCapacityExceeded);
+      callback(0, hci::Status(common::HostError::kInvalidParameters));
       return;
     }
     AdvertisementStatus new_status;
@@ -88,7 +85,7 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
     new_status.interval_ms = interval_ms;
     new_status.anonymous = anonymous;
     ads_->emplace(address, std::move(new_status));
-    callback(interval_ms, hci::kSuccess);
+    callback(interval_ms, hci::Status());
   }
 
   bool StopAdvertising(const common::DeviceAddress& address) override {
@@ -108,7 +105,7 @@ class FakeLowEnergyAdvertiser final : public hci::LowEnergyAdvertiser {
   }
 
   // Sets this faker up to send an error back from the next StartAdvertising
-  // call. Set to hci::kSuccess to disable a previously called error.
+  // call. Set to success to disable a previously called error.
   void ErrorOnNext(hci::Status error_status) { pending_error_ = error_status; }
 
  private:
@@ -149,22 +146,20 @@ class GAP_LowEnergyAdvertisingManagerTest : public TestingBase {
     return result;
   }
 
-  LowEnergyAdvertisingManager::AdvertisingResultCallback GetErrorCallback() {
+  LowEnergyAdvertisingManager::AdvertisingStatusCallback GetErrorCallback() {
     return [this](std::string ad_id, hci::Status status) {
       EXPECT_TRUE(ad_id.empty());
-      EXPECT_NE(hci::kSuccess, status);
+      EXPECT_FALSE(status);
       last_status_ = status;
-      message_loop()->PostQuitTask();
     };
   }
 
-  LowEnergyAdvertisingManager::AdvertisingResultCallback GetSuccessCallback() {
+  LowEnergyAdvertisingManager::AdvertisingStatusCallback GetSuccessCallback() {
     return [this](std::string ad_id, hci::Status status) {
       last_ad_id_ = ad_id;
       EXPECT_FALSE(ad_id.empty());
-      EXPECT_EQ(hci::kSuccess, status);
+      EXPECT_TRUE(status);
       last_status_ = status;
-      message_loop()->PostQuitTask();
     };
   }
 
@@ -206,7 +201,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, Success) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, kTestIntervalMs,
                       false /* anonymous */, GetSuccessCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
   EXPECT_EQ(1u, ad_store().size());
@@ -220,7 +215,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, DataSize) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, kTestIntervalMs,
                       false /* anonymous */, GetSuccessCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   fake_ad = CreateFakeAdvertisingData(kDefaultMaxAdSize + 1);
 
@@ -230,7 +225,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, DataSize) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, kTestIntervalMs,
                       false /* anonymous */, GetErrorCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
   EXPECT_EQ(1u, ad_store().size());
@@ -250,7 +245,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, RegisterUnregister) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, kTestIntervalMs,
                       false /* anonymous */, GetSuccessCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
   EXPECT_EQ(1u, ad_store().size());
@@ -261,7 +256,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, RegisterUnregister) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, kTestIntervalMs,
                       false /* anonymous */, GetSuccessCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
   EXPECT_EQ(2u, ad_store().size());
@@ -278,7 +273,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, RegisterUnregister) {
 
 //  - When the advertiser returns an error, we return an error
 TEST_F(GAP_LowEnergyAdvertisingManagerTest, AdvertiserError) {
-  advertiser()->ErrorOnNext(hci::kInvalidHCICommandParameters);
+  advertiser()->ErrorOnNext(hci::Status(hci::kInvalidHCICommandParameters));
   LowEnergyAdvertisingManager am(advertiser());
   AdvertisingData fake_ad = CreateFakeAdvertisingData();
   AdvertisingData scan_rsp;
@@ -286,7 +281,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, AdvertiserError) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, kTestIntervalMs,
                       false /* anonymous */, GetErrorCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
 }
@@ -307,20 +302,19 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, ConnectCallback) {
                                                     hci::ConnectionPtr link) {
     called = true;
     EXPECT_EQ(advertised_id, connected_id);
-    message_loop()->PostQuitTask();
   };
 
   am.StartAdvertising(fake_ad, scan_rsp, connect_cb, kTestIntervalMs,
                       false /* anonymous */, GetSuccessCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
   advertised_id = last_ad_id();
 
   incoming_conn_cb(std::move(link));
 
-  RunMessageLoop();
+  RunUntilIdle();
 }
 
 //  - Error: Connectable and Anonymous at the same time
@@ -329,9 +323,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, ConnectAdvertiseError) {
   AdvertisingData fake_ad = CreateFakeAdvertisingData();
   AdvertisingData scan_rsp;
 
-  auto connect_cb = [this](std::string connected_id, hci::ConnectionPtr conn) {
-    message_loop()->PostQuitTask();
-  };
+  auto connect_cb = [this](std::string connected_id, hci::ConnectionPtr conn) { };
 
   am.StartAdvertising(fake_ad, scan_rsp, connect_cb, kTestIntervalMs,
                       true /* anonymous */, GetErrorCallback());
@@ -351,7 +343,7 @@ TEST_F(GAP_LowEnergyAdvertisingManagerTest, SendsCorrectData) {
   am.StartAdvertising(fake_ad, scan_rsp, nullptr, interval_ms,
                       false /* anonymous */, GetSuccessCallback());
 
-  RunMessageLoop();
+  RunUntilIdle();
 
   EXPECT_TRUE(MoveLastStatus());
   EXPECT_EQ(1u, ad_store().size());

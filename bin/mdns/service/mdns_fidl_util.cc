@@ -4,6 +4,8 @@
 
 #include "garnet/bin/mdns/service/mdns_fidl_util.h"
 
+#include "lib/fsl/types/type_converters.h"
+#include "lib/fxl/type_converter.h"
 #include "lib/fxl/logging.h"
 
 namespace mdns {
@@ -22,7 +24,7 @@ MdnsServiceInstancePtr MdnsFidlUtil::CreateServiceInstance(
 
   service_instance->service_name = service_name;
   service_instance->instance_name = instance_name;
-  service_instance->text = fidl::Array<fidl::String>::From(text);
+  service_instance->text = fxl::To<fidl::VectorPtr<fidl::StringPtr>>(text);
 
   if (v4_address.is_valid()) {
     service_instance->v4_address = CreateSocketAddressIPv4(v4_address);
@@ -41,7 +43,7 @@ void MdnsFidlUtil::UpdateServiceInstance(
     const SocketAddress& v4_address,
     const SocketAddress& v6_address,
     const std::vector<std::string>& text) {
-  service_instance->text = fidl::Array<fidl::String>::From(text);
+  service_instance->text = fxl::To<fidl::VectorPtr<fidl::StringPtr>>(text);
 
   if (v4_address.is_valid()) {
     service_instance->v4_address = CreateSocketAddressIPv4(v4_address);
@@ -66,14 +68,12 @@ netstack::SocketAddressPtr MdnsFidlUtil::CreateSocketAddressIPv4(
   FXL_DCHECK(ip_address.is_v4());
 
   netstack::SocketAddressPtr result = netstack::SocketAddress::New();
-  result->addr = netstack::NetAddress::New();
-  result->addr->family = netstack::NetAddressFamily::IPV4;
-  result->addr->ipv4 = fidl::Array<uint8_t>::New(4);
-  result->port = 0;
+  result->addr.family = netstack::NetAddressFamily::IPV4;
+  result->addr.ipv4 = netstack::Ipv4Address::New();
 
-  FXL_DCHECK(result->addr->ipv4.size() == ip_address.byte_count());
-  std::memcpy(result->addr->ipv4.data(), ip_address.as_bytes(),
-              result->addr->ipv4.size());
+  FXL_DCHECK(result->addr.ipv4->addr.count() == ip_address.byte_count());
+  std::memcpy(result->addr.ipv4->addr.mutable_data(), ip_address.as_bytes(),
+              result->addr.ipv4->addr.count());
 
   return result;
 }
@@ -88,14 +88,12 @@ netstack::SocketAddressPtr MdnsFidlUtil::CreateSocketAddressIPv6(
   FXL_DCHECK(ip_address.is_v6());
 
   netstack::SocketAddressPtr result = netstack::SocketAddress::New();
-  result->addr = netstack::NetAddress::New();
-  result->addr->family = netstack::NetAddressFamily::IPV6;
-  result->addr->ipv6 = fidl::Array<uint8_t>::New(16);
-  result->port = 0;
+  result->addr.family = netstack::NetAddressFamily::IPV6;
+  result->addr.ipv6 = netstack::Ipv6Address::New();
 
-  FXL_DCHECK(result->addr->ipv6.size() == ip_address.byte_count());
-  std::memcpy(result->addr->ipv6.data(), ip_address.as_bytes(),
-              result->addr->ipv6.size());
+  FXL_DCHECK(result->addr.ipv6->addr.count() == ip_address.byte_count());
+  std::memcpy(result->addr.ipv6->addr.mutable_data(), ip_address.as_bytes(),
+              result->addr.ipv6->addr.count());
 
   return result;
 }
@@ -143,15 +141,15 @@ IpAddress MdnsFidlUtil::IpAddressFrom(const netstack::NetAddress* addr) {
         return IpAddress();
       }
 
-      FXL_DCHECK(addr->ipv4.size() == sizeof(in_addr));
-      return IpAddress(*reinterpret_cast<const in_addr*>(addr->ipv4.data()));
+      FXL_DCHECK(addr->ipv4->addr.count() == sizeof(in_addr));
+      return IpAddress(*reinterpret_cast<const in_addr*>(addr->ipv4->addr.data()));
     case netstack::NetAddressFamily::IPV6:
       if (!addr->ipv6) {
         return IpAddress();
       }
 
-      FXL_DCHECK(addr->ipv6.size() == sizeof(in6_addr));
-      return IpAddress(*reinterpret_cast<const in6_addr*>(addr->ipv6.data()));
+      FXL_DCHECK(addr->ipv6->addr.count() == sizeof(in6_addr));
+      return IpAddress(*reinterpret_cast<const in6_addr*>(addr->ipv6->addr.data()));
     default:
       return IpAddress();
   }
@@ -166,7 +164,7 @@ std::unique_ptr<Mdns::Publication> MdnsFidlUtil::Convert(
 
   auto publication = Mdns::Publication::Create(
       IpPort::From_uint16_t(publication_ptr->port),
-      publication_ptr->text.To<std::vector<std::string>>());
+      fxl::To<std::vector<std::string>>(publication_ptr->text));
   publication->ptr_ttl_seconds = publication_ptr->ptr_ttl_seconds;
   publication->srv_ttl_seconds = publication_ptr->srv_ttl_seconds;
   publication->txt_ttl_seconds = publication_ptr->txt_ttl_seconds;

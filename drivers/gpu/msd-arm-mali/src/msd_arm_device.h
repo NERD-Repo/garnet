@@ -5,10 +5,17 @@
 #ifndef MSD_ARM_DEVICE_H
 #define MSD_ARM_DEVICE_H
 
+#include <deque>
+#include <list>
+#include <mutex>
+#include <thread>
+#include <vector>
+
 #include "address_manager.h"
 #include "device_request.h"
 #include "gpu_features.h"
 #include "job_scheduler.h"
+#include "lib/fxl/synchronization/thread_annotations.h"
 #include "magma_util/macros.h"
 #include "magma_util/register_io.h"
 #include "magma_util/thread.h"
@@ -18,11 +25,6 @@
 #include "platform_interrupt.h"
 #include "platform_semaphore.h"
 #include "power_manager.h"
-#include <deque>
-#include <list>
-#include <mutex>
-#include <thread>
-#include <vector>
 
 class MsdArmDevice : public msd_device_t,
                      public JobScheduler::Owner,
@@ -55,6 +57,9 @@ public:
             uint64_t bitmask;
         };
         std::vector<CorePowerState> power_states;
+        // Only accounts for recent past.
+        uint64_t total_time_ms;
+        uint64_t active_time_ms;
 
         uint32_t gpu_fault_status;
         uint64_t gpu_fault_address;
@@ -88,6 +93,7 @@ public:
     {
         return cache_coherency_status_;
     }
+    magma::PlatformBusMapper* GetBusMapper() override { return bus_mapper_.get(); }
 
     magma_status_t QueryInfo(uint64_t id, uint64_t* value_out);
 
@@ -130,16 +136,18 @@ private:
     magma::Status ProcessGpuInterrupt();
     magma::Status ProcessJobInterrupt();
     magma::Status ProcessMmuInterrupt();
-    magma::Status ProcessScheduleAtom(std::shared_ptr<MsdArmAtom> atom);
+    magma::Status ProcessScheduleAtoms();
     magma::Status ProcessCancelAtoms(std::weak_ptr<MsdArmConnection> connection);
 
     void ExecuteAtomOnDevice(MsdArmAtom* atom, RegisterIo* registers);
 
+    // JobScheduler::Owner implementation.
     void RunAtom(MsdArmAtom* atom) override;
     void AtomCompleted(MsdArmAtom* atom, ArmMaliResultCode result) override;
     void HardStopAtom(MsdArmAtom* atom) override;
     void ReleaseMappingsForAtom(MsdArmAtom* atom) override;
     magma::PlatformPort* GetPlatformPort() override;
+    void UpdateGpuActive(bool active) override;
 
     static const uint32_t kMagic = 0x64657669; //"devi"
 
@@ -157,6 +165,9 @@ private:
     std::mutex device_request_mutex_;
     std::list<std::unique_ptr<DeviceRequest>> device_request_list_;
 
+    std::mutex schedule_mutex_;
+    FXL_GUARDED_BY(schedule_mutex_) std::vector<std::shared_ptr<MsdArmAtom>> atoms_to_schedule_;
+
     std::unique_ptr<magma::PlatformDevice> platform_device_;
     std::unique_ptr<RegisterIo> register_io_;
     std::unique_ptr<magma::PlatformInterrupt> gpu_interrupt_;
@@ -169,6 +180,7 @@ private:
     std::unique_ptr<PowerManager> power_manager_;
     std::unique_ptr<AddressManager> address_manager_;
     std::unique_ptr<JobScheduler> scheduler_;
+    std::unique_ptr<magma::PlatformBusMapper> bus_mapper_;
 };
 
 #endif // MSD_ARM_DEVICE_H

@@ -18,22 +18,45 @@ source_set("buffer") {
   public_configs = [ ":platform_include_config" ]
 
   public_deps = [
+    ":handle",
     "$magma_build_root/src/magma_util",
   ]
 
   sources = [
     "platform_buffer.h",
+    "platform_bus_mapper.h",
   ]
 
   deps = [
     "zircon:buffer",
   ]
+
+  allow_circular_includes_from = [ "zircon:buffer" ]
+}
+
+source_set("handle") {
+  public_configs = [ ":platform_include_config" ]
+
+  public_deps = [
+    "$magma_build_root/src/magma_util",
+  ]
+
+  sources = [
+    "platform_handle.h",
+  ]
+
+  deps = [
+    "zircon:handle",
+  ]
+
+  allow_circular_includes_from = [ "zircon:handle" ]
 }
 
 source_set("device") {
   public_configs = [ ":platform_include_config" ]
 
   public_deps = [
+    ":handle",
     "$magma_build_root/src/magma_util",
   ]
 
@@ -46,6 +69,8 @@ source_set("device") {
   deps = [
     "zircon:device",
   ]
+
+  allow_circular_includes_from = [ "zircon:device" ]
 }
 
 source_set("mmio") {
@@ -70,6 +95,8 @@ source_set("futex") {
   deps = [
     "zircon:futex",
   ]
+
+  allow_circular_includes_from = [ "zircon:futex" ]
 }
 
 source_set("connection") {
@@ -80,13 +107,21 @@ source_set("connection") {
   ]
 
   public_deps = [
-    "//garnet/lib/magma/include:msd_abi"
+    ":buffer",
+    ":event",
+    ":object",
+    ":semaphore",
+    "$magma_build_root/src/magma_util",
+    "//garnet/lib/magma/include:magma_abi",
+    "//garnet/lib/magma/include:msd_abi",
   ]
 
   deps = [
     ":thread",
     "zircon:connection",
   ]
+
+  allow_circular_includes_from = [ "zircon:connection" ]
 }
 
 source_set("thread") {
@@ -99,6 +134,8 @@ source_set("thread") {
   deps = [
     "zircon:thread",
   ]
+
+  allow_circular_includes_from = [ "zircon:thread" ]
 }
 
 source_set("event") {
@@ -111,6 +148,8 @@ source_set("event") {
   deps = [
     "zircon:event",
   ]
+
+  allow_circular_includes_from = [ "zircon:event" ]
 }
 
 source_set("object") {
@@ -119,6 +158,12 @@ source_set("object") {
   sources = [
     "platform_object.h",
   ]
+
+  deps = [
+    "zircon:object",
+  ]
+
+  allow_circular_includes_from = [ "zircon:object" ]
 }
 
 source_set("semaphore") {
@@ -132,6 +177,8 @@ source_set("semaphore") {
     ":object",
     "zircon:semaphore",
   ]
+
+  allow_circular_includes_from = [ "zircon:semaphore" ]
 }
 
 source_set("port") {
@@ -145,6 +192,8 @@ source_set("port") {
     ":object",
     "zircon:port",
   ]
+
+  allow_circular_includes_from = [ "zircon:port" ]
 }
 
 source_set("trace") {
@@ -160,4 +209,6 @@ source_set("trace") {
   public_deps = [
     "zircon:trace",
   ]
+
+  allow_circular_includes_from = [ "zircon:trace" ]
 }

@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "ralink": "//garnet/drivers/wlan/mediatek/ralink"
+    }
+}

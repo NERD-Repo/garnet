@@ -6,7 +6,10 @@
 
 #include "gtest/gtest.h"
 
-#include "lib/fsl/tasks/message_loop.h"
+#include <lib/async-testutils/test_loop.h>
+#include <lib/async/cpp/task.h>
+#include <zx/time.h>
+
 #include "lib/fxl/macros.h"
 
 namespace btlib {
@@ -25,31 +28,22 @@ class TestBase : public ::testing::Test {
   void SetUp() override = 0;
 
   // ::testing::Test override:
-  void TearDown() override  {}
+  void TearDown() override {}
 
-  // Posts a delayed task to quit the message loop after |seconds| have elapsed.
-  void PostDelayedQuitTask(const fxl::TimeDelta& time_delta) {
-    message_loop_.task_runner()->PostDelayedTask(
-        [this] { message_loop_.QuitNow(); }, time_delta);
+  // Runs the message loop until it would wait.
+  void RunUntilIdle() {
+    loop_.ResetQuit();
+    loop_.RunUntilIdle();
   }
 
-  // Runs the message loop for the specified amount of time. This is useful for
-  // callback-driven test cases in which the message loop may run forever if the
-  // callback is not run.
-  void RunMessageLoop(int64_t timeout_seconds = 10) {
-    RunMessageLoop(fxl::TimeDelta::FromSeconds(timeout_seconds));
-  }
-
-  void RunMessageLoop(const fxl::TimeDelta& time_delta) {
-    PostDelayedQuitTask(time_delta);
-    message_loop_.Run();
-  }
+  // Advances the fake clock by |delta|.
+  void AdvanceTimeBy(zx::duration delta) { loop_.AdvanceTimeBy(delta); }
 
   // Getters for internal fields frequently used by tests.
-  fsl::MessageLoop* message_loop() { return &message_loop_; }
+  async_t* dispatcher() { return loop_.async(); }
 
  private:
-  fsl::MessageLoop message_loop_;
+  async::TestLoop loop_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(TestBase);
 };

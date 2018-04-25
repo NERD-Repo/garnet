@@ -7,19 +7,22 @@
 #include <dispatcher-pool/dispatcher-timer.h>
 
 #include "garnet/bin/media/audio_server/audio_link.h"
+#include "garnet/bin/media/audio_server/audio_link_packet_source.h"
 #include "garnet/bin/media/audio_server/audio_output.h"
 #include "garnet/bin/media/audio_server/constants.h"
 #include "garnet/bin/media/audio_server/gain.h"
 #include "garnet/bin/media/audio_server/platform/generic/mixer.h"
 #include "garnet/bin/media/audio_server/platform/generic/output_formatter.h"
 #include "lib/fxl/time/time_delta.h"
-#include "lib/media/fidl/media_result.fidl.h"
-#include "lib/media/fidl/media_types.fidl.h"
+#include <fuchsia/cpp/media.h>
+#include <fuchsia/cpp/media.h>
 #include "lib/media/timeline/timeline.h"
 #include "lib/media/timeline/timeline_function.h"
 
 namespace media {
 namespace audio {
+
+class AudioPacketRef;
 
 class StandardOutputBase : public AudioOutput {
  public:
@@ -104,7 +107,7 @@ class StandardOutputBase : public AudioOutput {
       FXL_EXCLUSIVE_LOCKS_REQUIRED(mix_domain_->token());
   bool ProcessMix(const fbl::RefPtr<AudioRendererImpl>& renderer,
                   RendererBookkeeping* info,
-                  const AudioPipe::AudioPacketRefPtr& pkt_ref)
+                  const fbl::RefPtr<AudioPacketRef>& pkt_ref)
       FXL_EXCLUSIVE_LOCKS_REQUIRED(mix_domain_->token());
 
   bool SetupTrim(const fbl::RefPtr<AudioRendererImpl>& renderer,
@@ -112,7 +115,7 @@ class StandardOutputBase : public AudioOutput {
       FXL_EXCLUSIVE_LOCKS_REQUIRED(mix_domain_->token());
   bool ProcessTrim(const fbl::RefPtr<AudioRendererImpl>& renderer,
                    RendererBookkeeping* info,
-                   const AudioPipe::AudioPacketRefPtr& pkt_ref)
+                  const fbl::RefPtr<AudioPacketRef>& pkt_ref)
       FXL_EXCLUSIVE_LOCKS_REQUIRED(mix_domain_->token());
 
   fxl::TimePoint next_sched_time_;

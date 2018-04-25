@@ -19,12 +19,16 @@
 
 namespace network {
 
+namespace {
+const size_t kMaxRedirects = 20;
+}  // namespace
+
 URLLoaderImpl::URLLoaderImpl(Coordinator* coordinator)
     : coordinator_(coordinator) {}
 
 URLLoaderImpl::~URLLoaderImpl() {}
 
-void URLLoaderImpl::Start(URLRequestPtr request, const Callback& callback) {
+void URLLoaderImpl::Start(URLRequest request, Callback callback) {
   callback_ = std::move(callback);
   coordinator_->RequestNetworkSlot(fxl::MakeCopyable(
       [ this, request = std::move(request) ](fxl::Closure on_inactive) mutable {
@@ -33,24 +37,24 @@ void URLLoaderImpl::Start(URLRequestPtr request, const Callback& callback) {
       }));
 }
 
-void URLLoaderImpl::FollowRedirect(const Callback& callback) {
+void URLLoaderImpl::FollowRedirect(Callback callback) {
   FXL_NOTIMPLEMENTED();
   callback_ = callback;
   SendError(network::NETWORK_ERR_NOT_IMPLEMENTED);
 }
 
-void URLLoaderImpl::QueryStatus(const QueryStatusCallback& callback) {
-  URLLoaderStatusPtr status(URLLoaderStatus::New());
+void URLLoaderImpl::QueryStatus(QueryStatusCallback callback) {
+  URLLoaderStatus status;
   FXL_NOTIMPLEMENTED();
-  status->error = MakeNetworkError(network::NETWORK_ERR_NOT_IMPLEMENTED);
+  status.error = MakeNetworkError(network::NETWORK_ERR_NOT_IMPLEMENTED);
   callback(std::move(status));
 }
 
 void URLLoaderImpl::SendError(int error_code) {
-  URLResponsePtr response(URLResponse::New());
-  response->error = MakeNetworkError(error_code);
+  URLResponse response;
+  response.error = MakeNetworkError(error_code);
   if (current_url_.is_valid()) {
-    response->url = current_url_.spec();
+    response.url = current_url_.spec();
   }
   SendResponse(std::move(response));
 }
@@ -59,43 +63,44 @@ void URLLoaderImpl::FollowRedirectInternal() {
   /* TODO(toshik) */
 }
 
-void URLLoaderImpl::SendResponse(URLResponsePtr response) {
+void URLLoaderImpl::SendResponse(URLResponse response) {
   Callback callback;
   std::swap(callback_, callback);
   callback(std::move(response));
 }
 
-void URLLoaderImpl::StartInternal(URLRequestPtr request) {
-  std::string url_str(request->url);
-  std::string method(request->method);
+void URLLoaderImpl::StartInternal(URLRequest request) {
+  std::string url_str = request.url;
+  std::string method = request.method;
   std::map<std::string, std::string> extra_headers;
   std::unique_ptr<UploadElementReader> request_body_reader;
 
-  if (request->headers) {
-    for (size_t i = 0; i < request->headers.size(); ++i)
-      extra_headers[request->headers[i]->name] = request->headers[i]->value;
+  if (request.headers) {
+    for (size_t i = 0; i < request.headers->size(); ++i)
+      extra_headers[request.headers->at(i).name] =
+          request.headers->at(i).value;
   }
 
-  if (request->body) {
+  if (request.body) {
     // TODO(kulakowski) Implement responses into a shared_buffer
-    if (request->body->is_stream()) {
+    if (request.body->is_stream()) {
       request_body_reader = std::make_unique<SocketUploadElementReader>(
-          std::move(request->body->get_stream()));
-    } else if (request->body->is_buffer()) {
+          std::move(request.body->stream()));
+    } else if (request.body->is_buffer()) {
       request_body_reader = std::make_unique<VmoUploadElementReader>(
-          std::move(request->body->get_buffer()));
+          std::move(request.body->buffer()));
     } else {
-      FXL_DCHECK(request->body->is_sized_buffer());
+      FXL_DCHECK(request.body->is_sized_buffer());
       request_body_reader = std::make_unique<VmoUploadElementReader>(
-          std::move(request->body->get_sized_buffer()->vmo),
-          request->body->get_sized_buffer()->size);
+          std::move(request.body->sized_buffer().vmo),
+          request.body->sized_buffer().size);
     }
   }
 
-  response_body_mode_ = request->response_body_mode;
+  response_body_mode_ = request.response_body_mode;
 
   asio::io_service io_service;
-  bool redirect = false;
+  size_t redirectsLeft = kMaxRedirects;
 
   current_url_ = url::GURL(url_str);
   if (!current_url_.is_valid()) {
@@ -104,11 +109,6 @@ void URLLoaderImpl::StartInternal(URLRequestPtr request) {
   }
 
   do {
-    if (redirect) {
-      io_service.reset();
-      redirect = false;
-    }
-
     if (current_url_.SchemeIs("https")) {
 #ifdef NETWORK_SERVICE_USE_HTTPS
       asio::ssl::context ctx(asio::ssl::context::sslv23);
@@ -123,25 +123,27 @@ void URLLoaderImpl::StartInternal(URLRequestPtr request) {
           method, extra_headers, std::move(request_body_reader));
       if (result != ZX_OK) {
         SendError(network::NETWORK_ERR_INVALID_ARGUMENT);
-        break;
+        return;
       }
       c.Start(current_url_.host(),
               current_url_.has_port() ? current_url_.port() : "https");
       io_service.run();
 
       if (c.status_code_ == 301 || c.status_code_ == 302) {
-        redirect = true;
         current_url_ = url::GURL(c.redirect_location_);
         if (!current_url_.is_valid()) {
           SendError(network::NETWORK_ERR_INVALID_RESPONSE);
-          break;
+          return;
         }
+        // Follow redirect
+        io_service.reset();
+        continue;
       }
 #else
       FXL_LOG(WARNING) << "https is not built-in. "
                           "please build with NETWORK_SERVICE_USE_HTTPS";
       SendError(network::NETWORK_ERR_INVALID_ARGUMENT);
-      break;
+      return;
 #endif
     } else if (current_url_.SchemeIs("http")) {
       HTTPClient<tcp::socket> c(this, io_service);
@@ -152,26 +154,31 @@ void URLLoaderImpl::StartInternal(URLRequestPtr request) {
           method, extra_headers, std::move(request_body_reader));
       if (result != ZX_OK) {
         SendError(network::NETWORK_ERR_INVALID_ARGUMENT);
-        break;
+        return;
       }
       c.Start(current_url_.host(),
               current_url_.has_port() ? current_url_.port() : "http");
       io_service.run();
 
       if (c.status_code_ == 301 || c.status_code_ == 302) {
-        redirect = true;
         current_url_ = url::GURL(c.redirect_location_);
         if (!current_url_.is_valid()) {
           SendError(network::NETWORK_ERR_INVALID_RESPONSE);
-          break;
+          return;
         }
+        // Follow redirect
+        io_service.reset();
+        continue;
       }
     } else {
       // unknown protocol
       SendError(network::NETWORK_ERR_INVALID_ARGUMENT);
-      break;
+      return;
     }
-  } while (redirect);
+    // Success without redirect
+    return;
+  } while (--redirectsLeft);
+  SendError(network::NETWORK_ERR_TOO_MANY_REDIRECTS);
 }
 
 }  // namespace network

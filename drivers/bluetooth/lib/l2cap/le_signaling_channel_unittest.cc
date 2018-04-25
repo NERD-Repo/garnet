@@ -238,7 +238,6 @@ TEST_F(L2CAP_LESignalingChannelTest, ConnParamUpdateAccept) {
   auto fake_chan_cb = [&expected, &fake_chan_cb_called, this](auto packet) {
     EXPECT_TRUE(common::ContainersEqual(expected, *packet));
     fake_chan_cb_called = true;
-    fsl::MessageLoop::GetCurrent()->QuitNow();
   };
 
   bool conn_param_cb_called = false;
@@ -248,17 +247,14 @@ TEST_F(L2CAP_LESignalingChannelTest, ConnParamUpdateAccept) {
     EXPECT_EQ(0x01F3, params.max_latency());
     EXPECT_EQ(0x0C80, params.supervision_timeout());
     conn_param_cb_called = true;
-    fsl::MessageLoop::GetCurrent()->QuitNow();
   };
 
-  fake_chan()->SetSendCallback(fake_chan_cb, message_loop()->task_runner());
-  sig()->set_conn_param_update_callback(conn_param_cb,
-                                        message_loop()->task_runner());
+  fake_chan()->SetSendCallback(fake_chan_cb, dispatcher());
+  sig()->set_conn_param_update_callback(conn_param_cb, dispatcher());
 
   fake_chan()->Receive(cmd);
 
-  RunMessageLoop(2);
-  RunMessageLoop(2);
+  RunUntilIdle();
 
   EXPECT_TRUE(fake_chan_cb_called);
   EXPECT_TRUE(conn_param_cb_called);
@@ -288,13 +284,12 @@ TEST_F(L2CAP_LESignalingChannelSlaveTest, ConnParamUpdateReject) {
   auto cb = [&expected, &cb_called, this](auto packet) {
     EXPECT_TRUE(common::ContainersEqual(expected, *packet));
     cb_called = true;
-    fsl::MessageLoop::GetCurrent()->QuitNow();
   };
 
-  fake_chan()->SetSendCallback(cb, message_loop()->task_runner());
+  fake_chan()->SetSendCallback(cb, dispatcher());
   fake_chan()->Receive(cmd);
 
-  RunMessageLoop();
+  RunUntilIdle();
   EXPECT_TRUE(cb_called);
 }
 

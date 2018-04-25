@@ -9,20 +9,19 @@ source_set("buffer") {
 
   sources = [
     "zircon_platform_buffer.cc",
+    "zircon_platform_bus_mapper.cc",
   ]
 
   deps = [
-    ":object",
     "$magma_build_root/src/magma_util",
     "$magma_build_root/src/magma_util/platform:trace",
     "$zircon_build_root/public/lib/ddk",
     "$zircon_build_root/public/lib/driver",
     "$zircon_build_root/public/lib/zx",
+    "..:object",
   ]
 
-  libs = [
-    "zircon",
-  ]
+  libs = [ "zircon" ]
 }
 
 source_set("interrupt") {
@@ -48,6 +47,7 @@ source_set("mmio") {
     "$zircon_build_root/public/lib/ddk",
     "$zircon_build_root/public/lib/fdio",
     "$zircon_build_root/public/lib/zx",
+    "..:mmio",
   ]
 }
 
@@ -70,9 +70,7 @@ source_set("device") {
     "$zircon_build_root/public/lib/driver",
   ]
 
-  libs = [
-    "zircon",
-  ]
+  libs = [ "zircon" ]
 }
 
 source_set("futex") {
@@ -88,9 +86,7 @@ source_set("futex") {
     "$zircon_build_root/public/lib/driver",
   ]
 
-  libs = [
-    "zircon",
-  ]
+  libs = [ "zircon" ]
 }
 
 source_set("connection") {
@@ -110,9 +106,7 @@ source_set("connection") {
     "$zircon_build_root/public/lib/zx",
   ]
 
-  libs = [
-    "zircon",
-  ]
+  libs = [ "zircon" ]
 }
 
 source_set("thread") {
@@ -123,7 +117,7 @@ source_set("thread") {
   ]
 
   deps = [
-    ":object",
+    "..:object",
   ]
 
   libs = [ "zircon" ]
@@ -141,6 +135,20 @@ source_set("event") {
     "$zircon_build_root/public/lib/zx",
   ]
 }
+
+source_set("handle") {
+  configs += [ "..:platform_include_config" ]
+
+  sources = [
+    "zircon_platform_handle.cc",
+  ]
+
+  deps = [
+    "$magma_build_root/src/magma_util",
+    "$zircon_build_root/public/lib/zx",
+  ]
+}
+
 
 source_set("object") {
   configs += [ "..:platform_include_config" ]
@@ -163,10 +171,10 @@ source_set("semaphore") {
   ]
 
   deps = [
-    ":object",
     "$magma_build_root/src/magma_util",
     "$magma_build_root/src/magma_util/platform:trace",
     "$zircon_build_root/public/lib/zx",
+    "..:object",
   ]
 }
 
@@ -199,18 +207,16 @@ source_set("trace") {
 
   if (magma_enable_tracing) {
     public_deps = [
+      "$zircon_build_root/public/lib/async-cpp",
+      "$zircon_build_root/public/lib/async-loop-cpp",
       "$zircon_build_root/public/lib/ddk",
       "$zircon_build_root/public/lib/driver",
       "$zircon_build_root/public/lib/fdio",
-      "$zircon_build_root/public/lib/async-cpp",
-      "$zircon_build_root/public/lib/async-loop-cpp",
       "$zircon_build_root/public/lib/trace",
       "$zircon_build_root/public/lib/trace-provider",
       "//garnet/public/lib/fsl",
     ]
   }
 
-  libs = [
-    "zircon",
-  ]
+  libs = [ "zircon" ]
 }

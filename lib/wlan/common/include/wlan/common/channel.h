@@ -4,10 +4,12 @@
 
 #pragma once
 
+#include <fuchsia/cpp/wlan_mlme.h>
+
+#include <wlan/protocol/mac.h>
+
 #include <cstdint>
 #include <string>
-
-#include <ddk/protocol/wlan.h>
 
 namespace wlan {
 namespace common {
@@ -34,6 +36,8 @@ std::string ChanStr(const wlan_channel_t& chan);
 std::string ChanStrLong(const wlan_channel_t& chan);
 std::string BandStr(const wlan_channel_t& chan);
 
+uint8_t GetValidCbw(const wlan_channel_t& chan);
+
 struct Channel {
     wlan_channel_t chan;
     // TODO(porce): Validation
@@ -42,6 +46,8 @@ struct Channel {
     // Define the rule to translsate center frequency to/from channel numbering.
     // See IEEE Std 802.11-2016 19.3.15
 };
+
+wlan_channel_t FromFidl(const wlan_mlme::WlanChan& fidl_chan);
 
 }  // namespace common
 }  // namespace wlan

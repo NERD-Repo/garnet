@@ -10,7 +10,6 @@
 #include <wlan/common/macaddr.h>
 #include <zircon/types.h>
 
-#include <typeinfo>
 #include <unordered_map>
 
 namespace wlan {
@@ -18,7 +17,6 @@ namespace wlan {
 namespace macaddr_map_type {
 enum MapType : uint8_t {
     kBss = 1,
-    kInfraBss = 3,
 };
 }  // namespace macaddr_map_type
 
@@ -80,7 +78,6 @@ template <typename V, macaddr_map_type::MapType Type> class MacAddrMap {
         }
 
         map_.emplace(addr.ToU64(), v);
-        debugf("[MacAddrMap-%u] New Address inserted: %s\n", Type, MACSTR(addr));
         return ZX_OK;
     }
 

@@ -2,29 +2,29 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_POLICY_SERVICE_AUDIO_POLICY_SERVICE_IMPL_H_
+#define GARNET_BIN_MEDIA_AUDIO_POLICY_SERVICE_AUDIO_POLICY_SERVICE_IMPL_H_
 
 #include <string>
 
+#include <fuchsia/cpp/audio_policy.h>
+
 #include "garnet/bin/media/util/fidl_publisher.h"
 #include "lib/app/cpp/application_context.h"
-#include "lib/fidl/cpp/bindings/binding_set.h"
+#include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
-#include "lib/media/fidl/audio_policy_service.fidl.h"
-#include "lib/media/fidl/audio_renderer.fidl.h"
-#include "lib/media/fidl/audio_server.fidl.h"
 
-namespace media {
+namespace audio_policy {
 
-class AudioPolicyServiceImpl : public AudioPolicyService {
+class AudioPolicyServiceImpl : public AudioPolicy {
  public:
   AudioPolicyServiceImpl(
-      std::unique_ptr<app::ApplicationContext> application_context);
+      std::unique_ptr<component::ApplicationContext> application_context);
   ~AudioPolicyServiceImpl() override;
 
-  // AudioPolicyService implementation.
+  // AudioPolicy implementation.
   void GetStatus(uint64_t version_last_seen,
-                 const GetStatusCallback& callback) override;
+                 GetStatusCallback callback) override;
 
   void SetSystemAudioGain(float db) override;
 
@@ -39,7 +39,7 @@ class AudioPolicyServiceImpl : public AudioPolicyService {
 
   // Returns a new status struct built from |system_audio_gain_db_| and
   // |system_audio_muted_|.
-  AudioPolicyStatusPtr Status();
+  AudioPolicyStatus Status();
 
   // Attempts to load the status file, updating |system_audio_gain_db_| and
   // |system_audio_muted_| if successful.
@@ -58,19 +58,20 @@ class AudioPolicyServiceImpl : public AudioPolicyService {
   // Returns the effective system audio gain based on |system_audio_gain_db_|
   // and |system_audio_muted_|.
   float effective_system_audio_gain() {
-    return system_audio_muted_ ? AudioRenderer::kMutedGain
-                               : system_audio_gain_db_;
+    return system_audio_muted_ ? media::kMutedGain : system_audio_gain_db_;
   }
 
-  std::unique_ptr<app::ApplicationContext> application_context_;
-  fidl::BindingSet<AudioPolicyService> bindings_;
+  std::unique_ptr<component::ApplicationContext> application_context_;
+  fidl::BindingSet<AudioPolicy> bindings_;
   float system_audio_gain_db_ = kDefaultSystemAudioGainDb;
   bool system_audio_muted_ = kDefaultSystemMuted;
-  FidlPublisher<GetStatusCallback> status_publisher_;
-  AudioServerPtr audio_service_;
+  media::FidlPublisher<GetStatusCallback> status_publisher_;
+  media::AudioServerPtr audio_service_;
   uint32_t initialize_attempts_remaining_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(AudioPolicyServiceImpl);
 };
 
-}  // namespace media
+}  // namespace audio_policy
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_POLICY_SERVICE_AUDIO_POLICY_SERVICE_IMPL_H_

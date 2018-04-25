@@ -6,11 +6,9 @@
 
 #include <memory>
 
-#include "garnet/bin/media/audio_server/audio_pipe.h"
-#include "garnet/bin/media/audio_server/audio_renderer_impl.h"
+#include <fuchsia/cpp/media.h>
 #include "garnet/bin/media/audio_server/constants.h"
 #include "garnet/bin/media/audio_server/gain.h"
-#include "lib/media/fidl/media_types.fidl.h"
 
 namespace media {
 namespace audio {
@@ -24,17 +22,37 @@ class Mixer {
   static constexpr uint32_t FRAC_MASK = FRAC_ONE - 1u;
   virtual ~Mixer();
 
+  // Resampler enum
+  //
+  // This enum lists Fuchsia's available resamplers. Callers of Mixer::Select
+  // optionally use this enum to specify which resampler they require. Default
+  // allows an existing algorithm to select a resampler based on the ratio of
+  // incoming and outgoing sample rates.
+  enum class Resampler {
+    Default = 0,
+    SampleAndHold,
+    LinearInterpolation,
+  };
+
   // Select
   //
-  // Select an appropriate instance of a mixer based on the properties of the
-  // source and destination formats.
+  // Select an appropriate mixer instance, based on an optionally-specified
+  // resampler type, or else by the properties of source/destination formats.
   //
-  // TODO(johngro): Come back here and add a way to indicate user preference
-  // where appropriate.  For example, where we might chose a linear
-  // interpolation sampler, the user may actually prefer cubic interpolation, or
-  // perhaps just a point sampler.
-  static MixerPtr Select(const AudioMediaTypeDetailsPtr& src_format,
-                         const AudioMediaTypeDetailsPtr* dst_format);
+  // When calling Mixer::Select, resampler_type is optional. If caller specifies
+  // a particular resampler, Mixer::Select will either instantiate exactly what
+  // was requested, or return nullptr -- even if otherwise it could successfully
+  // instantiate a different one. Setting this param to non-Default says "I know
+  // exactly what I need: I want you to fail rather than give me anything else."
+  //
+  // If resampler_type is absent or indicates Default, the resampler type is
+  // determined by algorithm (as has been the case before this CL).
+  // For optimum system performance across changing conditions, callers should
+  // take care when directly specifying a resampler type, if they do so at all.
+  // The default should be allowed whenever possible.
+  static MixerPtr Select(const AudioMediaTypeDetails& src_format,
+                         const AudioMediaTypeDetails& dst_format,
+                         Resampler resampler_type = Resampler::Default);
 
   // Mix
   //
@@ -79,6 +97,7 @@ class Mixer {
   // distortion.  If this becomes a problem, we should consider switching to
   // some form of (N,M) stepping system where we count by frac_step_size for N
   // output samples, then frac_step_size+1 for M samples, etc...
+  // MTWN-49 represents this work.
   //
   // @param amplitude_scale
   // The scale factor for the amplitude to be applied when mixing.  Currently,
@@ -93,6 +112,9 @@ class Mixer {
   // @return True if the mixer is finished with this source data and will not
   // need it in the future.  False if the mixer has not consumed the entire
   // source buffer and will need more of it in the future.
+  //
+  // TODO(mpuryear): Change frac_src_frames parameter to be (integer)
+  // src_frames, as number of src_frames was never intended to be fractional.
   virtual bool Mix(int32_t* dst,
                    uint32_t dst_frames,
                    uint32_t* dst_offset,

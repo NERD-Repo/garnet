@@ -4,14 +4,13 @@
 
 #include "low_energy_connection_manager.h"
 
-#include "garnet/drivers/bluetooth/lib/gatt/connection.h"
 #include "garnet/drivers/bluetooth/lib/gatt/local_service_manager.h"
 #include "garnet/drivers/bluetooth/lib/hci/defaults.h"
 #include "garnet/drivers/bluetooth/lib/hci/hci.h"
 #include "garnet/drivers/bluetooth/lib/hci/transport.h"
+#include "garnet/drivers/bluetooth/lib/hci/util.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/channel_manager.h"
 
-#include "lib/fxl/functional/make_copyable.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/strings/string_printf.h"
 
@@ -29,10 +28,16 @@ class LowEnergyConnection {
  public:
   LowEnergyConnection(const std::string& id,
                       std::unique_ptr<hci::Connection> link,
+                      async_t* dispatcher,
                       fxl::WeakPtr<LowEnergyConnectionManager> conn_mgr)
-      : id_(id), link_(std::move(link)), conn_mgr_(conn_mgr) {
+      : id_(id),
+        link_(std::move(link)),
+        dispatcher_(dispatcher),
+        conn_mgr_(conn_mgr),
+        weak_ptr_factory_(this) {
     FXL_DCHECK(!id_.empty());
     FXL_DCHECK(link_);
+    FXL_DCHECK(dispatcher_);
     FXL_DCHECK(conn_mgr_);
   }
 
@@ -47,7 +52,7 @@ class LowEnergyConnection {
 
   LowEnergyConnectionRefPtr AddRef() {
     LowEnergyConnectionRefPtr conn_ref(
-        new LowEnergyConnectionRef(id_, conn_mgr_));
+        new LowEnergyConnectionRef(id_, handle(), conn_mgr_));
     FXL_CHECK(conn_ref);
 
     refs_.insert(conn_ref.get());
@@ -72,14 +77,25 @@ class LowEnergyConnection {
         handle(), ref_count());
   }
 
-  void InitializeGATT(fxl::RefPtr<att::Database> local_db,
-                      std::unique_ptr<l2cap::Channel> att_chan) {
-    FXL_DCHECK(!gatt_);
-    FXL_DCHECK(local_db);
-    FXL_DCHECK(att_chan);
+  // Initializes the fixed channels. Packets will start being processed
+  // asynchronously.
+  void InitializeFixedChannels(fbl::RefPtr<l2cap::L2CAP> l2cap,
+                               fbl::RefPtr<gatt::GATT> gatt) {
+    FXL_DCHECK(l2cap);
+    FXL_DCHECK(gatt);
 
-    gatt_ =
-        std::make_unique<gatt::Connection>(id_, std::move(att_chan), local_db);
+    auto weak = weak_ptr_factory_.GetWeakPtr();
+    auto callback = [weak, this, gatt](fbl::RefPtr<l2cap::Channel> chan) {
+      if (!weak || !chan) {
+        FXL_VLOG(1) << "gap: link was closed before opening fixed channels";
+        return;
+      }
+
+      gatt->AddConnection(id_, std::move(chan));
+    };
+
+    l2cap->OpenFixedChannel(link_->handle(), l2cap::kATTChannelId, callback,
+                            dispatcher_);
   }
 
   size_t ref_count() const { return refs_.size(); }
@@ -87,7 +103,6 @@ class LowEnergyConnection {
   const std::string& id() const { return id_; }
   hci::ConnectionHandle handle() const { return link_->handle(); }
   hci::Connection* link() const { return link_.get(); }
-  gatt::Connection* gatt() const { return gatt_.get(); }
 
  private:
   void CloseRefs() {
@@ -100,13 +115,14 @@ class LowEnergyConnection {
 
   std::string id_;
   std::unique_ptr<hci::Connection> link_;
+  async_t* dispatcher_;
   fxl::WeakPtr<LowEnergyConnectionManager> conn_mgr_;
-
-  std::unique_ptr<gatt::Connection> gatt_;
 
   // LowEnergyConnectionManager is responsible for making sure that these
   // pointers are always valid.
   std::unordered_set<LowEnergyConnectionRef*> refs_;
+
+  fxl::WeakPtrFactory<LowEnergyConnection> weak_ptr_factory_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(LowEnergyConnection);
 };
@@ -115,10 +131,12 @@ class LowEnergyConnection {
 
 LowEnergyConnectionRef::LowEnergyConnectionRef(
     const std::string& device_id,
+    hci::ConnectionHandle handle,
     fxl::WeakPtr<LowEnergyConnectionManager> manager)
-    : active_(true), device_id_(device_id), manager_(manager) {
+    : active_(true), device_id_(device_id), handle_(handle), manager_(manager) {
   FXL_DCHECK(!device_id_.empty());
   FXL_DCHECK(manager_);
+  FXL_DCHECK(handle_);
 }
 
 LowEnergyConnectionRef::~LowEnergyConnectionRef() {
@@ -143,8 +161,10 @@ void LowEnergyConnectionRef::MarkClosed() {
 
 LowEnergyConnectionManager::PendingRequestData::PendingRequestData(
     const common::DeviceAddress& address,
-    const ConnectionResultCallback& first_callback)
-    : address_(address), callbacks_{first_callback} {}
+    ConnectionResultCallback first_callback)
+    : address_(address) {
+  callbacks_.push_back(std::move(first_callback));
+}
 
 void LowEnergyConnectionManager::PendingRequestData::NotifyCallbacks(
     hci::Status status,
@@ -159,19 +179,20 @@ LowEnergyConnectionManager::LowEnergyConnectionManager(
     fxl::RefPtr<hci::Transport> hci,
     hci::LowEnergyConnector* connector,
     RemoteDeviceCache* device_cache,
-    l2cap::ChannelManager* l2cap)
+    fbl::RefPtr<l2cap::L2CAP> l2cap,
+    fbl::RefPtr<gatt::GATT> gatt)
     : hci_(hci),
       request_timeout_ms_(kLECreateConnectionTimeoutMs),
-      task_runner_(fsl::MessageLoop::GetCurrent()->task_runner()),
+      dispatcher_(async_get_default()),
       device_cache_(device_cache),
       l2cap_(l2cap),
-      gatt_registry_(std::make_unique<gatt::LocalServiceManager>()),
+      gatt_(gatt),
       connector_(connector),
       weak_ptr_factory_(this) {
-  FXL_DCHECK(task_runner_);
+  FXL_DCHECK(dispatcher_);
   FXL_DCHECK(device_cache_);
   FXL_DCHECK(l2cap_);
-  FXL_DCHECK(gatt_registry_);
+  FXL_DCHECK(gatt_);
   FXL_DCHECK(hci_);
   FXL_DCHECK(connector_);
 
@@ -187,7 +208,7 @@ LowEnergyConnectionManager::LowEnergyConnectionManager(
         if (self)
           self->OnDisconnectionComplete(event);
       },
-      task_runner_);
+      dispatcher_);
 
   conn_update_cmpl_handler_id_ = hci_->command_channel()->AddLEMetaEventHandler(
       hci::kLEConnectionUpdateCompleteSubeventCode,
@@ -195,7 +216,7 @@ LowEnergyConnectionManager::LowEnergyConnectionManager(
         if (self)
           self->OnLEConnectionUpdateComplete(event);
       },
-      task_runner_);
+      dispatcher_);
 }
 
 LowEnergyConnectionManager::~LowEnergyConnectionManager() {
@@ -213,9 +234,7 @@ LowEnergyConnectionManager::~LowEnergyConnectionManager() {
 
   // Clear |pending_requests_| and notify failure.
   for (auto& iter : pending_requests_) {
-    // TODO(armansito): Use our own error code for errors that don't come from
-    // the controller (such as this and command timeout).
-    iter.second.NotifyCallbacks(hci::Status::kHardwareFailure,
+    iter.second.NotifyCallbacks(hci::Status(common::HostError::kFailed),
                                 [] { return nullptr; });
   }
   pending_requests_.clear();
@@ -228,9 +247,8 @@ LowEnergyConnectionManager::~LowEnergyConnectionManager() {
   connections_.clear();
 }
 
-bool LowEnergyConnectionManager::Connect(
-    const std::string& device_identifier,
-    const ConnectionResultCallback& callback) {
+bool LowEnergyConnectionManager::Connect(const std::string& device_identifier,
+                                         ConnectionResultCallback callback) {
   if (!connector_) {
     FXL_LOG(WARNING)
         << "gap: LowEnergyConnectionManager: Connect called during shutdown!";
@@ -267,7 +285,7 @@ bool LowEnergyConnectionManager::Connect(
     FXL_DCHECK(connections_.find(device_identifier) == connections_.end());
     FXL_DCHECK(connector_->request_pending());
 
-    pending_iter->second.AddCallback(callback);
+    pending_iter->second.AddCallback(std::move(callback));
     return true;
   }
 
@@ -275,27 +293,27 @@ bool LowEnergyConnectionManager::Connect(
   // succeed.
   auto conn_ref = AddConnectionRef(device_identifier);
   if (conn_ref) {
-    task_runner_->PostTask(fxl::MakeCopyable(
-        [ conn_ref = std::move(conn_ref), callback ]() mutable {
+    async::PostTask(dispatcher_,
+        [conn_ref = std::move(conn_ref),
+                           callback = std::move(callback)]() mutable {
           // Do not report success if the link has been disconnected (e.g. via
           // Disconnect() or other circumstances).
           if (!conn_ref->active()) {
             FXL_VLOG(1) << "gap: LowEnergyConnectionManager: Link "
                            "disconnected, ref is inactive";
 
-            // TODO(armansito): Use a non-HCI error code for this.
-            callback(hci::Status::kConnectionFailedToBeEstablished, nullptr);
+            callback(hci::Status(common::HostError::kFailed), nullptr);
           } else {
-            callback(hci::Status::kSuccess, std::move(conn_ref));
+            callback(hci::Status(), std::move(conn_ref));
           }
-        }));
+        });
 
     return true;
   }
 
   peer->set_connection_state(RemoteDevice::ConnectionState::kInitializing);
   pending_requests_[device_identifier] =
-      PendingRequestData(peer->address(), callback);
+      PendingRequestData(peer->address(), std::move(callback));
 
   TryCreateNextConnection();
 
@@ -336,15 +354,6 @@ LowEnergyConnectionManager::RegisterRemoteInitiatedLink(
   // Currently this will refuse the connection and disconnect the link if |peer|
   // is already connected to us by a different local address.
   return InitializeConnection(peer->identifier(), std::move(link));
-}
-
-gatt::Connection* LowEnergyConnectionManager::GetGattConnection(
-    const std::string& peer_id) {
-  auto iter = connections_.find(peer_id);
-  if (iter == connections_.end())
-    return nullptr;
-
-  return iter->second->gatt();
 }
 
 void LowEnergyConnectionManager::SetConnectionParametersCallbackForTesting(
@@ -434,10 +443,10 @@ void LowEnergyConnectionManager::RequestCreateConnection(RemoteDevice* peer) {
       hci::defaults::kLESupervisionTimeout);
 
   auto self = weak_ptr_factory_.GetWeakPtr();
-  auto result_cb = [self, device_id = peer->identifier()](
-                       auto result, auto status, auto link) {
+  auto status_cb = [self, device_id = peer->identifier()](hci::Status status,
+                                                          auto link) {
     if (self)
-      self->OnConnectResult(device_id, result, status, std::move(link));
+      self->OnConnectResult(device_id, status, std::move(link));
   };
 
   // We set the scan window and interval to the same value for continuous
@@ -446,13 +455,14 @@ void LowEnergyConnectionManager::RequestCreateConnection(RemoteDevice* peer) {
   connector_->CreateConnection(hci::LEOwnAddressType::kPublic,
                                false /* use_whitelist */, peer->address(),
                                kLEScanFastInterval, kLEScanFastInterval,
-                               initial_params, result_cb, request_timeout_ms_);
+                               initial_params, status_cb, request_timeout_ms_);
 }
 
 LowEnergyConnectionRefPtr LowEnergyConnectionManager::InitializeConnection(
     const std::string& device_id,
     std::unique_ptr<hci::Connection> link) {
   FXL_DCHECK(link);
+  FXL_DCHECK(link->ll_type() == hci::Connection::LinkType::kLE);
 
   // TODO(armansito): For now reject having more than one link with the same
   // peer. This should change once this has more context on the local
@@ -465,28 +475,29 @@ LowEnergyConnectionRefPtr LowEnergyConnectionManager::InitializeConnection(
 
   // Add the connection to the L2CAP table. Incoming data will be buffered until
   // the channels are open.
-  if (link->ll_type() == hci::Connection::LinkType::kLE) {
-    auto self = weak_ptr_factory_.GetWeakPtr();
-    auto conn_param_update_cb = [self, handle = link->handle(),
-                                 device_id](const auto& params) {
-      if (self) {
-        self->OnNewLEConnectionParams(device_id, handle, params);
-      }
-    };
-    l2cap_->RegisterLE(link->handle(), link->role(), conn_param_update_cb,
-                       task_runner_);
-  } else {
-    l2cap_->Register(link->handle(), link->ll_type(), link->role());
-  }
+  auto self = weak_ptr_factory_.GetWeakPtr();
+  auto conn_param_update_cb = [self, handle = link->handle(),
+                               device_id](const auto& params) {
+    if (self) {
+      self->OnNewLEConnectionParams(device_id, handle, params);
+    }
+  };
 
-  // Open fixed channels.
-  auto att = l2cap_->OpenFixedChannel(link->handle(), l2cap::kATTChannelId);
-  FXL_DCHECK(att);
+  auto link_error_cb = [self, device_id] {
+    FXL_VLOG(1) << "gap: Link error received from L2CAP";
+    if (self) {
+      self->Disconnect(device_id);
+    }
+  };
+
+  l2cap_->RegisterLE(link->handle(), link->role(),
+                     std::move(conn_param_update_cb), std::move(link_error_cb),
+                     dispatcher_);
 
   // Initialize connection.
   auto conn = std::make_unique<internal::LowEnergyConnection>(
-      device_id, std::move(link), weak_ptr_factory_.GetWeakPtr());
-  conn->InitializeGATT(gatt_registry_->database(), std::move(att));
+      device_id, std::move(link), dispatcher_, weak_ptr_factory_.GetWeakPtr());
+  conn->InitializeFixedChannels(l2cap_, gatt_);
 
   auto first_ref = conn->AddRef();
   connections_[device_id] = std::move(conn);
@@ -526,7 +537,8 @@ void LowEnergyConnectionManager::CleanUpConnection(
   FXL_DCHECK(peer);
   peer->set_connection_state(RemoteDevice::ConnectionState::kNotConnected);
 
-  // This will notify all open L2CAP channels about the severed link.
+  // This will disable L2CAP on this link.
+  gatt_->RemoveConnection(conn->id());
   l2cap_->Unregister(conn->handle());
 
   if (!close_link) {
@@ -571,9 +583,8 @@ void LowEnergyConnectionManager::RegisterLocalInitiatedLink(
     auto pending_req_data = std::move(iter->second);
     pending_requests_.erase(iter);
 
-    pending_req_data.NotifyCallbacks(hci::Status::kSuccess, [&conn_iter] {
-      return conn_iter->second->AddRef();
-    });
+    pending_req_data.NotifyCallbacks(
+        hci::Status(), [&conn_iter] { return conn_iter->second->AddRef(); });
   }
 
   // Release the extra reference before attempting the next connection. This
@@ -600,12 +611,11 @@ RemoteDevice* LowEnergyConnectionManager::UpdateRemoteDeviceWithLink(
 
 void LowEnergyConnectionManager::OnConnectResult(
     const std::string& device_identifier,
-    hci::LowEnergyConnector::Result result,
     hci::Status status,
     hci::ConnectionPtr link) {
   FXL_DCHECK(connections_.find(device_identifier) == connections_.end());
 
-  if (result == hci::LowEnergyConnector::Result::kSuccess) {
+  if (status) {
     FXL_VLOG(1) << "gap: le connmgr: LE connection request successful";
     RegisterLocalInitiatedLink(std::move(link));
     return;
@@ -641,19 +651,19 @@ void LowEnergyConnectionManager::OnDisconnectionComplete(
       event.view().payload<hci::DisconnectionCompleteEventParams>();
   hci::ConnectionHandle handle = le16toh(params.connection_handle);
 
-  if (params.status != hci::Status::kSuccess) {
-    FXL_LOG(WARNING) << fxl::StringPrintf(
+  if (params.status != hci::StatusCode::kSuccess) {
+    FXL_VLOG(1) << fxl::StringPrintf(
         "gap: LowEnergyConnectionManager: HCI disconnection event received "
         "with error "
-        "(status: 0x%02x, handle: 0x%04x)",
-        params.status, handle);
+        "(status: \"%s\", handle: 0x%04x)",
+        hci::StatusCodeToString(params.status).c_str(), handle);
     return;
   }
 
   FXL_LOG(INFO) << fxl::StringPrintf(
       "gap: LowEnergyConnectionManager: Link disconnected - "
-      "status: 0x%02x, handle: 0x%04x, reason: 0x%02x",
-      params.status, handle, params.reason);
+      "status: \"%s\", handle: 0x%04x, reason: 0x%02x",
+      hci::StatusCodeToString(params.status).c_str(), handle, params.reason);
 
   if (test_disconn_cb_)
     test_disconn_cb_(handle);
@@ -690,7 +700,7 @@ void LowEnergyConnectionManager::OnLEConnectionUpdateComplete(
   FXL_CHECK(payload);
   hci::ConnectionHandle handle = le16toh(payload->connection_handle);
 
-  if (payload->status != hci::Status::kSuccess) {
+  if (payload->status != hci::StatusCode::kSuccess) {
     FXL_LOG(WARNING) << fxl::StringPrintf(
         "gap: LowEnergyConnectionManager: HCI LE Connection Update Complete "
         "event with error (status: 0x%02x, handle: 0x%04x)",
@@ -782,18 +792,15 @@ void LowEnergyConnectionManager::UpdateConnectionParams(
   auto status_cb = [handle](auto id, const hci::EventPacket& event) {
     FXL_DCHECK(event.event_code() == hci::kCommandStatusEventCode);
 
-    hci::Status status =
-        event.view().payload<hci::CommandStatusEventParams>().status;
-    if (status != hci::Status::kSuccess) {
-      FXL_VLOG(1) << fxl::StringPrintf(
-          "(ERROR): gap: Controller rejected LE conn. params. (status: 0x%02x",
-          status);
+    hci::Status status = event.ToStatus();
+    if (!status) {
+      FXL_VLOG(1) << "(ERROR): gap: Controller rejected LE conn. params: "
+                  << status.ToString();
     }
   };
 
-  hci_->command_channel()->SendCommand(std::move(command), task_runner_,
-                                       status_cb, nullptr,
-                                       hci::kCommandStatusEventCode);
+  hci_->command_channel()->SendCommand(std::move(command), dispatcher_,
+                                       status_cb, hci::kCommandStatusEventCode);
 }
 
 LowEnergyConnectionManager::ConnectionMap::iterator

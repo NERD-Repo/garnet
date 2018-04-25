@@ -5,26 +5,22 @@
 package main
 
 import (
-	"log"
 	"sync/atomic"
-	"syscall/zx"
-	"syscall/zx/mxerror"
 	"testing"
 	"time"
 
 	"app/context"
 	"fidl/bindings"
 
-	"garnet/public/lib/power/fidl/power_manager"
+	"fuchsia/go/power_manager"
 )
 
 type ClientMock struct {
-	pm *power_manager.PowerManager_Proxy
+	pm *power_manager.PowerManagerInterface
 }
 
 type WatcherMock struct {
 	called uint32
-	pmw    *power_manager.PowerManagerWatcher_Proxy
 }
 
 func (pmw *WatcherMock) OnChangeBatteryStatus(bs power_manager.BatteryStatus) error {
@@ -34,11 +30,14 @@ func (pmw *WatcherMock) OnChangeBatteryStatus(bs power_manager.BatteryStatus) er
 
 func TestPowerManager(t *testing.T) {
 	ctx := context.CreateFromStartupInfo()
+	req, iface, err := power_manager.NewPowerManagerInterfaceRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
 	pmClient := &ClientMock{}
-	r, p := pmClient.pm.NewRequest(bindings.GetAsyncWaiter())
-	pmClient.pm = p
-	ctx.ConnectToEnvService(r)
-	_, err := pmClient.pm.GetBatteryStatus()
+	pmClient.pm = iface
+	ctx.ConnectToEnvService(req)
+	_, err = pmClient.pm.GetBatteryStatus()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,27 +46,26 @@ func TestPowerManager(t *testing.T) {
 
 func TestPowerManagerWatcher(t *testing.T) {
 	ctx := context.CreateFromStartupInfo()
+	r, p, err := power_manager.NewPowerManagerInterfaceRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
 	pmClient := &ClientMock{}
-	r, p := pmClient.pm.NewRequest(bindings.GetAsyncWaiter())
 	pmClient.pm = p
 	ctx.ConnectToEnvService(r)
 
+	rw, pw, err := power_manager.NewPowerManagerWatcherInterfaceRequest()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pmWatcher := &WatcherMock{called: 0}
-	rw, pw := power_manager.NewChannelForPowerManagerWatcher()
-	s := rw.NewStub(pmWatcher, bindings.GetAsyncWaiter())
+	s := power_manager.PowerManagerWatcherStub{Impl: pmWatcher}
+	bs := bindings.BindingSet{}
+	bs.Add(&s, rw.Channel, nil)
+	go bindings.Serve()
 
-	go func() {
-		for {
-			if err := s.ServeRequest(); err != nil {
-				if mxerror.Status(err) != zx.ErrPeerClosed {
-					log.Println(err)
-				}
-				break
-			}
-		}
-	}()
-
-	err := pmClient.pm.Watch(pw)
+	err = pmClient.pm.Watch(*pw)
 	if err != nil {
 		t.Fatal(err)
 	}

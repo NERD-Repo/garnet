@@ -17,6 +17,7 @@
 #include "msd_arm_device.h"
 #include "msd_arm_semaphore.h"
 #include "platform_semaphore.h"
+#include "platform_trace.h"
 
 void msd_connection_close(msd_connection_t* connection)
 {
@@ -45,6 +46,12 @@ bool MsdArmConnection::ExecuteAtom(
     std::deque<std::shared_ptr<magma::PlatformSemaphore>>* semaphores)
 {
     uint8_t atom_number = atom->atom_number;
+    if (outstanding_atoms_[atom_number] &&
+        outstanding_atoms_[atom_number]->result_code() == kArmMaliResultRunning) {
+        magma::log(magma::LOG_WARNING, "Client %" PRIu64 ": Submitted atom number already in use",
+                   client_id_);
+        return false;
+    }
     uint32_t flags = atom->flags;
     magma_arm_mali_user_data user_data;
     user_data.data[0] = atom->data.data[0];
@@ -53,11 +60,13 @@ bool MsdArmConnection::ExecuteAtom(
     if (flags & kAtomFlagSoftware) {
         if (flags != kAtomFlagSemaphoreSet && flags != kAtomFlagSemaphoreReset &&
             flags != kAtomFlagSemaphoreWait && flags != kAtomFlagSemaphoreWaitAndReset) {
-            magma::log(magma::LOG_WARNING, "Invalid soft atom flags 0x%x\n", flags);
+            magma::log(magma::LOG_WARNING, "Client %" PRIu64 ": Invalid soft atom flags 0x%x\n",
+                       client_id_, flags);
             return false;
         }
         if (semaphores->empty()) {
-            magma::log(magma::LOG_WARNING, "No remaining semaphores");
+            magma::log(magma::LOG_WARNING, "Client %" PRIu64 ": No remaining semaphores",
+                       client_id_);
             return false;
         }
 
@@ -68,7 +77,8 @@ bool MsdArmConnection::ExecuteAtom(
     } else {
         uint32_t slot = flags & kAtomFlagRequireFragmentShader ? 0 : 1;
         if (slot == 0 && (flags & (kAtomFlagRequireComputeShader | kAtomFlagRequireTiler))) {
-            magma::log(magma::LOG_WARNING, "Invalid atom flags 0x%x\n", flags);
+            magma::log(magma::LOG_WARNING, "Client %" PRIu64 ": Invalid atom flags 0x%x\n",
+                       client_id_, flags);
             return false;
         }
         msd_atom = std::make_shared<MsdArmAtom>(shared_from_this(), atom->job_chain_addr, slot,
@@ -81,9 +91,24 @@ bool MsdArmConnection::ExecuteAtom(
 
         MsdArmAtom::DependencyList dependencies;
         for (size_t i = 0; i < arraysize(atom->dependencies); i++) {
-            uint8_t dependency = atom->dependencies[i];
-            if (dependency)
-                dependencies.push_back(outstanding_atoms_[dependency]);
+            uint8_t dependency = atom->dependencies[i].atom_number;
+            if (dependency) {
+                if (!outstanding_atoms_[dependency]) {
+                    magma::log(magma::LOG_WARNING,
+                               "Client %" PRIu64
+                               ": Dependency on atom that hasn't been submitted yet",
+                               client_id_);
+                    return false;
+                }
+                auto type = static_cast<ArmMaliDependencyType>(atom->dependencies[i].type);
+                if (type != kArmMaliDependencyOrder && type != kArmMaliDependencyData) {
+                    magma::log(magma::LOG_WARNING,
+                               "Client %" PRIu64 ": Invalid dependency type: %d", client_id_, type);
+                    return false;
+                }
+                dependencies.push_back(
+                    MsdArmAtom::Dependency{type, outstanding_atoms_[dependency]});
+            }
         }
         msd_atom->set_dependencies(dependencies);
 
@@ -102,57 +127,30 @@ magma_status_t msd_context_execute_command_buffer(msd_context_t* ctx, msd_buffer
                                                   msd_semaphore_t** wait_semaphores,
                                                   msd_semaphore_t** signal_semaphores)
 {
+
+    return DRET_MSG(MAGMA_STATUS_INVALID_ARGS,
+                    "msd_context_execute_command_buffer not implemented");
+}
+
+magma_status_t msd_context_execute_immediate_commands(msd_context_t* ctx, uint64_t commands_size,
+                                                      void* commands, uint64_t semaphore_count,
+                                                      msd_semaphore_t** msd_semaphores)
+{
     auto context = static_cast<MsdArmContext*>(ctx);
     auto connection = context->connection().lock();
     if (!connection)
         return DRET_MSG(MAGMA_STATUS_INVALID_ARGS, "Connection not valid");
 
+    size_t count = commands_size / sizeof(magma_arm_mali_atom);
+    magma_arm_mali_atom* atoms = static_cast<magma_arm_mali_atom*>(commands);
     std::deque<std::shared_ptr<magma::PlatformSemaphore>> semaphores;
-    // Command buffers aren't shared cross-connection, so use the base
-    // pointer.
-    auto command_buffer = MsdArmAbiBuffer::cast(cmd_buf)->base_ptr();
-    void* command_buffer_addr;
-    if (!command_buffer->platform_buffer()->MapCpu(&command_buffer_addr))
-        return DRET_MSG(MAGMA_STATUS_INTERNAL_ERROR, "Can't map buffer");
-    auto* command_buffer_data = static_cast<magma_system_command_buffer*>(command_buffer_addr);
-    for (size_t i = 0; i < command_buffer_data->signal_semaphore_count; i++) {
-        semaphores.push_back(MsdArmAbiSemaphore::cast(signal_semaphores[i])->ptr());
+    for (size_t i = 0; i < semaphore_count; i++) {
+        semaphores.push_back(MsdArmAbiSemaphore::cast(msd_semaphores[i])->ptr());
     }
-
-    command_buffer->platform_buffer()->UnmapCpu();
-
-    auto buffer = connection->GetBuffer(MsdArmAbiBuffer::cast(exec_resources[0]));
-    void* addr;
-    if (!buffer->platform_buffer()->MapCpu(&addr))
-        return DRET_MSG(MAGMA_STATUS_INTERNAL_ERROR, "Can't map buffer");
-
-    if (buffer->platform_buffer()->size() < sizeof(uint64_t)) {
-        buffer->platform_buffer()->UnmapCpu();
-        return DRET_MSG(MAGMA_STATUS_INVALID_ARGS, "Buffer too small");
-    }
-    // This is marked as volatile to ensure the compiler only dereferences it
-    // once, so that the client can't increase the atom count after it's been
-    // validated and have the loop dereference memory outside of the buffer.
-    volatile uint64_t* atom_count_ptr = static_cast<volatile uint64_t*>(addr);
-    uint64_t atom_count = *atom_count_ptr;
-
-    uint64_t buffer_max_entries =
-        (buffer->platform_buffer()->size() - sizeof(uint64_t)) / sizeof(magma_arm_mali_atom);
-    if (buffer_max_entries < atom_count) {
-        buffer->platform_buffer()->UnmapCpu();
-        return DRET_MSG(MAGMA_STATUS_INVALID_ARGS, "Buffer too small");
-    }
-
-    volatile magma_arm_mali_atom* atom =
-        reinterpret_cast<volatile magma_arm_mali_atom*>(atom_count_ptr + 1);
-    for (uint64_t i = 0; i < atom_count; i++) {
-        if (!connection->ExecuteAtom(&atom[i], &semaphores)) {
-            buffer->platform_buffer()->UnmapCpu();
+    for (size_t i = 0; i < count; i++) {
+        if (!connection->ExecuteAtom(&atoms[i], &semaphores))
             return DRET(MAGMA_STATUS_CONTEXT_KILLED);
-        }
     }
-
-    buffer->platform_buffer()->UnmapCpu();
 
     return MAGMA_STATUS_OK;
 }
@@ -188,8 +186,37 @@ MsdArmConnection::MsdArmConnection(msd_client_id_t client_id, Owner* owner)
 
 MsdArmConnection::~MsdArmConnection() { DASSERT(buffers_.empty()); }
 
+static bool access_flags_from_flags(uint64_t mapping_flags, bool cache_coherent,
+                                    uint64_t* flags_out)
+{
+    uint64_t access_flags = 0;
+    if (mapping_flags & MAGMA_GPU_MAP_FLAG_READ)
+        access_flags |= kAccessFlagRead;
+    if (mapping_flags & MAGMA_GPU_MAP_FLAG_WRITE)
+        access_flags |= kAccessFlagWrite;
+    if (!(mapping_flags & MAGMA_GPU_MAP_FLAG_EXECUTE))
+        access_flags |= kAccessFlagNoExecute;
+    if (mapping_flags & kMagmaArmMaliGpuMapFlagInnerShareable)
+        access_flags |= kAccessFlagShareInner;
+    if (mapping_flags & kMagmaArmMaliGpuMapFlagBothShareable) {
+        if (!cache_coherent)
+            return DRETF(false, "Attempting to use cache coherency while disabled.");
+        access_flags |= kAccessFlagShareBoth;
+    }
+    if (mapping_flags &
+        ~(MAGMA_GPU_MAP_FLAG_READ | MAGMA_GPU_MAP_FLAG_WRITE | MAGMA_GPU_MAP_FLAG_EXECUTE |
+          MAGMA_GPU_MAP_FLAG_GROWABLE | kMagmaArmMaliGpuMapFlagInnerShareable |
+          kMagmaArmMaliGpuMapFlagBothShareable))
+        return DRETF(false, "Unsupported map flags %lx\n", mapping_flags);
+
+    if (flags_out)
+        *flags_out = access_flags;
+    return true;
+}
+
 bool MsdArmConnection::AddMapping(std::unique_ptr<GpuMapping> mapping)
 {
+    std::lock_guard<std::mutex> lock(address_lock_);
     uint64_t gpu_va = mapping->gpu_va();
     if (!magma::is_page_aligned(gpu_va))
         return DRETF(false, "mapping not page aligned");
@@ -217,54 +244,138 @@ bool MsdArmConnection::AddMapping(std::unique_ptr<GpuMapping> mapping)
     }
     auto buffer = mapping->buffer().lock();
     DASSERT(buffer);
-    if (!buffer->platform_buffer()->PinPages(mapping->page_offset(), page_count))
-        return DRETF(false, "Pages can't be pinned");
 
-    uint64_t access_flags = 0;
-    if (mapping->flags() & MAGMA_GPU_MAP_FLAG_READ)
-        access_flags |= kAccessFlagRead;
-    if (mapping->flags() & MAGMA_GPU_MAP_FLAG_WRITE)
-        access_flags |= kAccessFlagWrite;
-    if (!(mapping->flags() & MAGMA_GPU_MAP_FLAG_EXECUTE))
-        access_flags |= kAccessFlagNoExecute;
-    if (mapping->flags() & kMagmaArmMaliGpuMapFlagInnerShareable)
-        access_flags |= kAccessFlagShareInner;
-    if (mapping->flags() & kMagmaArmMaliGpuMapFlagBothShareable) {
-        if (owner_->cache_coherency_status() != kArmMaliCacheCoherencyAce)
-            return DRETF(false, "Attempting to use cache coherency while disabled.");
-        access_flags |= kAccessFlagShareBoth;
-    }
+    if (mapping->page_offset() + page_count > buffer->platform_buffer()->size() / PAGE_SIZE)
+        return DRETF(false, "Buffer size %lx too small for map start %lx count %lx",
+                     buffer->platform_buffer()->size(), mapping->page_offset(), page_count);
 
-    if (mapping->flags() &
-        ~(MAGMA_GPU_MAP_FLAG_READ | MAGMA_GPU_MAP_FLAG_WRITE | MAGMA_GPU_MAP_FLAG_EXECUTE |
-          kMagmaArmMaliGpuMapFlagInnerShareable | kMagmaArmMaliGpuMapFlagBothShareable))
-        return DRETF(false, "Unsupported map flags %lx\n", mapping->flags());
+    if (!access_flags_from_flags(mapping->flags(),
+                                 owner_->cache_coherency_status() == kArmMaliCacheCoherencyAce,
+                                 nullptr))
+        return false;
 
-    if (!address_space_->Insert(gpu_va, buffer->platform_buffer(),
-                                mapping->page_offset() * PAGE_SIZE, mapping->size(),
-                                access_flags)) {
-        buffer->platform_buffer()->UnpinPages(start_page, page_count);
-        return DRETF(false, "Pages can't be inserted into address space");
-    }
-
+    if (!UpdateCommittedMemory(mapping.get()))
+        return false;
     gpu_mappings_[gpu_va] = std::move(mapping);
     return true;
 }
 
 bool MsdArmConnection::RemoveMapping(uint64_t gpu_va)
 {
+    std::lock_guard<std::mutex> lock(address_lock_);
     auto it = gpu_mappings_.find(gpu_va);
     if (it == gpu_mappings_.end())
         return DRETF(false, "Mapping not found");
 
     address_space_->Clear(it->second->gpu_va(), it->second->size());
 
-    uint64_t page_count = magma::round_up(it->second->size(), PAGE_SIZE) >> PAGE_SHIFT;
-    auto buffer = it->second->buffer().lock();
-    if (buffer && !buffer->platform_buffer()->UnpinPages(it->second->page_offset(), page_count))
-        DLOG("Unable to unpin pages");
     gpu_mappings_.erase(gpu_va);
     return true;
+}
+
+// CommitMemoryForBuffer or PageInAddress will hold address_lock_ before calling this, but that's
+// impossible to specify for the thread safety analysis.
+bool MsdArmConnection::UpdateCommittedMemory(GpuMapping* mapping) FXL_NO_THREAD_SAFETY_ANALYSIS
+{
+    uint64_t access_flags = 0;
+    if (!access_flags_from_flags(mapping->flags(),
+                                 owner_->cache_coherency_status() == kArmMaliCacheCoherencyAce,
+                                 &access_flags))
+        return false;
+
+    auto buffer = mapping->buffer().lock();
+    DASSERT(buffer);
+
+    if (buffer->start_committed_pages() != mapping->page_offset() &&
+        (buffer->committed_page_count() > 0 || mapping->pinned_page_count() > 0))
+        return DRETF(false, "start of commit should match page offset");
+
+    uint64_t prev_committed_page_count = mapping->pinned_page_count();
+    DASSERT(prev_committed_page_count <= mapping->size() / PAGE_SIZE);
+    uint64_t committed_page_count =
+        std::min(buffer->committed_page_count(), mapping->size() / PAGE_SIZE);
+    if (prev_committed_page_count == committed_page_count) {
+        // Sometimes an access to a growable region that was just grown can fault.  Unlock the MMU
+        // if that's detected so the access can be retried.
+        if (committed_page_count > 0)
+            address_space_->Unlock();
+        return true;
+    }
+
+    if (committed_page_count < prev_committed_page_count) {
+        uint64_t pages_to_remove = prev_committed_page_count - committed_page_count;
+        address_space_->Clear(mapping->gpu_va() + committed_page_count * PAGE_SIZE,
+                              pages_to_remove * PAGE_SIZE);
+        mapping->shrink_pinned_pages(pages_to_remove);
+
+    } else {
+        uint64_t pages_to_add = committed_page_count - prev_committed_page_count;
+        uint64_t page_offset_in_buffer = mapping->page_offset() + prev_committed_page_count;
+
+        std::unique_ptr<magma::PlatformBusMapper::BusMapping> bus_mapping =
+            owner_->GetBusMapper()->MapPageRangeBus(buffer->platform_buffer(),
+                                                    page_offset_in_buffer, pages_to_add);
+        if (!bus_mapping)
+            return DRETF(false, "Couldn't pin 0x%lx pages", pages_to_add);
+
+        if (!address_space_->Insert(mapping->gpu_va() + prev_committed_page_count * PAGE_SIZE,
+                                    bus_mapping.get(), page_offset_in_buffer * PAGE_SIZE,
+                                    pages_to_add * PAGE_SIZE, access_flags)) {
+            return DRETF(false, "Pages can't be inserted into address space");
+        }
+
+        mapping->grow_pinned_pages(std::move(bus_mapping));
+    }
+
+    return true;
+}
+
+bool MsdArmConnection::PageInMemory(uint64_t address)
+{
+    std::lock_guard<std::mutex> lock(address_lock_);
+    if (gpu_mappings_.empty())
+        return false;
+
+    auto it = gpu_mappings_.upper_bound(address);
+    if (it == gpu_mappings_.begin())
+        return false;
+    --it;
+    GpuMapping& mapping = *it->second.get();
+    DASSERT(address >= mapping.gpu_va());
+    if (address >= mapping.gpu_va() + mapping.size())
+        return false;
+    if (!(mapping.flags() & MAGMA_GPU_MAP_FLAG_GROWABLE))
+        return DRETF(false, "Buffer mapping not growable");
+    auto buffer = mapping.buffer().lock();
+    DASSERT(buffer);
+
+    // TODO(MA-417): Look into growing the buffer on a different thread.
+
+    // Try to grow in units of 64 pages to avoid needing to fault too often.
+    constexpr uint64_t kPagesToGrow = 64;
+    constexpr uint64_t kCacheLineSize = 64;
+    uint64_t offset_needed = address - mapping.gpu_va() + kCacheLineSize - 1;
+
+    // Don't shrink the amount being committed if there's a race and the
+    // client committed more memory between when the fault happened and this
+    // code.
+    uint64_t committed_page_count =
+        std::max(buffer->committed_page_count(),
+                 magma::round_up(offset_needed, PAGE_SIZE * kPagesToGrow) / PAGE_SIZE);
+    committed_page_count =
+        std::min(committed_page_count,
+                 buffer->platform_buffer()->size() / PAGE_SIZE - buffer->start_committed_pages());
+
+    // The MMU command to update the page tables should automatically cause
+    // the atom to continue executing.
+    return buffer->SetCommittedPages(buffer->start_committed_pages(), committed_page_count);
+}
+
+bool MsdArmConnection::CommitMemoryForBuffer(MsdArmAbiBuffer* buffer, uint64_t page_offset,
+                                             uint64_t page_count)
+{
+    std::lock_guard<std::mutex> lock(address_lock_);
+    return GetBuffer(buffer)->SetCommittedPages(page_offset, page_count);
 }
 
 void MsdArmConnection::SetNotificationChannel(msd_channel_send_callback_t send_callback,
@@ -278,7 +389,6 @@ void MsdArmConnection::SetNotificationChannel(msd_channel_send_callback_t send_c
 void MsdArmConnection::SendNotificationData(MsdArmAtom* atom, ArmMaliResultCode status)
 {
     std::lock_guard<std::mutex> lock(channel_lock_);
-    outstanding_atoms_[atom->atom_number()].reset();
     // It may already have been destroyed on the main thread.
     if (!return_channel_)
         return;
@@ -324,27 +434,40 @@ void MsdArmConnection::ReleaseBuffer(MsdArmAbiBuffer* buffer)
     buffers_.erase(buffer);
 }
 
-void msd_connection_map_buffer_gpu(msd_connection_t* abi_connection, msd_buffer_t* abi_buffer,
-                                   uint64_t gpu_va, uint64_t page_offset, uint64_t page_count,
-                                   uint64_t flags)
+magma_status_t msd_connection_map_buffer_gpu(msd_connection_t* abi_connection,
+                                             msd_buffer_t* abi_buffer, uint64_t gpu_va,
+                                             uint64_t page_offset, uint64_t page_count,
+                                             uint64_t flags)
 {
+    TRACE_DURATION("magma", "msd_connection_map_buffer_gpu", "page_count", page_count);
     MsdArmConnection* connection = MsdArmAbiConnection::cast(abi_connection)->ptr().get();
     std::shared_ptr<MsdArmBuffer> buffer = connection->GetBuffer(MsdArmAbiBuffer::cast(abi_buffer));
 
     auto mapping = std::make_unique<GpuMapping>(gpu_va, page_offset, page_count * PAGE_SIZE, flags,
                                                 connection, buffer);
-    connection->AddMapping(std::move(mapping));
+    if (!connection->AddMapping(std::move(mapping)))
+        return DRET_MSG(MAGMA_STATUS_INTERNAL_ERROR, "AddMapping failed");
+    return MAGMA_STATUS_OK;
 }
 
-void msd_connection_unmap_buffer_gpu(msd_connection_t* abi_connection, msd_buffer_t* buffer,
-                                     uint64_t gpu_va)
+magma_status_t msd_connection_unmap_buffer_gpu(msd_connection_t* abi_connection,
+                                               msd_buffer_t* buffer, uint64_t gpu_va)
 {
-    MsdArmAbiConnection::cast(abi_connection)->ptr()->RemoveMapping(gpu_va);
+    TRACE_DURATION("magma", "msd_connection_unmap_buffer_gpu");
+    if (!MsdArmAbiConnection::cast(abi_connection)->ptr()->RemoveMapping(gpu_va))
+        return DRET_MSG(MAGMA_STATUS_INTERNAL_ERROR, "RemoveMapping failed");
+    return MAGMA_STATUS_OK;
 }
 
-void msd_connection_commit_buffer(msd_connection_t* connection, msd_buffer_t* buffer,
-                                  uint64_t page_offset, uint64_t page_count)
+magma_status_t msd_connection_commit_buffer(msd_connection_t* abi_connection,
+                                            msd_buffer_t* abi_buffer, uint64_t page_offset,
+                                            uint64_t page_count)
 {
+    MsdArmConnection* connection = MsdArmAbiConnection::cast(abi_connection)->ptr().get();
+    if (!connection->CommitMemoryForBuffer(MsdArmAbiBuffer::cast(abi_buffer), page_offset,
+                                           page_count))
+        return DRET_MSG(MAGMA_STATUS_INTERNAL_ERROR, "CommitMemoryForBuffer failed");
+    return MAGMA_STATUS_OK;
 }
 
 void msd_connection_set_notification_channel(msd_connection_t* abi_connection,

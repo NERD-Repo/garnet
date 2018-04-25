@@ -7,11 +7,13 @@
 
 #include <fbl/intrusive_hash_table.h>
 #include <fbl/unique_ptr.h>
+#include <lib/async/cpp/wait.h>
 #include <virtio/gpu.h>
+#include <virtio/virtio_ids.h>
 #include <zircon/compiler.h>
 #include <zircon/types.h>
 
-#include "garnet/lib/machina/virtio.h"
+#include "garnet/lib/machina/virtio_device.h"
 
 #define VIRTIO_GPU_Q_CONTROLQ 0
 #define VIRTIO_GPU_Q_CURSORQ 1
@@ -27,13 +29,15 @@ using ResourceId = uint32_t;
 using ScanoutId = uint32_t;
 
 // Virtio 2D GPU device.
-class VirtioGpu : public VirtioDevice {
+class VirtioGpu : public VirtioDeviceBase<VIRTIO_ID_GPU,
+                                          VIRTIO_GPU_Q_COUNT,
+                                          virtio_gpu_config_t> {
  public:
-  VirtioGpu(const PhysMem& phys_mem);
+  VirtioGpu(const PhysMem& phys_mem, async_t* async);
   ~VirtioGpu() override;
 
-  virtio_queue_t& control_queue() { return queues_[VIRTIO_GPU_Q_CONTROLQ]; }
-  virtio_queue_t& cursor_queue() { return queues_[VIRTIO_GPU_Q_CURSORQ]; }
+  VirtioQueue* control_queue() { return queue(VIRTIO_GPU_Q_CONTROLQ); }
+  VirtioQueue* cursor_queue() { return queue(VIRTIO_GPU_Q_CURSORQ); }
 
   // Begins processing any descriptors that become available in the queues.
   zx_status_t Init();
@@ -44,12 +48,12 @@ class VirtioGpu : public VirtioDevice {
   // be returned if this method is called multiple times.
   zx_status_t AddScanout(GpuScanout* scanout);
 
-  zx_status_t HandleGpuCommand(virtio_queue_t* queue,
+  zx_status_t HandleGpuCommand(VirtioQueue* queue,
                                uint16_t head,
                                uint32_t* used);
 
  protected:
-  static zx_status_t QueueHandler(virtio_queue_t* queue,
+  static zx_status_t QueueHandler(VirtioQueue* queue,
                                   uint16_t head,
                                   uint32_t* used,
                                   void* ctx);
@@ -89,6 +93,10 @@ class VirtioGpu : public VirtioDevice {
   void ResourceFlush(const virtio_gpu_resource_flush_t* request,
                      virtio_gpu_ctrl_hdr_t* response);
 
+  // VIRTIO_GPU_CMD_UPDATE_CURSOR
+  // VIRTIO_GPU_CMD_MOVE_CURSOR
+  void MoveOrUpdateCursor(const virtio_gpu_update_cursor_t* request);
+
  private:
   GpuScanout* scanout_ = nullptr;
 
@@ -103,8 +111,9 @@ class VirtioGpu : public VirtioDevice {
                      kNumHashTableBuckets>;
 
   ResourceTable resources_;
-  virtio_queue_t queues_[VIRTIO_GPU_Q_COUNT];
-  virtio_gpu_config_t config_ = {};
+  async_t* async_;
+  async::Wait control_queue_wait_;
+  async::Wait cursor_queue_wait_;
 };
 
 }  // namespace machina

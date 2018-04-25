@@ -52,11 +52,19 @@ magma_status_t magma_read_notification_channel(struct magma_connection_t* connec
 magma_status_t magma_clean_cache(magma_buffer_t buffer, uint64_t offset, uint64_t size,
                                  magma_cache_operation_t operation);
 
+// This must be set before the buffer is mapped anywhere.
+magma_status_t magma_set_cache_policy(magma_buffer_t buffer, magma_cache_policy_t policy);
+
 magma_status_t magma_map(struct magma_connection_t* connection, magma_buffer_t buffer,
                          void** addr_out);
 // alignment must be a power of 2 and at least PAGE_SIZE.
 magma_status_t magma_map_aligned(struct magma_connection_t* connection, magma_buffer_t buffer,
                                  uint64_t alignment, void** addr_out);
+
+// Attempt to map the buffer at a specific address. Fails if the buffer was
+// previously mapped or if something already is at that address.
+magma_status_t magma_map_specific(struct magma_connection_t* connection, magma_buffer_t buffer,
+                                  uint64_t addr);
 magma_status_t magma_unmap(struct magma_connection_t* connection, magma_buffer_t buffer);
 
 // Maps |page_count| pages of |buffer| from |page_offset| onto the GPU in the connection's address
@@ -90,23 +98,19 @@ void magma_release_command_buffer(struct magma_connection_t* connection,
 void magma_submit_command_buffer(struct magma_connection_t* connection,
                                  magma_buffer_t command_buffer, uint32_t context_id);
 
+void magma_execute_immediate_commands(struct magma_connection_t* connection, uint32_t context_id,
+                                      uint64_t command_count,
+                                      struct magma_system_inline_command_buffer* command_buffers);
+
 void magma_wait_rendering(struct magma_connection_t* connection, magma_buffer_t buffer);
 
 // makes the buffer returned by |buffer| able to be imported via |buffer_handle_out|
 magma_status_t magma_export(struct magma_connection_t* connection, magma_buffer_t buffer,
                             uint32_t* buffer_handle_out);
 
-// makes the buffer returned by |buffer| able to be imported via the fd at |fd_out|
-magma_status_t magma_export_fd(struct magma_connection_t* connection, magma_buffer_t buffer,
-                               int* fd_out);
-
 // imports the buffer referred to by |buffer_handle| and makes it accessible via |buffer_out|
 magma_status_t magma_import(struct magma_connection_t* connection, uint32_t buffer_handle,
                             magma_buffer_t* buffer_out);
-
-// imports the buffer referred to by |fd| and makes it accessible via |buffer_out|
-magma_status_t magma_import_fd(struct magma_connection_t* connection, int fd,
-                               magma_buffer_t* buffer_out);
 
 // Reads the size of the display in pixels.
 magma_status_t magma_display_get_size(int fd, struct magma_display_size* size_out);
@@ -139,10 +143,15 @@ void magma_signal_semaphore(magma_semaphore_t semaphore);
 // Resets |semaphore|.
 void magma_reset_semaphore(magma_semaphore_t semaphore);
 
-// Waits for |semaphore| to be signaled.  Returns MAGMA_STATUS_TIMED_OUT if the timeout
-// expires first.
+// Waits for all or one of |semaphores| to be signaled.  Returns MAGMA_STATUS_TIMED_OUT if
+// |timeout_ms| expires first. Does not reset any semaphores.
+magma_status_t magma_wait_semaphores(const magma_semaphore_t* semaphores, uint32_t count,
+                                     uint64_t timeout_ms, bool wait_all);
+
+// DEPRECATED: use magma_wait_semaphores instead.
 magma_status_t magma_wait_semaphore(magma_semaphore_t semaphore, uint64_t timeout);
 
+// DEPRECATED: use magma_wait_semaphores instead.
 magma_status_t magma_wait_semaphore_no_reset(magma_semaphore_t semaphore, uint32_t flags,
                                              uint64_t timeout);
 

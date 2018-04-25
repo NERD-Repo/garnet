@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_NET_MEDIA_SERVICE_SERIALIZATION_H_
+#define GARNET_BIN_MEDIA_NET_MEDIA_SERVICE_SERIALIZATION_H_
 
 #include <string>
 #include <vector>
 
-namespace media {
+namespace media_player {
 
 // Used to wrap values that are optional in a serialized message.
 template <typename T>
@@ -50,6 +51,7 @@ class Serializer {
   Serializer& operator<<(int16_t value);
   Serializer& operator<<(int32_t value);
   Serializer& operator<<(int64_t value);
+  Serializer& operator<<(float value);
 
  private:
   std::vector<uint8_t> serial_message_;
@@ -108,6 +110,7 @@ class Deserializer {
   Deserializer& operator>>(int16_t& value);
   Deserializer& operator>>(int32_t& value);
   Deserializer& operator>>(int64_t& value);
+  Deserializer& operator>>(float& value);
 
  private:
   bool healthy_ = true;
@@ -132,4 +135,6 @@ Deserializer& operator>>(Deserializer& deserializer,
 
 Deserializer& operator>>(Deserializer& deserializer, std::string& value);
 
-}  // namespace media
+}  // namespace media_player
+
+#endif  // GARNET_BIN_MEDIA_NET_MEDIA_SERVICE_SERIALIZATION_H_

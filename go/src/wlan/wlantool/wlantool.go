@@ -11,24 +11,30 @@ import (
 	"time"
 
 	"app/context"
-	"fidl/bindings"
 
-	"garnet/public/lib/wlan/fidl/wlan_service"
+	"fuchsia/go/wlan_service"
 )
 
 const (
 	cmdScan       = "scan"
 	cmdConnect    = "connect"
 	cmdDisconnect = "disconnect"
+	cmdStatus     = "status"
+	cmdStartBSS   = "start-bss"
+	cmdStopBSS    = "stop-bss"
 )
 
 type ToolApp struct {
 	ctx  *context.Context
-	wlan *wlan_service.Wlan_Proxy
+	wlan *wlan_service.WlanInterface
 }
 
 func (a *ToolApp) Scan(seconds uint8) {
-	expiry := (time.Duration(seconds) + 5) * time.Second
+	expiry := 15 * time.Second
+	if seconds > 0 {
+		expiry = time.Duration(seconds) * time.Second
+	}
+
 	t := time.NewTimer(expiry)
 
 	rxed := make(chan struct{})
@@ -36,7 +42,7 @@ func (a *ToolApp) Scan(seconds uint8) {
 		res, err := a.wlan.Scan(wlan_service.ScanRequest{seconds})
 		if err != nil {
 			fmt.Println("Error:", err)
-		} else if res.Error.Code != wlan_service.ErrCode_Ok {
+		} else if res.Error.Code != wlan_service.ErrCodeOk {
 			fmt.Println("Error:", res.Error.Description)
 		} else {
 			for _, ap := range *res.Aps {
@@ -68,7 +74,7 @@ func (a *ToolApp) Connect(ssid string, bssid string, passPhrase string, seconds 
 	werr, err := a.wlan.Connect(wlan_service.ConnectConfig{ssid, passPhrase, seconds, bssid})
 	if err != nil {
 		fmt.Println("Error:", err)
-	} else if werr.Code != wlan_service.ErrCode_Ok {
+	} else if werr.Code != wlan_service.ErrCodeOk {
 		fmt.Println("Error:", werr.Description)
 	}
 }
@@ -77,8 +83,74 @@ func (a *ToolApp) Disconnect() {
 	werr, err := a.wlan.Disconnect()
 	if err != nil {
 		fmt.Println("Error:", err)
-	} else if werr.Code != wlan_service.ErrCode_Ok {
+	} else if werr.Code != wlan_service.ErrCodeOk {
 		fmt.Println("Error:", werr.Description)
+	}
+}
+
+func (a *ToolApp) StartBSS(ssid string, beaconPeriod int32, dtimPeriod int32, channel uint8) {
+	if len(ssid) > 32 {
+		fmt.Println("ssid is too long")
+		return
+	}
+	if len(ssid) == 0 {
+		fmt.Println("ssid is too short")
+		return
+	}
+	werr, err := a.wlan.StartBss(wlan_service.BssConfig{ssid, beaconPeriod, dtimPeriod, channel})
+	if err != nil {
+		fmt.Println("Error:", err)
+	} else if werr.Code != wlan_service.ErrCodeOk {
+		fmt.Println("Error:", werr.Description)
+	}
+}
+
+func (a *ToolApp) StopBSS() {
+	werr, err := a.wlan.StopBss()
+	if err != nil {
+		fmt.Println("Error:", err)
+	} else if werr.Code != wlan_service.ErrCodeOk {
+		fmt.Println("Error:", werr.Description)
+	}
+}
+
+func (a *ToolApp) Status() {
+	res, err := a.wlan.Status()
+	if err != nil {
+		fmt.Println("Error:", err)
+	} else if res.Error.Code != wlan_service.ErrCodeOk {
+		fmt.Println("Error:", res.Error.Description)
+	} else {
+		state := "unknown"
+		switch res.State {
+		case wlan_service.StateBss:
+			state = "starting-bss"
+		case wlan_service.StateQuerying:
+			state = "querying"
+		case wlan_service.StateScanning:
+			state = "scanning"
+		case wlan_service.StateJoining:
+			state = "joining"
+		case wlan_service.StateAuthenticating:
+			state = "authenticating"
+		case wlan_service.StateAssociating:
+			state = "associating"
+		case wlan_service.StateAssociated:
+			state = "associated"
+		default:
+			state = "unknown"
+		}
+		fmt.Printf("Status: %v\n", state)
+
+		if res.CurrentAp != nil {
+			ap := res.CurrentAp
+			prot := " "
+			if ap.IsSecure {
+				prot = "*"
+			}
+			fmt.Printf("%x (RSSI: %d) %v %q\n",
+				ap.Bssid, ap.LastRssi, prot, ap.Ssid)
+		}
 	}
 }
 
@@ -86,22 +158,28 @@ var Usage = func() {
 	fmt.Printf("Usage: %v %v [-t <timeout>]\n", os.Args[0], cmdScan)
 	fmt.Printf("       %v %v [-p <passphrase>] [-t <timeout>] [-b <bssid>] ssid\n", os.Args[0], cmdConnect)
 	fmt.Printf("       %v %v\n", os.Args[0], cmdDisconnect)
+	fmt.Printf("       %v %v\n", os.Args[0], cmdStatus)
+	fmt.Printf("       %v %v [-b <beacon period>] [-d <DTIM period>] [-c channel] ssid\n", os.Args[0], cmdStartBSS)
+	fmt.Printf("       %v %v\n", os.Args[0], cmdStopBSS)
 }
 
 func main() {
-	scanFlagSet := flag.NewFlagSet("scan", flag.ExitOnError)
+	scanFlagSet := flag.NewFlagSet(cmdScan, flag.ExitOnError)
 	scanTimeout := scanFlagSet.Int("t", 0, "scan timeout (1 - 255 seconds)")
 
-	connectFlagSet := flag.NewFlagSet("connect", flag.ExitOnError)
+	connectFlagSet := flag.NewFlagSet(cmdConnect, flag.ExitOnError)
 	connectScanTimeout := connectFlagSet.Int("t", 0, "scan timeout (1 to 255 seconds)")
 	connectPassPhrase := connectFlagSet.String("p", "", "pass-phrase (8 to 63 ASCII characters")
 	connectBSSID := connectFlagSet.String("b", "", "BSSID")
 
 	a := &ToolApp{ctx: context.CreateFromStartupInfo()}
-	r, p := a.wlan.NewRequest(bindings.GetAsyncWaiter())
-	a.wlan = p
+	req, pxy, err := wlan_service.NewWlanInterfaceRequest()
+	if err != nil {
+		panic(err.Error())
+	}
+	a.wlan = pxy
 	defer a.wlan.Close()
-	a.ctx.ConnectToEnvService(r)
+	a.ctx.ConnectToEnvService(req)
 
 	if len(os.Args) < 2 {
 		Usage()
@@ -142,13 +220,41 @@ func main() {
 		ssid := connectFlagSet.Arg(0)
 		a.Connect(ssid, *connectBSSID, *connectPassPhrase, uint8(*connectScanTimeout))
 	case cmdDisconnect:
-		disconnectFlagSet := flag.NewFlagSet("disconnect", flag.ExitOnError)
+		disconnectFlagSet := flag.NewFlagSet(cmdDisconnect, flag.ExitOnError)
 		disconnectFlagSet.Parse(os.Args[2:])
 		if disconnectFlagSet.NArg() != 0 {
 			Usage()
 			return
 		}
 		a.Disconnect()
+	case cmdStatus:
+		statusFlagSet := flag.NewFlagSet(cmdStatus, flag.ExitOnError)
+		statusFlagSet.Parse(os.Args[2:])
+		if statusFlagSet.NArg() != 0 {
+			Usage()
+			return
+		}
+		a.Status()
+	case cmdStartBSS:
+		startBSSFlagSet := flag.NewFlagSet(cmdStartBSS, flag.ExitOnError)
+		startBSSBeaconPeriod := startBSSFlagSet.Int("b", 100, "Beacon period")
+		startBSSDTIMPeriod := startBSSFlagSet.Int("d", 1, "DTIM period")
+		startBSSChannel := startBSSFlagSet.Int("c", 6, "Channel")
+		startBSSFlagSet.Parse(os.Args[2:])
+		if startBSSFlagSet.NArg() != 1 {
+			Usage()
+			return
+		}
+		ssid := startBSSFlagSet.Arg(0)
+		a.StartBSS(ssid, int32(*startBSSBeaconPeriod), int32(*startBSSDTIMPeriod), uint8(*startBSSChannel))
+	case cmdStopBSS:
+		stopBSSFlagSet := flag.NewFlagSet(cmdStartBSS, flag.ExitOnError)
+		stopBSSFlagSet.Parse(os.Args[2:])
+		if stopBSSFlagSet.NArg() != 0 {
+			Usage()
+			return
+		}
+		a.StopBSS()
 	default:
 		Usage()
 	}

@@ -26,7 +26,7 @@
 #include "hw.h"
 
 void ath10k_bmi_start(struct ath10k* ar) {
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi start\n");
 
@@ -35,35 +35,33 @@ void ath10k_bmi_start(struct ath10k* ar) {
     /* Enable hardware clock to speed up firmware download */
     if (ar->hw_params.hw_ops->enable_pll_clk) {
         ret = ar->hw_params.hw_ops->enable_pll_clk(ar);
-        ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi enable pll ret %d\n", ret);
+        ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi enable pll ret %s\n", zx_status_get_string(ret));
     }
 }
 
-#if 0 // TODO
-int ath10k_bmi_done(struct ath10k* ar) {
+zx_status_t ath10k_bmi_done(struct ath10k* ar) {
     struct bmi_cmd cmd;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.done);
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi done\n");
 
     if (ar->bmi.done_sent) {
         ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi skipped\n");
-        return 0;
+        return ZX_OK;
     }
 
     ar->bmi.done_sent = true;
     cmd.id = BMI_DONE;
 
     ret = ath10k_hif_exchange_bmi_msg(ar, &cmd, cmdlen, NULL, NULL);
-    if (ret) {
-        ath10k_warn("unable to write to the device: %d\n", ret);
+    if (ret != ZX_OK) {
+        ath10k_warn("unable to write to the device: %s\n", zx_status_get_string(ret));
         return ret;
     }
 
-    return 0;
+    return ZX_OK;
 }
-#endif // TODO
 
 zx_status_t ath10k_bmi_get_target_info(struct ath10k* ar,
                                        struct bmi_target_info* target_info) {
@@ -101,23 +99,22 @@ zx_status_t ath10k_bmi_get_target_info(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0 // TODO
 #define TARGET_VERSION_SENTINAL 0xffffffffu
 
-int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
-                                    struct bmi_target_info* target_info) {
+zx_status_t ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
+                                            struct bmi_target_info* target_info) {
     struct bmi_cmd cmd;
     union bmi_resp resp;
     uint32_t cmdlen = sizeof(cmd.id) + sizeof(cmd.get_target_info);
     uint32_t resplen, ver_len;
     uint32_t tmp;
-    int ret;
+    zx_status_t ret;
 
     ath10k_dbg(ar, ATH10K_DBG_BMI, "bmi get target info SDIO\n");
 
     if (ar->bmi.done_sent) {
         ath10k_warn("BMI Get Target Info Command disallowed\n");
-        return -EBUSY;
+        return ZX_ERR_SHOULD_WAIT;
     }
 
     cmd.id = BMI_GET_TARGET_INFO;
@@ -153,7 +150,7 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     if (ver_len != sizeof(resp.get_target_info)) {
         ath10k_warn("Unexpected target info len: %u. Expected: %zu\n",
                     ver_len, sizeof(resp.get_target_info));
-        return -EINVAL;
+        return ZX_ERR_WRONG_TYPE;
     }
 
     /* Step 3: Read the rest of the version response */
@@ -169,9 +166,8 @@ int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
     target_info->version = resp.get_target_info.version;
     target_info->type    = resp.get_target_info.type;
 
-    return 0;
+    return ZX_OK;
 }
-#endif // TODO
 
 zx_status_t ath10k_bmi_read_memory(struct ath10k* ar, uint32_t address,
                                    void* buffer, uint32_t length) {

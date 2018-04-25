@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_DRIVERS_BLUETOOTH_LIB_HCI_ACL_DATA_CHANNEL_H_
+#define GARNET_DRIVERS_BLUETOOTH_LIB_HCI_ACL_DATA_CHANNEL_H_
 
 #include <functional>
 #include <list>
@@ -10,9 +11,10 @@
 #include <queue>
 #include <unordered_map>
 
-#include <async/cpp/wait.h>
+#include <lib/async/cpp/wait.h>
+#include <lib/async/dispatcher.h>
+#include <lib/zx/channel.h>
 #include <zircon/compiler.h>
-#include <zx/channel.h>
 
 #include "garnet/drivers/bluetooth/lib/common/byte_buffer.h"
 #include "garnet/drivers/bluetooth/lib/hci/acl_data_packet.h"
@@ -20,9 +22,7 @@
 #include "garnet/drivers/bluetooth/lib/hci/connection.h"
 #include "garnet/drivers/bluetooth/lib/hci/control_packets.h"
 #include "garnet/drivers/bluetooth/lib/hci/hci_constants.h"
-#include "lib/fxl/memory/ref_ptr.h"
 #include "lib/fxl/synchronization/thread_checker.h"
-#include "lib/fxl/tasks/task_runner.h"
 
 namespace btlib {
 namespace hci {
@@ -101,8 +101,12 @@ class ACLDataChannel final {
       std::function<void(ACLDataPacketPtr data_packet)>;
 
   // Assigns a handler callback for received ACL data packets. |rx_callback|
-  // will be invoked on the Transport I/O thread.
-  void SetDataRxHandler(const DataReceivedCallback& rx_callback);
+  // will be posted on |dispatcher|.
+  //
+  // TODO(armansito): |dispatcher| will become mandatory. The Transport I/O
+  // thread will be gone when bt-hci becomes a non-IPC protocol.
+  void SetDataRxHandler(DataReceivedCallback rx_callback,
+                        async_t* rx_dispatcher);
 
   // Queues the given ACL data packet to be sent to the controller. Returns
   // false if the packet cannot be queued up, e.g. if the size of |data_packet|
@@ -185,9 +189,10 @@ class ACLDataChannel final {
       __TA_REQUIRES(send_mutex_);
 
   // Read Ready Handler for |channel_|
-  async_wait_result_t OnChannelReady(async_t* async,
-                                     zx_status_t status,
-                                     const zx_packet_signal_t* signal);
+  void OnChannelReady(async_t* async,
+                      async::WaitBase* wait,
+                      zx_status_t status,
+                      const zx_packet_signal_t* signal);
 
   // Used to assert that certain public functions are only called on the
   // creation thread.
@@ -199,8 +204,9 @@ class ACLDataChannel final {
   // The channel that we use to send/receive HCI ACL data packets.
   zx::channel channel_;
 
-  // Wait object for |channel_| on |io_task_runner_|
-  async::Wait channel_wait_;
+  // Wait object for |channel_|
+  async::WaitMethod<ACLDataChannel, &ACLDataChannel::OnChannelReady>
+      channel_wait_{this};
 
   // True if this instance has been initialized through a call to Initialize().
   std::atomic_bool is_initialized_;
@@ -208,13 +214,14 @@ class ACLDataChannel final {
   // The event handler ID for the Number Of Completed Packets event.
   CommandChannel::EventHandlerId event_handler_id_;
 
-  // The task runner used for posting tasks on the HCI transport I/O thread.
-  fxl::RefPtr<fxl::TaskRunner> io_task_runner_;
+  // The dispatcher used for posting tasks on the HCI transport I/O thread.
+  async_t* io_dispatcher_;
 
-  // The current handler for incoming data and the task runner on which to run
+  // The current handler for incoming data and the dispatcher on which to run
   // it.
   std::mutex rx_mutex_;
   DataReceivedCallback rx_callback_ __TA_GUARDED(rx_mutex_);
+  async_t* rx_dispatcher_ __TA_GUARDED(rx_mutex_);
 
   // BR/EDR data buffer information. This buffer will not be available on
   // LE-only controllers.
@@ -264,3 +271,5 @@ class ACLDataChannel final {
 
 }  // namespace hci
 }  // namespace btlib
+
+#endif  // GARNET_DRIVERS_BLUETOOTH_LIB_HCI_ACL_DATA_CHANNEL_H_

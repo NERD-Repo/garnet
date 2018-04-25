@@ -1,0 +1,146 @@
+#
+# Copyright (c) 2018 The Fuchsia Authors.
+#
+# Permission to use, copy, modify, and/or distribute this software for any
+# purpose with or without fee is hereby granted, provided that the above
+# copyright notice and this permission notice appear in all copies.
+#
+# THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+# WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+# MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+# ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+# WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+# ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+# OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+import("//build/config/fuchsia/rules.gni")
+import("//build/package.gni")
+
+driver_module("brcmfmac_driver") {
+  output_name = "brcmfmac"
+
+  defines = [
+    "CONFIG_BRCMFMAC_USB",
+    "CONFIG_BRCMFMAC_SDIO",
+    "CONFIG_BRCMFMAC_PCIE"
+  ]
+
+  sources = [
+    "bcdc.c",
+    "bcdc.h",
+    "bcmsdh.c",
+    "binding.c",
+    "btcoex.c",
+    "btcoex.h",
+    "bus.h",
+    "cfg80211.c",
+    "cfg80211.h",
+    "chip.c",
+    "chip.h",
+    "common.c",
+    "common.h",
+    "commonring.c",
+    "commonring.h",
+    "core.c",
+    "core.h",
+    "d11.c",
+    "debug.c",
+    "debug.h",
+    "device.c",
+    "device.h",
+    "feature.c",
+    "feature.h",
+    "firmware.c",
+    "firmware.h",
+    "flowring.c",
+    "flowring.h",
+    "fweh.c",
+    "fweh.h",
+    "fwil.c",
+    "fwil.h",
+    "fwil_types.h",
+    "fwsignal.c",
+    "fwsignal.h",
+    "linuxisms.c",
+    "msgbuf.c",
+    "msgbuf.h",
+    "of.c",
+    "of.h",
+    "p2p.c",
+    "p2p.h",
+    "pcie.c",
+    "pcie.h",
+    "pno.c",
+    "pno.h",
+    "proto.c",
+    "proto.h",
+    "sdio.c",
+    "sdio.h",
+    "tracepoint.c",
+    "tracepoint.h",
+    "usb.c",
+    "usb.h",
+    "utils.c",
+    "vendor.c",
+    "vendor.h",
+  ]
+
+  deps = [
+    "//zircon/public/lib/ddk",
+    "//zircon/public/lib/driver",
+    "//zircon/public/lib/sync",
+    "//zircon/public/lib/zx",
+  ]
+
+  configs += [ "//build/config/fuchsia:enable_zircon_asserts" ]
+}
+
+# To run the driver, put the firmware files from
+# https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/tree/brcm
+# in the TQ root directory, and uncomment these lines and the related ones lower in this file.
+#copy("brcmfmac-firmware-txt") {
+#  sources = [
+#    "../../../../../../brcmfmac4356-pcie.txt",
+#  ]
+#  outputs = [
+#    "$root_out_dir/firmware/brcmfmac4356-pcie.txt",
+#  ]
+#}
+#
+#copy("brcmfmac-firmware-bin") {
+#  sources = [
+#    "../../../../../../brcmfmac4356-pcie.bin",
+#  ]
+#  outputs = [
+#    "$root_out_dir/firmware/brcmfmac4356-pcie.bin",
+#  ]
+#}
+
+package("brcmfmac") {
+  deprecated_system_image = true
+
+  deps = [
+    ":brcmfmac_driver",
+
+    # The copy step has to be in the shared-library toolchain to use the
+    # expected output directory, since we treat firmware blobs as if they
+    # were libraries which always use the shared-library toolchain to build.
+#    ":brcmfmac-firmware-txt($shlib_toolchain)",
+#    ":brcmfmac-firmware-bin($shlib_toolchain)",
+  ]
+
+  drivers = [
+    {
+      name = "brcmfmac.so"
+    },
+  ]
+
+#  libraries = [
+#    {
+#        name = "firmware/brcmfmac4356-pcie.bin"
+#    },
+#    {
+#        name = "firmware/brcmfmac4356-pcie.txt"
+#    },
+#  ]
+}

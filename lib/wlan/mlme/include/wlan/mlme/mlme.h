@@ -7,10 +7,10 @@
 #include <wlan/mlme/frame_handler.h>
 #include <wlan/mlme/mac_frame.h>
 
-#include "lib/wlan/fidl/wlan_mlme.fidl-common.h"
+#include <fuchsia/cpp/wlan_mlme.h>
 
-#include <ddk/protocol/wlan.h>
 #include <wlan/common/bitfield.h>
+#include <wlan/protocol/mac.h>
 #include <zircon/types.h>
 
 namespace wlan {
@@ -55,6 +55,8 @@ class Mlme : public FrameHandler {
     // whether it changed or not.
     virtual zx_status_t PostChannelChange() = 0;
     virtual zx_status_t HandleTimeout(const ObjectId id) = 0;
+    // Called when the hardware reports an indication such as Pre-TBTT.
+    virtual void HwIndication(uint32_t ind) {};
 };
 
 }  // namespace wlan

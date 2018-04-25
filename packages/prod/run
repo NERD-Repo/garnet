@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "run": "//garnet/bin/run"
+    }
+}

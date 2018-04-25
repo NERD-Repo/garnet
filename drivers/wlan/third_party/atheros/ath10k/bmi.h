@@ -153,7 +153,7 @@ struct bmi_cmd {
         } nvram_process;
         uint8_t payload[BMI_MAX_CMDBUF_SIZE];
     };
-} __packed;
+} __PACKED;
 
 union bmi_resp {
     struct {
@@ -183,7 +183,7 @@ union bmi_resp {
         uint32_t result;
     } nvram_process;
     uint8_t payload[BMI_MAX_CMDBUF_SIZE];
-} __packed;
+} __PACKED;
 
 struct bmi_target_info {
     uint32_t version;
@@ -196,11 +196,9 @@ struct bmi_target_info {
 #define BMI_CE_NUM_TO_HOST 1
 
 void ath10k_bmi_start(struct ath10k* ar);
-int ath10k_bmi_done(struct ath10k* ar);
-int ath10k_bmi_get_target_info(struct ath10k* ar,
-                               struct bmi_target_info* target_info);
-int ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
-                                    struct bmi_target_info* target_info);
+zx_status_t ath10k_bmi_done(struct ath10k* ar);
+zx_status_t ath10k_bmi_get_target_info_sdio(struct ath10k* ar,
+                                            struct bmi_target_info* target_info);
 zx_status_t ath10k_bmi_get_target_info(struct ath10k* ar,
                                        struct bmi_target_info* target_info);
 zx_status_t ath10k_bmi_read_memory(struct ath10k* ar, uint32_t address,

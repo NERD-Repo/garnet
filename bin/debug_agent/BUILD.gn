@@ -1,0 +1,112 @@
+# Copyright 2017 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+
+static_library("lib") {
+  sources = [
+    "arch.h",
+    "debug_agent.cc",
+    "debug_agent.h",
+    "debugged_process.cc",
+    "debugged_process.h",
+    "debugged_thread.cc",
+    "debugged_thread.h",
+    "launcher.cc",
+    "launcher.h",
+    "object_util.cc",
+    "object_util.h",
+    "process_info.cc",
+    "process_info.h",
+    "process_breakpoint.cc",
+    "process_breakpoint.h",
+    "remote_api.h",
+    "remote_api_adapter.cc",
+    "remote_api_adapter.h",
+    "system_info.cc",
+    "system_info.h",
+    "unwind.cc",
+    "unwind.h",
+  ]
+
+  if (current_cpu == "x64") {
+    sources += [
+      "arch_x64.cc",
+      "arch_x64.h",
+    ]
+  } else if (current_cpu == "arm64") {
+    sources += [
+      "arch_arm64.cc",
+      "arch_arm64.h",
+    ]
+  } else {
+    assert(false)
+  }
+
+  public_deps = [
+    "//garnet/lib/debug_ipc:agent",
+    "//garnet/lib/debug_ipc/helper",
+    "//garnet/public/lib/app/cpp",
+    "//garnet/public/lib/fxl",
+    "//zircon/public/lib/launchpad",
+    "//zircon/public/lib/ngunwind",
+  ]
+}
+
+executable("bin") {
+  output_name = "debug_agent"
+  sources = [
+    "main.cc",
+  ]
+
+  deps = [
+    ":lib",
+  ]
+}
+
+package("debug_agent") {
+  deprecated_system_image = true
+  deps = [
+    ":bin",
+  ]
+
+  binaries = [
+    {
+      name = "debug_agent"
+    },
+  ]
+}
+
+executable("unittests") {
+  testonly = true
+  output_name = "debug_agent_tests"
+
+  sources = [
+    "process_info_unittests.cc",
+    "system_info_unittests.cc",
+  ]
+
+  deps = [
+    ":lib",
+    "//garnet/public/lib/fxl/test:gtest_main",
+    "//third_party/googletest:gtest",
+  ]
+}
+
+package("debug_agent_tests") {
+  testonly = true
+  deprecated_system_image = true
+
+  package_name = "debug_agent_tests"
+
+  deps = [
+    ":unittests",
+  ]
+
+  tests = [
+    {
+      name = "debug_agent_tests"
+    },
+  ]
+}

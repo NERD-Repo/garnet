@@ -3,25 +3,42 @@
 // found in the LICENSE file.
 #![allow(dead_code)]
 
+use super::{Error, Result};
+use bytes::Bytes;
 use std::fmt;
 use suite_selector;
-use super::{Error, Result};
 
 macro_rules! return_none_if_unknown_usage {
     ($e:expr) => {
         if !$e.has_known_usage() {
-            return None
+            return None;
         }
     };
 }
 
+// IEEE Std 802.11-2016, 9.4.2.25.2, Table 9-131
+pub const GROUP_CIPHER_SUITE: u8 = 0;
+pub const WEP_40: u8 = 1;
+pub const TKIP: u8 = 2;
+// 3 - Reserved.
+pub const CCMP_128: u8 = 4;
+pub const WEP_104: u8 = 5;
+pub const BIP_CMAC_128: u8 = 6;
+pub const GROUP_ADDRESSED_TRAFFIC_NOT_ALLOWED: u8 = 7;
+pub const GCMP_128: u8 = 8;
+pub const GCMP_256: u8 = 9;
+pub const CCMP_256: u8 = 10;
+pub const BIP_GMAC_128: u8 = 11;
+pub const BIP_GMAC_256: u8 = 12;
+pub const BIP_CMAC_256: u8 = 13;
+// 14-255 - Reserved.
 
-pub struct Cipher<'a> {
-    oui: &'a [u8],
-    suite_type: u8,
+pub struct Cipher {
+    pub oui: Bytes,
+    pub suite_type: u8,
 }
 
-impl<'a> Cipher<'a> {
+impl Cipher {
     /// Reserved and vendor specific cipher suites have no known usage and require special
     /// treatments.
     fn has_known_usage(&self) -> bool {
@@ -30,7 +47,7 @@ impl<'a> Cipher<'a> {
 
     pub fn is_vendor_specific(&self) -> bool {
         // IEEE 802.11-2016, 9.4.2.25.2, Table 9-131
-        !self.oui.eq(&suite_selector::OUI)
+        !&self.oui[..].eq(&suite_selector::OUI)
     }
 
     pub fn is_reserved(&self) -> bool {
@@ -38,14 +55,13 @@ impl<'a> Cipher<'a> {
         (self.suite_type == 3 || self.suite_type >= 14) && !self.is_vendor_specific()
     }
 
-
     pub fn supports_gtk(&self) -> Option<bool> {
         return_none_if_unknown_usage!(self);
 
         // IEEE 802.11-2016, 9.4.2.25.2, Table 9-132
         match self.suite_type {
-            1 ... 5 | 8 ... 10 => Some(true),
-            0 | 6 | 11 ... 13 => Some(false),
+            1...5 | 8...10 => Some(true),
+            0 | 6 | 11...13 => Some(false),
             _ => None,
         }
     }
@@ -55,8 +71,8 @@ impl<'a> Cipher<'a> {
 
         // IEEE 802.11-2016, 9.4.2.25.2, Table 9-132
         match self.suite_type {
-            0 | 2 ... 4 | 8 ... 10 => Some(true),
-            1 | 5 | 6 | 11 ... 13 => Some(false),
+            0 | 2...4 | 8...10 => Some(true),
+            1 | 5 | 6 | 11...13 => Some(false),
             _ => None,
         }
     }
@@ -66,17 +82,30 @@ impl<'a> Cipher<'a> {
 
         // IEEE 802.11-2016, 9.4.2.25.2, Table 9-132
         match self.suite_type {
-            6 | 11 ... 13 => Some(true),
-            0 | 1 ... 5 | 8 ... 10 => Some(false),
+            6 | 11...13 => Some(true),
+            0 | 1...5 | 8...10 => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn tk_bits(&self) -> Option<u16> {
+        return_none_if_unknown_usage!(self);
+
+        // IEEE 802.11-2016, 12.7.2, Table 12-4
+        match self.suite_type {
+            1 => Some(40),
+            5 => Some(104),
+            4 | 6 | 8 | 11 => Some(128),
+            2 | 9 | 10 | 12 | 13 => Some(256),
             _ => None,
         }
     }
 }
 
-impl<'a> suite_selector::Factory<'a> for Cipher<'a> {
-    type Suite = Cipher<'a>;
+impl suite_selector::Factory for Cipher {
+    type Suite = Cipher;
 
-    fn new(oui: &'a [u8], suite_type: u8) -> Result<Self::Suite> {
+    fn new(oui: Bytes, suite_type: u8) -> Result<Self::Suite> {
         if oui.len() != 3 {
             Err(Error::InvalidOuiLength(oui.len()))
         } else {
@@ -85,8 +114,12 @@ impl<'a> suite_selector::Factory<'a> for Cipher<'a> {
     }
 }
 
-impl<'a> fmt::Debug for Cipher<'a> {
+impl fmt::Debug for Cipher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:02X}-{:02X}-{:02X}:{}", self.oui[0], self.oui[1], self.oui[2], self.suite_type)
+        write!(
+            f,
+            "{:02X}-{:02X}-{:02X}:{}",
+            self.oui[0], self.oui[1], self.oui[2], self.suite_type
+        )
     }
 }

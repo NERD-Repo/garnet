@@ -5,16 +5,16 @@
 #ifndef GARNET_BIN_TRACE_MANAGER_TRACEE_H_
 #define GARNET_BIN_TRACE_MANAGER_TRACEE_H_
 
-#include <async/cpp/wait.h>
-#include <zx/socket.h>
-#include <zx/vmo.h>
+#include <lib/async/cpp/wait.h>
+#include <lib/zx/socket.h>
+#include <lib/zx/vmo.h>
 
 #include <functional>
 #include <iosfwd>
 
 #include "garnet/bin/trace_manager/trace_provider_bundle.h"
-#include "lib/fidl/cpp/bindings/array.h"
-#include "lib/fidl/cpp/bindings/string.h"
+#include "lib/fidl/cpp/string.h"
+#include "lib/fidl/cpp/vector.h"
 #include "lib/fxl/functional/closure.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/weak_ptr.h"
@@ -23,7 +23,6 @@ namespace tracing {
 
 class Tracee {
  public:
-
   enum class State {
     // All systems go, provider hasn't been started, yet.
     kReady,
@@ -53,7 +52,7 @@ class Tracee {
 
   bool operator==(TraceProviderBundle* bundle) const;
   bool Start(size_t buffer_size,
-             fidl::Array<fidl::String> categories,
+             fidl::VectorPtr<fidl::StringPtr> categories,
              fxl::Closure started_callback,
              fxl::Closure stopped_callback);
   void Stop();
@@ -64,12 +63,15 @@ class Tracee {
 
  private:
   void TransitionToState(State new_state);
-  async_wait_result_t OnHandleReady(async_t* async,
-                                    zx_status_t status,
-                                    const zx_packet_signal_t* signal);
+  void OnHandleReady(async_t* async,
+                     async::WaitBase* wait,
+                     zx_status_t status,
+                     const zx_packet_signal_t* signal);
+  void OnHandleError(zx_status_t status);
 
   TransferStatus WriteProviderInfoRecord(const zx::socket& socket) const;
-  TransferStatus WriteProviderBufferOverflowEvent(const zx::socket& socket) const;
+  TransferStatus WriteProviderBufferOverflowEvent(
+      const zx::socket& socket) const;
 
   TraceProviderBundle* bundle_;
   State state_ = State::kReady;

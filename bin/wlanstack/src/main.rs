@@ -2,30 +2,50 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+//! System service for wireless networking
+
+// These features both have stable implementations and will become available on stable compilers
+// soon. They allow return types of `impl Future` rather than boxing or otherwise having to name
+// the future types.
 #![deny(warnings)]
+#![deny(missing_docs)]
 
 extern crate failure;
-extern crate fuchsia_vfs_watcher;
+extern crate fidl;
+extern crate fidl_wlan_device as wlan;
+extern crate fidl_wlan_device_service as wlan_service;
+extern crate fuchsia_app as component;
+extern crate fuchsia_async as async;
+extern crate fuchsia_vfs_watcher as vfs_watcher;
+extern crate fuchsia_wlan_dev as wlan_dev;
+extern crate fuchsia_zircon as zx;
 extern crate futures;
 #[macro_use]
 extern crate log;
-extern crate tokio_core;
+extern crate parking_lot;
 
+mod device;
 mod logger;
+mod service;
 
+use component::server::ServicesServer;
 use failure::{Error, ResultExt};
-use fuchsia_vfs_watcher::*;
-use futures::stream::Stream;
-use std::fs::File;
-use tokio_core::reactor;
+use fidl::endpoints2::ServiceMarker;
+use futures::prelude::*;
+use parking_lot::Mutex;
+use std::sync::Arc;
+use wlan_service::DeviceServiceMarker;
 
 const MAX_LOG_LEVEL: log::LogLevelFilter = log::LogLevelFilter::Info;
-const DEV_PATH: &str = "/dev/class/ethernet";
+
+const PHY_PATH: &str = "/dev/class/wlanphy";
+const IFACE_PATH: &str = "/dev/class/wlanif";
 
 fn main() {
     if let Err(e) = main_res() {
-        println!("wlanstack2: Error: {:?}", e);
+        error!("Error: {:?}", e);
     }
+    info!("Exiting");
 }
 
 fn main_res() -> Result<(), Error> {
@@ -35,20 +55,20 @@ fn main_res() -> Result<(), Error> {
     })?;
     info!("Starting");
 
-    let mut core = reactor::Core::new().context("error creating event loop")?;
-    let handle = core.handle();
+    let mut exec = async::Executor::new().context("error creating event loop")?;
 
-    let dev_dir = File::open(DEV_PATH)?;
-    let w = Watcher::new(&dev_dir, &handle).context("error creating watcher")?.for_each(|msg| {
-        match msg.event {
-            WatchEvent::EXISTING => info!("{}/{} existing", DEV_PATH, msg.filename.to_string_lossy()),
-            WatchEvent::ADD_FILE => info!("{}/{} added", DEV_PATH, msg.filename.to_string_lossy()),
-            WatchEvent::REMOVE_FILE => info!("{}/{} removed", DEV_PATH, msg.filename.to_string_lossy()),
-            WatchEvent::IDLE => info!("device watcher idle"),
-            e => info!("unknown watch event: {:?}", e),
-        }
-        Ok(())
-    });
+    let devmgr = Arc::new(Mutex::new(device::DeviceManager::new()));
 
-    core.run(w).map_err(|e| e.into())
+    let phy_watcher = device::new_phy_watcher(PHY_PATH, devmgr.clone());
+    let iface_watcher = device::new_iface_watcher(IFACE_PATH, devmgr.clone());
+
+    let services_server = ServicesServer::new()
+        .add_service((DeviceServiceMarker::NAME, move |channel| {
+            async::spawn(service::device_service(devmgr.clone(), channel))
+        }))
+        .start()
+        .context("error configuring device service")?;
+
+    exec.run_singlethreaded(services_server.join3(phy_watcher, iface_watcher))
+        .map(|_| ())
 }

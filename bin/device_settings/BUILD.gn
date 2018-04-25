@@ -6,15 +6,9 @@ import("//build/rust/rust_binary.gni")
 import("//build/package.gni")
 
 rust_binary("bin") {
-  with_tests = true
+  with_unit_tests = true
 
   name = "device_settings_manager"
-
-  deps = [
-    "//garnet/public/rust/fidl_crates/garnet_examples_fidl_services",
-    "//garnet/public/rust/fidl_crates/garnet_public_lib_app_fidl",
-    "//garnet/public/rust/fidl_crates/garnet_public_lib_device_settings_fidl",
-  ]
 }
 
 package("device_settings_manager") {
@@ -24,21 +18,29 @@ package("device_settings_manager") {
 
   binary = "device_settings_manager"
 
-  meta = [{
-    path = rebase_path("meta/sandbox")
-    dest = "sandbox"
-  }]
+  meta = [
+    {
+      path = rebase_path("meta/sandbox")
+      dest = "sandbox"
+    },
+    {
+      path = rebase_path("//garnet/bin/appmgr/legacy_flat_exported_dir")
+      dest = "legacy_flat_exported_dir"
+    },
+  ]
 }
 
-package ("device_settings_manager_tests") {
-  system_image = true
+package("device_settings_manager_tests") {
+  deprecated_system_image = true
   testonly = true
 
   deps = [
-    ":bin"
+    ":bin",
   ]
 
-  tests = [ {
-      name = "device_settings_manager-bin-test"
-  } ]
+  tests = [
+    {
+      name = "device_settings_manager-bin-unit-test"
+    },
+  ]
 }

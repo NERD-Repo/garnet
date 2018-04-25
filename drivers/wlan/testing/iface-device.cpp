@@ -14,22 +14,8 @@ namespace testing {
 #define DEV(c) static_cast<IfaceDevice*>(c)
 static zx_protocol_device_t wlanmac_test_device_ops = {
     .version = DEVICE_OPS_VERSION,
-    .get_protocol = nullptr,
-    .open = nullptr,
-    .open_at = nullptr,
-    .close = nullptr,
     .unbind = [](void* ctx) { DEV(ctx)->Unbind(); },
     .release = [](void* ctx) { DEV(ctx)->Release(); },
-    .read = nullptr,
-    .write = nullptr,
-#if DDK_WITH_IOTXN
-    .iotxn_queue = nullptr,
-#endif
-    .get_size = nullptr,
-    .ioctl = nullptr,
-    .suspend = nullptr,
-    .resume = nullptr,
-    .rxrpc = nullptr,
 };
 
 static wlanmac_protocol_ops_t wlanmac_test_protocol_ops = {
@@ -46,10 +32,13 @@ static wlanmac_protocol_ops_t wlanmac_test_protocol_ops = {
     .set_channel = [](void* ctx, uint32_t options, wlan_channel_t* chan) -> zx_status_t {
         return DEV(ctx)->SetChannel(options, chan);
     },
-    .set_bss = [](void* ctx, uint32_t options, const uint8_t mac[6], uint8_t type) -> zx_status_t {
+    .configure_bss = [](void* ctx, uint32_t options, wlan_bss_config_t* config) -> zx_status_t {
         return ZX_OK;
     },
-    .configure_bss = [](void* ctx, uint32_t options, wlan_bss_config_t* config) -> zx_status_t {
+    .enable_beaconing = [](void* ctx, uint32_t options, bool enabled) -> zx_status_t {
+        return ZX_OK;
+    },
+    .configure_beacon = [](void* ctx, uint32_t options, wlan_tx_packet_t* pkt) -> zx_status_t {
         return ZX_OK;
     },
     .set_key = [](void* ctx, uint32_t options, wlan_key_config_t* key_config) -> zx_status_t {
@@ -58,7 +47,7 @@ static wlanmac_protocol_ops_t wlanmac_test_protocol_ops = {
 };
 #undef DEV
 
-IfaceDevice::IfaceDevice(zx_device_t* device) : parent_(device) {}
+IfaceDevice::IfaceDevice(zx_device_t* device, uint16_t role) : parent_(device), role_(role) {}
 
 zx_status_t IfaceDevice::Bind() {
     zxlogf(INFO, "wlan::testing::IfaceDevice::Bind()\n");
@@ -96,9 +85,9 @@ zx_status_t IfaceDevice::Query(uint32_t options, wlanmac_info_t* info) {
     std::memcpy(info->eth_info.mac, mac, ETH_MAC_SIZE);
 
     // Fill out a minimal set of wlan device capabilities
-    info->supported_phys = WLAN_PHY_DSSS | WLAN_PHY_CCK | WLAN_PHY_OFDM | WLAN_PHY_HT_MIXED;
+    info->supported_phys = WLAN_PHY_DSSS | WLAN_PHY_CCK | WLAN_PHY_OFDM | WLAN_PHY_HT;
     info->driver_features = 0;
-    info->mac_modes = WLAN_MAC_MODE_STA;
+    info->mac_role = role_;
     info->caps = 0;
     info->num_bands = 2;
     // clang-format off
@@ -107,6 +96,7 @@ zx_status_t IfaceDevice::Query(uint32_t options, wlanmac_info_t* info) {
         .ht_caps = {},
         .vht_supported = false,
         .vht_caps = {},
+        .basic_rates = {2, 4, 11, 22, 12, 18, 24, 36, 48, 72, 96, 108},
         .supported_channels =
             {
                 .base_freq = 2417,
@@ -118,6 +108,7 @@ zx_status_t IfaceDevice::Query(uint32_t options, wlanmac_info_t* info) {
         .ht_caps = {},
         .vht_supported = false,
         .vht_caps = {},
+        .basic_rates = {12, 18, 24, 36, 48, 72, 96, 108},
         .supported_channels =
             {
                 .base_freq = 5000,

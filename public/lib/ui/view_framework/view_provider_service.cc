@@ -12,7 +12,7 @@
 namespace mozart {
 
 ViewProviderService::ViewProviderService(
-    app::ApplicationContext* application_context,
+    component::ApplicationContext* application_context,
     ViewFactory view_factory)
     : application_context_(application_context), view_factory_(view_factory) {
   FXL_DCHECK(application_context_);
@@ -28,12 +28,12 @@ ViewProviderService::~ViewProviderService() {
 }
 
 void ViewProviderService::CreateView(
-    fidl::InterfaceRequest<ViewOwner> view_owner_request,
-    fidl::InterfaceRequest<app::ServiceProvider> view_services) {
+    fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
+    fidl::InterfaceRequest<component::ServiceProvider> view_services) {
   ViewContext view_context;
   view_context.application_context = application_context_;
   view_context.view_manager =
-      application_context_->ConnectToEnvironmentService<ViewManager>();
+      application_context_->ConnectToEnvironmentService<views_v1::ViewManager>();
   view_context.view_owner_request = std::move(view_owner_request);
   view_context.outgoing_services = std::move(view_services);
 

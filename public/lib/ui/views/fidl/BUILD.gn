@@ -2,9 +2,13 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//garnet/public/lib/fidl/fidl.gni")
+import("//garnet/public/lib/fidl/build/fidl/fidl.gni")
 
-fidl("fidl") {
+fidl("v1") {
+  name = "views_v1"
+
+  sdk_candidate = true
+
   sources = [
     "view_containers.fidl",
     "view_manager.fidl",
@@ -17,14 +21,38 @@ fidl("fidl") {
 
   public_deps = [
     ":view_token",
-    "//garnet/public/lib/app/fidl:service_provider",
-    "//garnet/public/lib/ui/geometry/fidl",
+    "//garnet/public/lib/app/fidl",
+    "//garnet/public/lib/ui/gfx/fidl",
     "//garnet/public/lib/ui/input/fidl",
     "//garnet/public/lib/ui/scenic/fidl",
   ]
 }
 
+# Separate target created due to conflicts with ":fidl".  This should replace
+# ":fidl" after ViewManager is re-implemented in Mozart.
+fidl("v2") {
+  name = "views"
+
+  sdk_candidate = true
+
+  sources = [
+    "commands.fidl",
+    "events.fidl",
+  ]
+
+  public_deps = [
+    "//garnet/public/lib/app/fidl",
+    "//garnet/public/lib/ui/geometry/fidl",
+    "//garnet/public/lib/ui/gfx/fidl",
+    "//garnet/public/lib/ui/input/fidl",
+  ]
+}
+
 fidl("view_token") {
+  name = "views_v1_token"
+
+  sdk_candidate = true
+
   sources = [
     "view_token.fidl",
   ]

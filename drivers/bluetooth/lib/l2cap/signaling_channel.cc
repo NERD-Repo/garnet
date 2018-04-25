@@ -4,8 +4,10 @@
 
 #include "signaling_channel.h"
 
+#include <fbl/function.h>
+#include <lib/async/default.h>
+
 #include "garnet/drivers/bluetooth/lib/common/slab_allocator.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/logging.h"
 
 #include "channel.h"
@@ -14,37 +16,33 @@ namespace btlib {
 namespace l2cap {
 namespace internal {
 
-SignalingChannel::SignalingChannel(std::unique_ptr<Channel> chan,
+SignalingChannel::SignalingChannel(fbl::RefPtr<Channel> chan,
                                    hci::Connection::Role role)
-    : is_open_(true),
-      chan_(std::move(chan)),
-      role_(role),
-      task_runner_(fsl::MessageLoop::GetCurrent()->task_runner()) {
+    : is_open_(true), chan_(std::move(chan)), role_(role) {
   FXL_DCHECK(chan_);
   FXL_DCHECK(chan_->id() == kSignalingChannelId ||
              chan_->id() == kLESignalingChannelId);
-  FXL_DCHECK(task_runner_);
 
-  chan_->set_channel_closed_callback(
-      std::bind(&SignalingChannel::OnChannelClosed, this));
-
-  auto rx_cb = rx_cb_factory_.MakeTask(
-      std::bind(&SignalingChannel::OnRxBFrame, this, std::placeholders::_1));
-  chan_->SetRxHandler(rx_cb, task_runner_);
+  // Note: No need to guard against invalid access as these callbacks are called
+  // on the L2CAP thread.
+  chan_->Activate(fbl::BindMember(this, &SignalingChannel::OnRxBFrame),
+                  fbl::BindMember(this, &SignalingChannel::OnChannelClosed),
+                  async_get_default());
 }
 
 SignalingChannel::~SignalingChannel() {
-  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
-  chan_ = nullptr;
+  IsCreationThreadCurrent();
 }
 
 bool SignalingChannel::SendPacket(CommandCode code,
                                   uint8_t identifier,
                                   const common::ByteBuffer& data) {
+  IsCreationThreadCurrent();
   return Send(BuildPacket(code, identifier, data));
 }
 
 bool SignalingChannel::Send(std::unique_ptr<const common::ByteBuffer> packet) {
+  IsCreationThreadCurrent();
   FXL_DCHECK(packet);
   FXL_DCHECK(packet->size() >= sizeof(CommandHeader));
 
@@ -103,18 +101,14 @@ bool SignalingChannel::SendCommandReject(uint8_t identifier,
 }
 
 void SignalingChannel::OnChannelClosed() {
-  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
+  IsCreationThreadCurrent();
   FXL_DCHECK(is_open());
 
   is_open_ = false;
-  rx_cb_factory_.CancelAll();
-
-  chan_->set_channel_closed_callback({});
-  chan_->SetRxHandler({}, nullptr);
 }
 
 void SignalingChannel::OnRxBFrame(const SDU& sdu) {
-  FXL_DCHECK(thread_checker_.IsCreationThreadCurrent());
+  IsCreationThreadCurrent();
 
   if (!is_open())
     return;

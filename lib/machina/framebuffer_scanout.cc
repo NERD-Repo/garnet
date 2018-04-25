@@ -25,8 +25,9 @@ zx_status_t FramebufferScanout::Create(const char* path,
   }
 
   ioctl_display_get_fb_t fb;
-  if (ioctl_display_get_fb(fd.get(), &fb) != sizeof(fb)) {
-    return ZX_ERR_NOT_FOUND;
+  ssize_t ret = ioctl_display_get_fb(fd.get(), &fb);
+  if (ret != sizeof(fb)) {
+    return ret;
   }
 
   // Map framebuffer VMO.
@@ -39,7 +40,8 @@ zx_status_t FramebufferScanout::Create(const char* path,
     return status;
   }
 
-  GpuBitmap bitmap(fb.info.width, fb.info.height, fb.info.format,
+  GpuBitmap bitmap(fb.info.width, fb.info.height,
+                   fb.info.stride, fb.info.format,
                    reinterpret_cast<uint8_t*>(fbo));
   fbl::unique_ptr<FramebufferScanout> scanout(
       new FramebufferScanout(fbl::move(bitmap), fbl::move(fd)));
@@ -50,8 +52,7 @@ zx_status_t FramebufferScanout::Create(const char* path,
 FramebufferScanout::FramebufferScanout(GpuBitmap surface, fbl::unique_fd fd)
     : GpuScanout(fbl::move(surface)), fd_(fbl::move(fd)) {}
 
-void FramebufferScanout::FlushRegion(const virtio_gpu_rect_t& rect) {
-  GpuScanout::FlushRegion(rect);
+void FramebufferScanout::InvalidateRegion(const GpuRect& rect) {
   ioctl_display_region_t fb_region = {
       .x = rect.x,
       .y = rect.y,

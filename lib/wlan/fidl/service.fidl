@@ -1,0 +1,70 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library wlan_device_service;
+
+using wlan_device;
+
+struct ListPhysResponse {
+    vector<wlan_device.PhyInfo> phys;
+};
+
+struct QueryPhyRequest {
+    uint16 phy_id;
+};
+
+struct QueryPhyResponse {
+    wlan_device.PhyInfo info;
+};
+
+struct ListIfacesResponse {
+    vector<wlan_device.IfaceInfo> ifaces;
+};
+
+struct CreateIfaceRequest {
+    uint16 phy_id;
+    wlan_device.MacRole role;
+};
+
+struct CreateIfaceResponse {
+    uint16 iface_id;
+};
+
+struct DestroyIfaceRequest {
+    uint16 phy_id;
+    uint16 iface_id;
+};
+
+// TODO(tkilbourn): replace this with FIDL events
+interface DeviceListener {
+    // Called when a phy device is added
+    1: OnPhyAdded(uint16 id);
+    // Called when a phy device is removed
+    2: OnPhyRemoved(uint16 phy_id);
+    // Called when an iface device is added
+    3: OnIfaceAdded(uint16 phy_id, uint16 iface_id);
+    // Called when an iface device is removed
+    4: OnIfaceRemoved(uint16 phy_id, uint16 iface_id);
+};
+
+[ServiceName="wlan::DeviceService"]
+interface DeviceService {
+  // Phy methods
+  1: ListPhys() -> (ListPhysResponse resp);
+  2: QueryPhy(QueryPhyRequest req) -> (int32 @status, QueryPhyResponse? resp);
+  // 3-15: reserved
+
+  // Iface methods
+  16: ListIfaces() -> (ListIfacesResponse resp);
+  // 17: reserved for QueryIface
+  18: CreateIface(CreateIfaceRequest req) -> (int32 @status, CreateIfaceResponse? resp);
+  // 19: reserved for StartIface
+  // 20: reserved for StopIface
+  21: DestroyIface(DestroyIfaceRequest req) -> (int32 @status);
+
+  // Register a DeviceListener to be notified of device events. A listener is
+  // unregistered by closing the channel.
+  // XXX: This is a temporary method until events are implemented.
+  256: RegisterListener(DeviceListener listener) -> (int32 @status);
+};

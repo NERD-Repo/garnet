@@ -9,7 +9,7 @@
 #include "garnet/bin/appmgr/job_holder.h"
 #include "lib/fxl/functional/closure.h"
 
-namespace app {
+namespace component {
 
 ApplicationEnvironmentControllerImpl::ApplicationEnvironmentControllerImpl(
     fidl::InterfaceRequest<ApplicationEnvironmentController> request,
@@ -28,7 +28,7 @@ ApplicationEnvironmentControllerImpl::ApplicationEnvironmentControllerImpl(
 ApplicationEnvironmentControllerImpl::~ApplicationEnvironmentControllerImpl() =
     default;
 
-void ApplicationEnvironmentControllerImpl::Kill(const KillCallback& callback) {
+void ApplicationEnvironmentControllerImpl::Kill(KillCallback callback) {
   std::unique_ptr<ApplicationEnvironmentControllerImpl> self =
       job_holder_->parent()->ExtractChild(job_holder_.get());
   job_holder_ = nullptr;
@@ -40,4 +40,4 @@ void ApplicationEnvironmentControllerImpl::Detach() {
   binding_.set_error_handler(fxl::Closure());
 }
 
-}  // namespace app
+}  // namespace component

@@ -8,7 +8,7 @@
 
 #include "lib/fxl/logging.h"
 
-namespace media {
+namespace media_player {
 
 Serializer::Serializer() {}
 
@@ -77,6 +77,11 @@ Serializer& Serializer::operator<<(int32_t value) {
 
 Serializer& Serializer::operator<<(int64_t value) {
   value = htobe64(value);
+  PutBytes(sizeof(value), &value);
+  return *this;
+}
+
+Serializer& Serializer::operator<<(float value) {
   PutBytes(sizeof(value), &value);
   return *this;
 }
@@ -169,6 +174,11 @@ Deserializer& Deserializer::operator>>(int64_t& value) {
   return *this;
 }
 
+Deserializer& Deserializer::operator>>(float& value) {
+  GetBytes(sizeof(value), &value);
+  return *this;
+}
+
 Deserializer& operator>>(Deserializer& deserializer, std::string& value) {
   size_t size;
   deserializer >> size;
@@ -182,4 +192,4 @@ Deserializer& operator>>(Deserializer& deserializer, std::string& value) {
   return deserializer;
 }
 
-}  // namespace media
+}  // namespace media_player

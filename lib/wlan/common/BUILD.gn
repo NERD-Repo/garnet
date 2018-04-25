@@ -10,12 +10,14 @@ source_set("common") {
   sources = [
     "channel.cpp",
     "element.cpp",
+    "energy.cpp",
     "include/wlan/common/action_frame.h",
     "include/wlan/common/bitfield.h",
     "include/wlan/common/channel.h",
     "include/wlan/common/cipher.h",
     "include/wlan/common/element.h",
     "include/wlan/common/element_id.h",
+    "include/wlan/common/energy.h",
     "include/wlan/common/logging.h",
     "include/wlan/common/mac_frame.h",
     "include/wlan/common/macaddr.h",
@@ -25,6 +27,7 @@ source_set("common") {
   ]
 
   public_deps = [
+    "//garnet/public/lib/wlan/fidl:mlme",
     "//zircon/public/lib/fbl",
     "//zircon/public/lib/zx",
   ]
@@ -33,6 +36,6 @@ source_set("common") {
   configs += [ "//build/config/fuchsia:enable_zircon_asserts" ]
 
   deps = [
-    "//zircon/public/lib/ddk",
+    "//garnet/lib/wlan/protocol",
   ]
 }
