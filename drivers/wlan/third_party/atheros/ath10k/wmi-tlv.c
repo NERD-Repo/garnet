@@ -379,11 +379,9 @@ static zx_status_t ath10k_wmi_tlv_event_tx_pause(struct ath10k* ar, struct ath10
     peer_id = ev->peer_id;
     tid_map = ev->tid_map;
 
-    ath10k_info("wmi tlv pause pause_id %u action %s vdev_map 0x%08x peer_id %u tid_map 0x%08x\n",
-                pause_id, action == WMI_TLV_TX_PAUSE_ACTION_STOP ? "stop" :
-                          action == WMI_TLV_TX_PAUSE_ACTION_WAKE ? "wake" :
-                          "unknown",
-                vdev_map, peer_id, tid_map);
+    ath10k_dbg(ar, ATH10K_DBG_WMI,
+               "wmi tlv tx pause pause_id %u action %u vdev_map 0x%08x peer_id %u tid_map 0x%08x\n",
+               pause_id, action, vdev_map, peer_id, tid_map);
 
     // TODO: Handle pause event
 
@@ -645,7 +643,7 @@ static zx_status_t ath10k_wmi_tlv_op_pull_mgmt_rx_ev(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static int ath10k_wmi_tlv_op_pull_ch_info_ev(struct ath10k* ar,
         struct sk_buff* skb,
         struct wmi_ch_info_ev_arg* arg) {
@@ -676,7 +674,7 @@ static int ath10k_wmi_tlv_op_pull_ch_info_ev(struct ath10k* ar,
     kfree(tb);
     return 0;
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t
 ath10k_wmi_tlv_op_pull_vdev_start_ev(struct ath10k* ar,
@@ -709,7 +707,7 @@ ath10k_wmi_tlv_op_pull_vdev_start_ev(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static int ath10k_wmi_tlv_op_pull_peer_kick_ev(struct ath10k* ar,
         struct sk_buff* skb,
         struct wmi_peer_kick_ev_arg* arg) {
@@ -893,7 +891,7 @@ static int ath10k_wmi_tlv_op_pull_phyerr_ev_hdr(struct ath10k* ar,
     kfree(tb);
     return 0;
 }
-#endif // TODO
+#endif // NEEDS PORTING
 
 #define WMI_TLV_ABI_VER_NS0 0x5F414351
 #define WMI_TLV_ABI_VER_NS1 0x00004C4D
@@ -1030,7 +1028,7 @@ static zx_status_t ath10k_wmi_tlv_op_pull_rdy_ev(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0 // TODO
+#if 0 // NEEDS PORTING
 static void ath10k_wmi_tlv_pull_vdev_stats(const struct wmi_tlv_vdev_stats* src,
         struct ath10k_fw_stats_vdev* dst) {
     int i;
@@ -1237,7 +1235,7 @@ ath10k_wmi_tlv_op_pull_wow_ev(struct ath10k* ar, struct sk_buff* skb,
     kfree(tb);
     return 0;
 }
-#endif // TODO
+#endif // NEEDS PORTING
 
 static zx_status_t ath10k_wmi_tlv_op_pull_echo_ev(struct ath10k* ar,
                                                   struct ath10k_msg_buf* msg_buf,
@@ -1565,6 +1563,7 @@ ath10k_wmi_tlv_op_gen_start_scan(struct ath10k* ar,
     tlv->tag = WMI_TLV_TAG_ARRAY_BYTE;
     tlv->len = ie_len;
     memcpy(tlv->value, arg->ie, arg->ie_len);
+
     ptr += sizeof(*tlv);
     ptr += ie_len;
 
@@ -1573,7 +1572,7 @@ ath10k_wmi_tlv_op_gen_start_scan(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_tlv_op_gen_stop_scan(struct ath10k* ar,
                                 const struct wmi_stop_scan_arg* arg) {
@@ -1613,7 +1612,7 @@ ath10k_wmi_tlv_op_gen_stop_scan(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi tlv stop scan\n");
     return skb;
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t
 ath10k_wmi_tlv_op_gen_vdev_create(struct ath10k* ar,
@@ -1851,7 +1850,7 @@ ath10k_wmi_tlv_op_gen_vdev_set_param(struct ath10k* ar, struct ath10k_msg_buf** 
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_tlv_op_gen_vdev_install_key(struct ath10k* ar,
                                        const struct wmi_vdev_install_key_arg* arg) {
@@ -1994,7 +1993,7 @@ static void* ath10k_wmi_tlv_put_wmm(void* ptr,
 
     return ptr + sizeof(*tlv) + sizeof(*wmm);
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t
 ath10k_wmi_tlv_op_gen_vdev_wmm_conf(struct ath10k* ar, struct ath10k_msg_buf** msg_buf_ptr,
@@ -2025,7 +2024,7 @@ ath10k_wmi_tlv_op_gen_vdev_wmm_conf(struct ath10k* ar, struct ath10k_msg_buf** m
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_tlv_op_gen_sta_keepalive(struct ath10k* ar,
                                     const struct wmi_sta_keepalive_arg* arg) {
@@ -2069,7 +2068,7 @@ ath10k_wmi_tlv_op_gen_sta_keepalive(struct ath10k* ar,
                arg->vdev_id, arg->enabled, arg->method, arg->interval);
     return skb;
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t
 ath10k_wmi_tlv_op_gen_peer_create(struct ath10k* ar,
@@ -2287,7 +2286,7 @@ ath10k_wmi_tlv_op_gen_peer_assoc(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_tlv_op_gen_set_psmode(struct ath10k* ar, uint32_t vdev_id,
                                  enum wmi_sta_ps_mode psmode) {
@@ -2364,7 +2363,7 @@ ath10k_wmi_tlv_op_gen_set_ap_ps(struct ath10k* ar, uint32_t vdev_id, const uint8
     ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi tlv ap ps param\n");
     return skb;
 }
-#endif
+#endif // NEEDS PORTING
 
 zx_status_t
 ath10k_wmi_tlv_op_gen_scan_chan_list(struct ath10k* ar,
@@ -2411,7 +2410,7 @@ ath10k_wmi_tlv_op_gen_scan_chan_list(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_tlv_op_gen_beacon_dma(struct ath10k* ar, uint32_t vdev_id,
                                  const void* bcn, size_t bcn_len,
@@ -3185,7 +3184,7 @@ ath10k_wmi_tlv_op_gen_adaptive_qcs(struct ath10k* ar, bool enable) {
     ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi tlv adaptive qcs %d\n", enable);
     return skb;
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t
 ath10k_wmi_tlv_op_gen_echo(struct ath10k* ar, struct ath10k_msg_buf** msg_buf_ptr,
@@ -3211,7 +3210,7 @@ ath10k_wmi_tlv_op_gen_echo(struct ath10k* ar, struct ath10k_msg_buf** msg_buf_pt
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_tlv_op_gen_vdev_spectral_conf(struct ath10k* ar,
         const struct wmi_vdev_spectral_conf_arg* arg) {
@@ -3281,7 +3280,7 @@ ath10k_wmi_tlv_op_gen_vdev_spectral_enable(struct ath10k* ar, uint32_t vdev_id,
 
     return skb;
 }
-#endif // TODO
+#endif // NEEDS PORTING
 
 /****************/
 /* TLV mappings */
@@ -3616,25 +3615,26 @@ static struct wmi_vdev_param_map wmi_tlv_vdev_param_map = {
 static const struct wmi_ops wmi_tlv_ops = {
     .rx = ath10k_wmi_tlv_op_rx,
     .map_svc = wmi_tlv_svc_map,
+
     .pull_scan = ath10k_wmi_tlv_op_pull_scan_ev,
     .pull_mgmt_rx = ath10k_wmi_tlv_op_pull_mgmt_rx_ev,
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     .pull_ch_info = ath10k_wmi_tlv_op_pull_ch_info_ev,
-#endif
+#endif // NEEDS PORTING
     .pull_vdev_start = ath10k_wmi_tlv_op_pull_vdev_start_ev,
-#if 0
+#if 0 // NEEDS PORTING
     .pull_peer_kick = ath10k_wmi_tlv_op_pull_peer_kick_ev,
     .pull_swba = ath10k_wmi_tlv_op_pull_swba_ev,
     .pull_phyerr_hdr = ath10k_wmi_tlv_op_pull_phyerr_ev_hdr,
     .pull_phyerr = ath10k_wmi_op_pull_phyerr_ev,
-#endif
+#endif // NEEDS PORTING
     .pull_svc_rdy = ath10k_wmi_tlv_op_pull_svc_rdy_ev,
     .pull_rdy = ath10k_wmi_tlv_op_pull_rdy_ev,
-#if 0
+#if 0 // NEEDS PORTING
     .pull_fw_stats = ath10k_wmi_tlv_op_pull_fw_stats,
     .pull_roam_ev = ath10k_wmi_tlv_op_pull_roam_ev,
     .pull_wow_event = ath10k_wmi_tlv_op_pull_wow_ev,
-#endif
+#endif // NEEDS PORTING
     .pull_echo_ev = ath10k_wmi_tlv_op_pull_echo_ev,
     .get_txbf_conf_scheme = ath10k_wmi_tlv_txbf_conf_scheme,
 
@@ -3644,9 +3644,9 @@ static const struct wmi_ops wmi_tlv_ops = {
     .gen_pdev_set_param = ath10k_wmi_tlv_op_gen_pdev_set_param,
     .gen_init = ath10k_wmi_tlv_op_gen_init,
     .gen_start_scan = ath10k_wmi_tlv_op_gen_start_scan,
-#if 0
+#if 0 // NEEDS PORTING
     .gen_stop_scan = ath10k_wmi_tlv_op_gen_stop_scan,
-#endif
+#endif // NEEDS PORTING
     .gen_vdev_create = ath10k_wmi_tlv_op_gen_vdev_create,
     .gen_vdev_delete = ath10k_wmi_tlv_op_gen_vdev_delete,
     .gen_vdev_start = ath10k_wmi_tlv_op_gen_vdev_start,
@@ -3654,22 +3654,22 @@ static const struct wmi_ops wmi_tlv_ops = {
     .gen_vdev_up = ath10k_wmi_tlv_op_gen_vdev_up,
     .gen_vdev_down = ath10k_wmi_tlv_op_gen_vdev_down,
     .gen_vdev_set_param = ath10k_wmi_tlv_op_gen_vdev_set_param,
-#if 0
+#if 0 // NEEDS PORTING
     .gen_vdev_install_key = ath10k_wmi_tlv_op_gen_vdev_install_key,
-#endif
+#endif // NEEDS PORTING
     .gen_vdev_wmm_conf = ath10k_wmi_tlv_op_gen_vdev_wmm_conf,
     .gen_peer_create = ath10k_wmi_tlv_op_gen_peer_create,
     .gen_peer_delete = ath10k_wmi_tlv_op_gen_peer_delete,
     .gen_peer_flush = ath10k_wmi_tlv_op_gen_peer_flush,
     .gen_peer_set_param = ath10k_wmi_tlv_op_gen_peer_set_param,
     .gen_peer_assoc = ath10k_wmi_tlv_op_gen_peer_assoc,
-#if 0
+#if 0 // NEEDS PORTING
     .gen_set_psmode = ath10k_wmi_tlv_op_gen_set_psmode,
     .gen_set_sta_ps = ath10k_wmi_tlv_op_gen_set_sta_ps,
     .gen_set_ap_ps = ath10k_wmi_tlv_op_gen_set_ap_ps,
-#endif
+#endif // NEEDS PORTING
     .gen_scan_chan_list = ath10k_wmi_tlv_op_gen_scan_chan_list,
-#if 0
+#if 0 // NEEDS PORTING
     .gen_beacon_dma = ath10k_wmi_tlv_op_gen_beacon_dma,
     .gen_pdev_set_wmm = ath10k_wmi_tlv_op_gen_pdev_set_wmm,
     .gen_request_stats = ath10k_wmi_tlv_op_gen_request_stats,
@@ -3698,13 +3698,13 @@ static const struct wmi_ops wmi_tlv_ops = {
     .gen_tdls_peer_update = ath10k_wmi_tlv_op_gen_tdls_peer_update,
     .gen_adaptive_qcs = ath10k_wmi_tlv_op_gen_adaptive_qcs,
     .fw_stats_fill = ath10k_wmi_main_op_fw_stats_fill,
-#endif // TODO
+#endif // NEEDS PORTING
     .get_vdev_subtype = ath10k_wmi_op_get_vdev_subtype,
     .gen_echo = ath10k_wmi_tlv_op_gen_echo,
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     .gen_vdev_spectral_conf = ath10k_wmi_tlv_op_gen_vdev_spectral_conf,
     .gen_vdev_spectral_enable = ath10k_wmi_tlv_op_gen_vdev_spectral_enable,
-#endif // TODO
+#endif // NEEDS PORTING
 };
 
 static const struct wmi_peer_flags_map wmi_tlv_peer_flags_map = {
