@@ -61,7 +61,6 @@ ath10k_htt_rx_find_msg_buf_paddr(struct ath10k* ar, uint32_t paddr) {
         }
     }
 
-printf("Unable to find rx buffer %x\n", (int)paddr);
     WARN_ON_ONCE(1);
     return NULL;
 }
@@ -1822,30 +1821,6 @@ static zx_status_t ath10k_htt_rx_in_ord_ind(struct ath10k* ar,
         msdu->type = ATH10K_MSG_TYPE_HTT_RX;
         msdu->used = sizeof(struct htt_rx_desc) + msdu_len;
 
-uint16_t len = msdu_len;
-{
-static int packets_dumped = 0;
-if (packets_dumped < 10) {
-printf("len: %d\n", len);
-printf("capacity: %zu\n", buf->capacity);
-printf("used: %zu\n", buf->used);
-uint8_t* next = (void*)(((struct htt_rx_desc*)msdu->vaddr)->rx_hdr_status);
-printf("ADDR: %p\n", next);
-#if 0
-for (unsigned ndx = 0; ndx < buf->capacity; ndx++) {
-    printf("%02x", *next++);
-    if ((ndx % 16) == 7) {
-         printf("    ");
-    } else if ((ndx % 16) == 15) {
-         printf("\n");
-    } else {
-        printf(" ");
-    }
-}
-#endif
-packets_dumped++;
-}
-}
         struct htt_rx_desc* rx_desc = ath10k_msg_buf_get_header(msdu, ATH10K_MSG_TYPE_HTT_RX);
         wlan_rx_info_t rx_info = {};
         memcpy(&rx_info.chan, &ar->rx_channel, sizeof(wlan_channel_t));
@@ -2585,7 +2560,6 @@ bool ath10k_htt_txrx_compl_task(struct ath10k* ar) {
      * process it first to utilize full available quota.
      */
     while (!list_is_empty(&htt->rx_in_ord_compl_q)) {
-printf("***** Processing packet!\n");
         buf = list_remove_head_type(&htt->rx_in_ord_compl_q, struct ath10k_msg_buf, listnode);
 
         mtx_lock(&htt->rx_ring.lock);

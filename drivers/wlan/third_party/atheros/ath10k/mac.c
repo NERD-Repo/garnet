@@ -3115,7 +3115,17 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
     int result = 0; // success
 
     if (arvif->is_up) {
-        // Is there anything special we have to do to disassociate?
+        // TODO -- figure out why we can't disassociate
+        return 0;
+#if 0
+        ath10k_info("disassociating from bss\n");
+        status = ath10k_wmi_vdev_down(ar, arvif->vdev_id);
+        if (status != ZX_OK) {
+            ath10k_err("failed to disassociate from bss: %s\n", zx_status_get_string(status));
+            return status;
+        }
+        arvif->is_up = false;
+#endif
     }
 
     void* frame_ptr = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
@@ -4039,7 +4049,6 @@ static zx_status_t ath10k_mac_tx_submit(struct ath10k* ar,
 
     switch (txpath) {
     case ATH10K_MAC_TX_HTT:
-printf("***** Sending a packet over htt\n");
         ret = ath10k_htt_tx(htt, txmode, tx_buf);
         break;
     case ATH10K_MAC_TX_HTT_MGMT:

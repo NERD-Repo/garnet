@@ -2734,9 +2734,8 @@ static int ath10k_pci_interrupt_handler(void* arg) {
     struct ath10k* ar = arg;
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     zx_status_t status;
-    uint64_t slots;
 
-    while ((status = zx_interrupt_wait(ar_pci->irq_handle, &slots)) == ZX_OK) {
+    while ((status = zx_irq_wait(ar_pci->irq_handle, NULL)) == ZX_OK) {
         if (ath10k_pci_has_device_gone(ar)) {
             ath10k_warn("target is no longer present\n");
             break;
@@ -3168,7 +3167,7 @@ static zx_status_t ath10k_pci_configure_bss(void* ctx, uint32_t options,
 
 static zx_status_t ath10k_pci_set_key(void* ctx, uint32_t options, wlan_key_config_t* key_config) {
     // TODO
-printf("****** Request to set key -- unimplemented!\n");
+    ath10k_err("Request to set key -- unimplemented!\n");
     return ZX_ERR_NOT_SUPPORTED;
 }
 
