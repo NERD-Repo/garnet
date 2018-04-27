@@ -7,8 +7,10 @@
 #include <inttypes.h>
 #include <limits>
 
+#include "garnet/bin/zxdb/client/arch_info.h"
+#include "garnet/bin/zxdb/client/memory_dump.h"
 #include "garnet/bin/zxdb/client/output_buffer.h"
-#include "garnet/bin/zxdb/client/session_llvm_state.h"
+#include "garnet/lib/debug_ipc/records.h"
 #include "garnet/public/lib/fxl/strings/string_printf.h"
 #include "garnet/public/lib/fxl/strings/trim.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -48,20 +50,20 @@ std::string GetInvalidInstructionStr(const uint8_t* data, size_t len) {
 Disassembler::Disassembler() = default;
 Disassembler::~Disassembler() = default;
 
-Err Disassembler::Init(SessionLLVMState* llvm) {
-  llvm_ = llvm;
+Err Disassembler::Init(const ArchInfo* arch) {
+  arch_ = arch;
 
-  context_ = std::make_unique<llvm::MCContext>(llvm->asm_info(),
-                                               llvm_->register_info(), nullptr);
-  disasm_.reset(llvm_->target()->createMCDisassembler(*llvm_->subtarget_info(),
+  context_ = std::make_unique<llvm::MCContext>(arch_->asm_info(),
+                                               arch_->register_info(), nullptr);
+  disasm_.reset(arch_->target()->createMCDisassembler(*arch_->subtarget_info(),
                                                       *context_));
   if (!disasm_)
     return Err("Couldn't create LLVM disassembler.");
 
   constexpr int kAssemblyFlavor = 1;  // 1 means "Intel" (not AT&T).
-  printer_.reset(llvm_->target()->createMCInstPrinter(
-      *llvm_->triple(), kAssemblyFlavor, *llvm_->asm_info(),
-      *llvm_->instr_info(), *llvm->register_info()));
+  printer_.reset(arch_->target()->createMCInstPrinter(
+      *arch_->triple(), kAssemblyFlavor, *arch_->asm_info(),
+      *arch_->instr_info(), *arch_->register_info()));
   printer_->setPrintHexStyle(llvm::HexStyle::C);  // ::C = 0xff-style.
   printer_->setPrintImmHex(true);
   printer_->setUseMarkup(true);
@@ -73,7 +75,7 @@ size_t Disassembler::DisassembleOne(const uint8_t* data,
                                     size_t data_len,
                                     uint64_t address,
                                     const Options& options,
-                                    OutputBuffer* out) {
+                                    OutputBuffer* out) const {
   llvm::MCInst inst;
   size_t consumed = 0;
   auto status = disasm_->getInstruction(inst, consumed,
@@ -89,7 +91,7 @@ size_t Disassembler::DisassembleOne(const uint8_t* data,
 
     printer_->setCommentStream(comment_stream);
     printer_->printInst(&inst, inst_stream, llvm::StringRef(),
-                        *llvm_->subtarget_info());
+                        *arch_->subtarget_info());
     printer_->setCommentStream(llvm::nulls());
 
     inst_stream.flush();
@@ -98,18 +100,15 @@ size_t Disassembler::DisassembleOne(const uint8_t* data,
     // Failure decoding.
     if (!options.emit_undecodable)
       return 0;
-
-    consumed =
-        std::min(data_len,
-                 static_cast<size_t>(llvm_->asm_info()->getMinInstAlignment()));
+    consumed = std::min(data_len, arch_->instr_align());
     inst_string = GetInvalidInstructionStr(data, consumed);
     comment_string = "Invalid instruction.";
   }
 
   // Address.
   if (options.emit_addresses) {
-    out->Append(Syntax::kComment, fxl::StringPrintf("\t0x%16.16" PRIx64,
-                address));
+    out->Append(Syntax::kComment,
+                fxl::StringPrintf("\t0x%16.16" PRIx64, address));
   }
 
   // Bytes.
@@ -134,7 +133,7 @@ size_t Disassembler::DisassembleOne(const uint8_t* data,
     ReplaceAllInstancesOf("\r\n", ' ', &comment_string);
 
     out->Append(Syntax::kComment,
-                "\t" + llvm_->asm_info()->getCommentString().str() + " " +
+                "\t" + arch_->asm_info()->getCommentString().str() + " " +
                     comment_string);
   }
 
@@ -147,8 +146,9 @@ size_t Disassembler::DisassembleMany(const uint8_t* data,
                                      uint64_t start_address,
                                      const Options& in_options,
                                      size_t max_instructions,
-                                     OutputBuffer* out) {
-  size_t instruction_count = 0;
+                                     OutputBuffer* out,
+                                     size_t* instruction_count) const {
+  *instruction_count = 0;
 
   if (max_instructions == 0)
     max_instructions = std::numeric_limits<size_t>::max();
@@ -159,16 +159,76 @@ size_t Disassembler::DisassembleMany(const uint8_t* data,
   options.emit_undecodable = true;
 
   size_t byte_offset = 0;
-  while (byte_offset < data_len && instruction_count < max_instructions) {
+  while (byte_offset < data_len && *instruction_count < max_instructions) {
     size_t bytes_read =
         DisassembleOne(&data[byte_offset], data_len - byte_offset,
                        start_address + byte_offset, options, out);
     FXL_DCHECK(bytes_read > 0);
 
-    instruction_count++;
+    (*instruction_count)++;
     byte_offset += bytes_read;
   }
+
   return byte_offset;
+}
+
+size_t Disassembler::DisassembleDump(const MemoryDump& dump,
+                                     const Options& options,
+                                     size_t max_instructions,
+                                     OutputBuffer* out,
+                                     size_t* instruction_count) const {
+  *instruction_count = 0;
+  if (max_instructions == 0)
+    max_instructions = std::numeric_limits<size_t>::max();
+
+  for (size_t block_i = 0; block_i < dump.blocks().size(); block_i++) {
+    const debug_ipc::MemoryBlock& block = dump.blocks()[block_i];
+
+    if (!block.valid) {
+      // Invalid region. Print something like:
+      //    0x12345123    ??    # Unmapped memory.
+      if (block_i == dump.blocks().size() - 1) {
+        // If the last block, just show the starting address because the size
+        // will normally be irrelevant (say disassembling at the current IP
+        // which might be invalid -- the user doesn't care how big the
+        // invalid memory region is, or how much was requested).
+        out->Append(Syntax::kComment,
+                    fxl::StringPrintf("\t0x%16.16" PRIx64, block.address));
+      } else {
+        // Invalid range.
+        out->Append(
+            Syntax::kComment,
+            fxl::StringPrintf("\t0x%16.16" PRIx64 " - 0x%16.16" PRIx64,
+                              block.address, block.address + block.size - 1));
+      }
+      out->Append(Syntax::kNormal, "\t??\t");
+      out->Append(
+          Syntax::kComment,
+          arch_->asm_info()->getCommentString().str() + " Invalid memory.\n");
+      (*instruction_count)++;  // Count invalid region as one instruction.
+      continue;
+    }
+
+    if (block.data.empty())
+      continue;
+
+    // Valid region, print instructions to the end of the block.
+    size_t block_instruction_count = 0;
+    size_t block_bytes_consumed = DisassembleMany(
+        &block.data[0], block.data.size(), block.address, options,
+        max_instructions - *instruction_count, out, &block_instruction_count);
+
+    *instruction_count += block_instruction_count;
+    if (*instruction_count >= max_instructions) {
+      // Return the number of bytes from the beginning of the memory dump
+      // that were consumed.
+      return static_cast<size_t>(block.address + block_bytes_consumed -
+                                 dump.blocks()[0].address);
+    }
+  }
+
+  // All bytes of the memory dump were consumed.
+  return static_cast<size_t>(dump.size());
 }
 
 }  // namespace zxdb
