@@ -55,7 +55,7 @@ class PsCfg {
         return dtim_count_ + 1;
     }
 
-    bool IsDtim() { return dtim_count_ == 0; }
+    bool IsDtim() const { return dtim_count_ == 0; }
 
    private:
     TrafficIndicationMap tim_;
@@ -86,6 +86,7 @@ class BssInterface {
     virtual zx_status_t EthToDataFrame(const ImmutableBaseFrame<EthernetII>& frame,
                                        fbl::unique_ptr<Packet>* out_packet) = 0;
 
+    virtual bool IsRsn() const = 0;
     virtual bool IsHTReady() const = 0;
     virtual bool IsCbw40RxReady() const = 0;
     virtual bool IsCbw40TxReady() const = 0;

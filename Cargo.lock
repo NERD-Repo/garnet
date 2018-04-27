@@ -362,6 +362,7 @@ dependencies = [
  "fuchsia-async 0.1.0",
  "fuchsia-zircon 0.3.4",
  "futures 0.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+ "parking_lot 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "slab 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -398,11 +399,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "fidl_bluetooth_host"
+version = "0.1.0"
+dependencies = [
+ "fidl 0.1.0",
+ "fidl_bluetooth 0.1.0",
+ "fidl_bluetooth_control 0.1.0",
+ "fidl_bluetooth_gatt 0.1.0",
+ "fidl_bluetooth_low_energy 0.1.0",
+ "fuchsia-async 0.1.0",
+ "fuchsia-zircon 0.3.4",
+ "futures 0.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "fidl_bluetooth_low_energy"
 version = "0.1.0"
 dependencies = [
  "fidl 0.1.0",
  "fidl_bluetooth 0.1.0",
+ "fidl_bluetooth_gatt 0.1.0",
  "fuchsia-async 0.1.0",
  "fuchsia-zircon 0.3.4",
  "futures 0.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
@@ -515,7 +531,6 @@ dependencies = [
  "fidl_input 0.1.0",
  "fidl_media 0.1.0",
  "fidl_mem 0.1.0",
- "fidl_scenic_dummy_system 0.1.0",
  "fidl_ui 0.1.0",
  "fidl_views 0.1.0",
  "fidl_views_v1 0.1.0",
@@ -568,16 +583,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fidl_scenic_dummy_system"
-version = "0.1.0"
-dependencies = [
- "fidl 0.1.0",
- "fuchsia-async 0.1.0",
- "fuchsia-zircon 0.3.4",
- "futures 0.2.0-alpha (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "fidl_ui"
 version = "0.1.0"
 dependencies = [
@@ -588,7 +593,6 @@ dependencies = [
  "fidl_images 0.1.0",
  "fidl_input 0.1.0",
  "fidl_mem 0.1.0",
- "fidl_scenic_dummy_system 0.1.0",
  "fidl_views 0.1.0",
  "fidl_views_v1_token 0.1.0",
  "fuchsia-async 0.1.0",
@@ -624,7 +628,6 @@ dependencies = [
  "fidl_images 0.1.0",
  "fidl_input 0.1.0",
  "fidl_mem 0.1.0",
- "fidl_scenic_dummy_system 0.1.0",
  "fidl_ui 0.1.0",
  "fidl_views 0.1.0",
  "fidl_views_v1_token 0.1.0",

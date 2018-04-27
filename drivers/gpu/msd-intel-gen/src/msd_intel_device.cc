@@ -9,7 +9,6 @@
 #include "global_context.h"
 #include "magma_util/dlog.h"
 #include "magma_util/macros.h"
-#include "modeset/displayport.h"
 #include "msd_intel_semaphore.h"
 #include "platform_trace.h"
 #include "registers.h"
@@ -201,7 +200,7 @@ bool MsdIntelDevice::BaseInit(void* device_handle)
     if (!mmio)
         return DRETF(false, "failed to map pci bar 0");
 
-    register_io_ = std::unique_ptr<RegisterIo>(new RegisterIo(std::move(mmio)));
+    register_io_ = std::make_unique<magma::RegisterIo>(std::move(mmio));
 
     if (DeviceId::is_gen9(device_id_)) {
         ForceWake::reset(register_io_.get(), registers::ForceWake::GEN9_RENDER);
@@ -245,12 +244,6 @@ bool MsdIntelDevice::BaseInit(void* device_handle)
         return DRETF(false, "global context init failed");
 
     device_request_semaphore_ = magma::PlatformSemaphore::Create();
-
-#if MSD_INTEL_ENABLE_MODESETTING
-    // The modesetting code is only tested on gen 9 (Skylake).
-    if (DeviceId::is_gen9(device_id_))
-        DisplayPort::PartiallyBringUpDisplays(register_io_.get());
-#endif
 
     return true;
 }
@@ -318,7 +311,7 @@ void MsdIntelDevice::InterruptCallback(void* data, uint32_t master_interrupt_con
     DASSERT(data);
     auto device = reinterpret_cast<MsdIntelDevice*>(data);
 
-    RegisterIo* register_io = device->register_io_for_interrupt();
+    magma::RegisterIo* register_io = device->register_io_for_interrupt();
     uint64_t now = get_current_time_ns();
     uint32_t render_interrupt_status = 0;
 

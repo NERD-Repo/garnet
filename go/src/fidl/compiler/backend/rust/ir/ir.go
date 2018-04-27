@@ -159,22 +159,20 @@ var reservedWords = map[string]bool{
 	//"union":	true,
 
 	// Things that are not keywords, but for which collisions would be very unpleasant
-	"Ok":         true,
-	"Err":        true,
-	"Vec":        true,
-	"Option":     true,
-	"Some":       true,
-	"None":       true,
-	"Box":        true,
-	"Future":     true,
-	"Stream":     true,
-	"Never":      true,
-	"fidl":       true,
-	"futures":    true,
-	"zx":         true,
-	"response":   true,
-	"controller": true,
-	"async":      true,
+	"Ok":      true,
+	"Err":     true,
+	"Vec":     true,
+	"Option":  true,
+	"Some":    true,
+	"None":    true,
+	"Box":     true,
+	"Future":  true,
+	"Stream":  true,
+	"Never":   true,
+	"fidl":    true,
+	"futures": true,
+	"zx":      true,
+	"async":   true,
 }
 
 var reservedSuffixes = []string{
@@ -182,6 +180,7 @@ var reservedSuffixes = []string{
 	"Marker",
 	"Proxy",
 	"ProxyInterface",
+	"ControlHandle",
 	"Responder",
 	"Server",
 }
@@ -475,7 +474,7 @@ func (c *compiler) compileInterface(val types.Interface) Interface {
 	r := Interface{
 		c.compileCamelCompoundIdentifier(val.Name),
 		[]Method{},
-		strings.Trim(val.GetAttribute("ServiceName"), "\""),
+		strings.Trim(val.GetServiceName(), "\""),
 	}
 
 	for _, v := range val.Methods {

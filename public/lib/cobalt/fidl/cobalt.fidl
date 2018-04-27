@@ -9,12 +9,16 @@ library cobalt;
 
 // To use Cobalt, you must have a project id, metric id and encoding id
 // registered with the Cobalt system. In the current verison of Cobalt
-// registration consists of entries in the files "registered_encodings.txt"
-// and "registered_metrics.txt" in //third_party/cobalt/config/production. Since
-// the Cobalt servers also read these files, for now it is necessary to
-// contact cobalt-hackers@google.com in order to register additional projects,
-// metrics and encodings. We plan to build a self-registration system in the
-// future.
+// registration consists of entries in the YAML files in this repo:
+// https://cobalt-analytics.googlesource.com/config/.
+// In a Garnet checkout that is mapped to //third_party/cobalt_config.
+
+// While Cobalt's code and registration files are open source, the running
+// system being managed by the Cobalt team is currently intended to be used by
+// software engineers at Google in order to collect metrics in a way that
+// preserves our users' privacy. If you are a Google software engineer
+// please see our internal [user guide](go/fuchsia-cobalt-userguide) or
+// ask for assistance from the Cobalt [team](go/fuchsia-cobalt#comms).
 
 // Usage: First use CobaltEncoderFactory to get a CobaltEncoder for your
 // project. Then you add Observations using the Add*Observation() methods.
@@ -88,7 +92,7 @@ union Value {
   vector<BucketDistributionEntry> int_bucket_distribution;
 };
 
-[ServiceName="cobalt::CobaltEncoderFactory"]
+[Discoverable]
 // CobaltEncoderFactory creates a CobaltEncoder for a particular project.
 interface CobaltEncoderFactory {
   // Creates a CobaltEncoder for the specified project.
@@ -269,15 +273,15 @@ interface CobaltEncoder {
   //              between the end timestamp and the start timestamp as the
   //              value of the Observation's unique part. It is ok if this
   //              time delta is negative.
-  //           Returns INVALID_ARGUMENTS if |timer_id| is empty or the timeout 
+  //           Returns INVALID_ARGUMENTS if |timer_id| is empty or the timeout
   //              is not positive and less than 5 minutes.
   //           Returns FAILED_PRECONDITION if Cobalt currently has a timer
   //              with the given timer_ID and it already has a start
   //              timestamp. In this case Cobalt will delete the timer with
   //              the given |timer_id| and this invocation of StartTimer()
   //              will be forgotten.
-  //           Returns a different error if Cobalt tries to create an 
-  //              Observation with the given arguments and fails. See 
+  //           Returns a different error if Cobalt tries to create an
+  //              Observation with the given arguments and fails. See
   //              Cobalt::Status for more information.
   9: StartTimer(uint32 metric_id, uint32 encoding_id, string timer_id,
                 uint64 timestamp, uint32 timeout_s) -> (Status @status);
@@ -328,8 +332,8 @@ interface CobaltEncoder {
   //              In this case Cobalt will delete the timer with the given
   //              |timer_id| and this invocation of EndTimer() will be
   //              forgotten.
-  //           Returns a different error if Cobalt tries to create an 
-  //              Observation with the given arguments and fails. See 
+  //           Returns a different error if Cobalt tries to create an
+  //              Observation with the given arguments and fails. See
   //              Cobalt::Status for more information.
   10: EndTimer(string timer_id,  uint64 timestamp, uint32 timeout_s)
       -> (Status @status);
@@ -386,8 +390,8 @@ interface CobaltEncoder {
   //              In this case Cobalt will delete the timer with the given
   //              |timer_id| and this invocation of EndTimer() will be
   //              forgotten.
-  //           Returns a different error if Cobalt tries to create an 
-  //              Observation with the given arguments and fails. See 
+  //           Returns a different error if Cobalt tries to create an
+  //              Observation with the given arguments and fails. See
   //              Cobalt::Status for more information.
   11: EndTimerMultiPart(string timer_id,  uint64 timestamp, string part_name,
                         vector<ObservationValue> observation, uint32 timeout_s)

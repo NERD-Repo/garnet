@@ -72,6 +72,12 @@
     "public": true
   },
   {
+    "library_name": "bluetooth_host",
+    "fidl_target": "//garnet/lib/bluetooth/fidl:fidl",
+    "library_deps": ["bluetooth_gatt", "bluetooth_control", "bluetooth_low_energy", "bluetooth"],
+    "public": false
+  },
+  {
     "library_name": "bluetooth_gatt",
     "fidl_target": "//garnet/public/lib/bluetooth/fidl:bluetooth_gatt",
     "library_deps": ["bluetooth"],
@@ -80,7 +86,7 @@
   {
     "library_name": "bluetooth_low_energy",
     "fidl_target": "//garnet/public/lib/bluetooth/fidl:bluetooth_low_energy",
-    "library_deps": ["bluetooth"],
+    "library_deps": ["bluetooth_gatt", "bluetooth"],
     "public": true
   },
   {
@@ -114,12 +120,6 @@
     "public": true
   },
   {
-    "library_name": "scenic_dummy_system",
-    "fidl_target": "//garnet/public/lib/ui/scenic/fidl/dummy_system:fidl",
-    "library_deps": [],
-    "public": true
-  },
-  {
     "library_name": "views_v1",
     "fidl_target": "//garnet/public/lib/ui/views/fidl:v1",
     "library_deps": [
@@ -133,7 +133,6 @@
     "library_deps": [
       "gfx",
       "images",
-      "scenic_dummy_system",
       "views"
     ],
     "public": true

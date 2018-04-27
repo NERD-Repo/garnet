@@ -12,18 +12,10 @@
   </imports>
   <projects>
     <!-- Third Party -->
-
-    <!-- TODO(SEC-28): move this back to Topaz. -->
-    <project name="dart/root_certificates"
-             path="third_party/root_certificates"
-             remote="https://dart.googlesource.com/root_certificates"
-             gerrithost="https://dart-review.googlesource.com"
-             revision="a4c7c6f23a664a37bc1b6f15a819e3f2a292791a"/>
-
     <project name="external/github.com/catapult-project/catapult"
              path="third_party/catapult"
              remote="https://chromium.googlesource.com/catapult"
-             revision="d43ffede2b5c91fd0d97b58447e3703052ab994c"/>
+             revision="6761f26bd9da8e703b355ce1c81f8e37b77a9467"/>
     <project name="libc-tests"
              path="third_party/libc-tests"
              remote="https://fuchsia.googlesource.com/libc-tests"
@@ -31,7 +23,7 @@
     <project name="third_party/angle"
              path="third_party/angle"
              remote="https://chromium.googlesource.com/angle/angle"
-             revision="f827123d99457a294c3d9451fe3af69772f0bcc2"/>
+             revision="de279590a00792b22c1a59163036cb6064d32888"/>
     <project name="third_party/asio"
              path="third_party/asio"
              remote="https://fuchsia.googlesource.com/third_party/asio"
@@ -195,6 +187,7 @@
     <project name="rust-crates"
              path="third_party/rust-crates"
              remote="https://fuchsia.googlesource.com/third_party/rust-crates"
+             revision="5c3cdb8f8b12eaf69b3af424348dbba454b3a6ec"
              gerrithost="https://fuchsia-review.googlesource.com"/>
     <project name="third_party/cargo-vendor"
              path="third_party/rust-mirrors/cargo-vendor"
