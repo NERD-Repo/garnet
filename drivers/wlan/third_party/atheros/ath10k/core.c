@@ -18,6 +18,7 @@
 #include <inttypes.h>
 #include <string.h>
 
+#include <ddk/driver.h>
 #include <zircon/assert.h>
 #include <zircon/process.h>
 #include <zircon/status.h>

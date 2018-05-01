@@ -335,7 +335,6 @@ struct ath10k_sta {
 
 #define ATH10K_VDEV_SETUP_TIMEOUT (ZX_SEC(5))
 
-#if 0
 enum ath10k_beacon_state {
     ATH10K_BEACON_SCHEDULED = 0,
     ATH10K_BEACON_SENDING,
@@ -346,7 +345,6 @@ struct ath10k_vif_iter {
     uint32_t vdev_id;
     struct ath10k_vif* arvif;
 };
-#endif // NEEDS PORTING
 
 /* Copy Engine register dump, protected by ce-lock */
 struct ath10k_ce_crash_data {

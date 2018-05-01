@@ -405,8 +405,8 @@ void ath10k_htc_rx_completion_handler(struct ath10k* ar, struct ath10k_msg_buf* 
         goto out;
     }
 
-    ath10k_dbg(ar, ATH10K_DBG_HTC, "htc rx completion ep %d skb %pK\n",
-               eid, skb);
+    ath10k_dbg(ar, ATH10K_DBG_HTC, "htc rx completion ep %d msg_buf %pK\n",
+               eid, msg_buf);
     ep->ep_ops.ep_rx_complete(ar, msg_buf);
 
     /* msg_buf is now owned by the rx completion handler */
