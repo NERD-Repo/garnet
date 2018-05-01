@@ -8,13 +8,13 @@
 
 #include "garnet/bin/zxdb/client/breakpoint.h"
 #include "garnet/bin/zxdb/client/frame.h"
+#include "garnet/bin/zxdb/client/output_buffer.h"
 #include "garnet/bin/zxdb/client/process.h"
 #include "garnet/bin/zxdb/client/session.h"
 #include "garnet/bin/zxdb/client/thread.h"
 #include "garnet/bin/zxdb/console/command.h"
 #include "garnet/bin/zxdb/console/command_utils.h"
 #include "garnet/bin/zxdb/console/console.h"
-#include "garnet/bin/zxdb/console/output_buffer.h"
 #include "garnet/public/lib/fxl/logging.h"
 #include "garnet/public/lib/fxl/strings/string_printf.h"
 
@@ -30,7 +30,19 @@ ConsoleContext::ConsoleContext(Session* session) : session_(session) {
 }
 
 ConsoleContext::~ConsoleContext() {
+  // Unregister for all observers.
   session_->system().RemoveObserver(this);
+
+  for (auto& target_pair : id_to_target_) {
+    target_pair.second.target->RemoveObserver(this);
+
+    Process* process = target_pair.second.target->GetProcess();
+    if (process)
+      process->RemoveObserver(this);
+
+    for (auto& thread_pair : target_pair.second.id_to_thread)
+      thread_pair.second.thread->RemoveObserver(this);
+  }
 }
 
 int ConsoleContext::IdForTarget(const Target* target) const {

@@ -68,6 +68,9 @@ void InfraBss::Start(const wlan_mlme::StartRequest& req) {
     debugbss("    DTIM Period: %u\n", req.dtim_period);
     debugbss("    Channel: %u\n", req.channel);
 
+    // Keep track of start request which holds important configuration information.
+    req.Clone(&start_req_);
+
     // Start sending Beacon frames.
     started_at_ = zx_clock_get(ZX_CLOCK_MONOTONIC);
     bcn_sender_->Start(this, ps_cfg_, req);
@@ -188,29 +191,24 @@ zx_status_t InfraBss::HandlePsPollFrame(const ImmutableCtrlFrame<PsPollFrame>& f
     return ZX_OK;
 }
 
-void InfraBss::HandleClientStateChange(const common::MacAddr& client, RemoteClient::StateId from,
-                                       RemoteClient::StateId to) {
+zx_status_t InfraBss::HandleClientDeauth(const common::MacAddr& client) {
     debugfn();
-    // Ignore when transitioning from `uninitialized` state.
-    if (from == RemoteClient::StateId::kUninitialized) { return; }
-
     ZX_DEBUG_ASSERT(clients_.Has(client));
     if (!clients_.Has(client)) {
-        errorf("[infra-bss] [%s] state change %hhu -> %hhu reported for unknown client: %s\n",
-               bssid_.ToString().c_str(), from, to, client.ToString().c_str());
-        return;
+        errorf("[infra-bss] [%s] unknown client deauthenticated: %s\n", bssid_.ToString().c_str(),
+               client.ToString().c_str());
+        return ZX_ERR_BAD_STATE;
     }
 
-    // If client enters deauthenticated state after being authenticated, remove client.
-    if (to == RemoteClient::StateId::kDeauthenticated) {
-        debugbss("[infra-bss] [%s] removing client %s\n", bssid_.ToString().c_str(),
-                 client.ToString().c_str());
-        auto status = clients_.Remove(client);
-        if (status != ZX_OK) {
-            errorf("[infra-bss] [%s] couldn't remove client %s: %d\n", bssid_.ToString().c_str(),
-                   client.ToString().c_str(), status);
-        }
+    debugbss("[infra-bss] [%s] removing client %s\n", bssid_.ToString().c_str(),
+             client.ToString().c_str());
+    auto status = clients_.Remove(client);
+    if (status != ZX_OK) {
+        errorf("[infra-bss] [%s] couldn't remove client %s: %d\n", bssid_.ToString().c_str(),
+               client.ToString().c_str(), status);
+        return status;
     }
+    return ZX_ERR_STOP;
 }
 
 void InfraBss::HandleClientBuChange(const common::MacAddr& client, size_t bu_count) {
@@ -441,6 +439,10 @@ seq_t InfraBss::NextSeq(const MgmtFrameHeader& hdr, uint8_t aci) {
 
 seq_t InfraBss::NextSeq(const DataFrameHeader& hdr) {
     return NextSeqNo(hdr, &seq_);
+}
+
+bool InfraBss::IsRsn() const {
+    return !start_req_.rsne.is_null();
 }
 
 bool InfraBss::IsHTReady() const {

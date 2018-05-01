@@ -4,6 +4,7 @@
 
 #include <wlan/mlme/ap/beacon_sender.h>
 
+#include <wlan/common/channel.h>
 #include <wlan/common/logging.h>
 #include <wlan/mlme/ap/bss_interface.h>
 #include <wlan/mlme/ap/tim.h>
@@ -133,7 +134,7 @@ zx_status_t BeaconSender::UpdateBeacon(const PsCfg& ps_cfg) {
     status = WriteTim(&w, ps_cfg);
     if (status != ZX_OK) { return status; }
 
-    status = WriteExtendedSupportedRates(&w);
+    status = WriteCountry(&w);
     if (status != ZX_OK) { return status; }
 
     if (bss_->IsHTReady()) {
@@ -205,7 +206,7 @@ zx_status_t BeaconSender::SendProbeResponse(const ImmutableMgmtFrame<ProbeReques
     status = WriteDsssParamSet(&w);
     if (status != ZX_OK) { return status; }
 
-    status = WriteExtendedSupportedRates(&w);
+    status = WriteCountry(&w);
     if (status != ZX_OK) { return status; }
 
     if (bss_->IsHTReady()) {
@@ -251,8 +252,8 @@ zx_status_t BeaconSender::WriteSsid(ElementWriter* w) {
 }
 
 zx_status_t BeaconSender::WriteSupportedRates(ElementWriter* w) {
-    // Rates (in Mbps): 1 (basic), 2 (basic), 5.5 (basic), 6, 9, 11 (basic), 12, 18
-    std::vector<uint8_t> rates = {0x82, 0x84, 0x8b, 0x0c, 0x12, 0x96, 0x18, 0x24};
+    // Rates (in Mbps): 6(B), 9, 12(B), 18, 24(B), 36, 48, 54
+    std::vector<uint8_t> rates = {0x8c, 0x12, 0x98, 0x24, 0xb0, 0x48, 0x60, 0x6c};
     if (!w->write<SupportedRatesElement>(std::move(rates))) {
         errorf("[bcn-sender] [%s] could not write supported rates\n",
                bss_->bssid().ToString().c_str());
@@ -290,13 +291,36 @@ zx_status_t BeaconSender::WriteTim(ElementWriter* w, const PsCfg& ps_cfg) {
 
     BitmapControl bmp_ctrl;
     bmp_ctrl.set_offset(bitmap_offset);
-    if (ps_cfg.IsDtim()) {
-        bmp_ctrl.set_group_traffic_ind(ps_cfg.GetTim()->HasGroupTraffic());
-    }
+    if (ps_cfg.IsDtim()) { bmp_ctrl.set_group_traffic_ind(ps_cfg.GetTim()->HasGroupTraffic()); }
     if (!w->write<TimElement>(dtim_count, dtim_period, bmp_ctrl, pvb_, bitmap_len)) {
         errorf("[bcn-sender] [%s] could not write TIM element\n", bss_->bssid().ToString().c_str());
         return ZX_ERR_IO;
     }
+    return ZX_OK;
+}
+
+zx_status_t BeaconSender::WriteCountry(ElementWriter* w) {
+    // TODO(NET-799): Read from dot11CountryString MIB
+    const uint8_t kCountry[3] = {'U', 'S', ' '};
+
+    std::vector<SubbandTriplet> subbands;
+
+    // TODO(porce): Read from the AP's regulatory domain
+    if (wlan::common::Is2Ghz(bss_->Chan())) {
+        subbands.push_back({1, 11, 36});
+    } else {
+        subbands.push_back({36, 4, 36});
+        subbands.push_back({52, 4, 30});
+        subbands.push_back({100, 12, 30});
+        subbands.push_back({149, 5, 36});
+    }
+
+    if (!w->write<CountryElement>(kCountry, subbands)) {
+        errorf("[bcn-sender] [%s] could not write CountryElement\n",
+               bss_->bssid().ToString().c_str());
+        return ZX_ERR_IO;
+    }
+
     return ZX_OK;
 }
 

@@ -8,14 +8,14 @@
     <import remote="https://fuchsia.googlesource.com/third_party/boringssl"
             manifest="manifest"
             name="third_party/boringssl"
-            revision="0e04f56e9d3e18c29e4304c113dea0b17c9694da"/>
+            revision="3a433028eed744184980e230eae8357a660baffb"/>
   </imports>
   <projects>
     <!-- Third Party -->
     <project name="external/github.com/catapult-project/catapult"
              path="third_party/catapult"
              remote="https://chromium.googlesource.com/catapult"
-             revision="dc970d3e1f7b3da5a2849de70ff253acdb70148f"/>
+             revision="4e78157a8a474a7ee3f42e3b3b9387af35534aa2"/>
     <project name="libc-tests"
              path="third_party/libc-tests"
              remote="https://fuchsia.googlesource.com/libc-tests"
@@ -23,7 +23,7 @@
     <project name="third_party/angle"
              path="third_party/angle"
              remote="https://chromium.googlesource.com/angle/angle"
-             revision="b221486a8dfd90214d2755edd61290b3f5e8c782"/>
+             revision="ad3aaeba3e0d7f704ca84b2bac4c23e1242014c9"/>
     <project name="third_party/asio"
              path="third_party/asio"
              remote="https://fuchsia.googlesource.com/third_party/asio"
@@ -187,7 +187,7 @@
     <project name="rust-crates"
              path="third_party/rust-crates"
              remote="https://fuchsia.googlesource.com/third_party/rust-crates"
-             revision="5c3cdb8f8b12eaf69b3af424348dbba454b3a6ec"
+             revision="d9766e7552cabeed939fdecf782010b990fee2ae"
              gerrithost="https://fuchsia-review.googlesource.com"/>
     <project name="third_party/cargo-vendor"
              path="third_party/rust-mirrors/cargo-vendor"
@@ -204,6 +204,7 @@
     <project name="third_party/xi-editor"
              path="third_party/rust-mirrors/xi-editor"
              remote="https://fuchsia.googlesource.com/third_party/xi-editor"
+             revision="0d2f8a739848d77caadb8d3b854eb0daa0950963"
              gerrithost="https://fuchsia-review.googlesource.com"/>
     <project name="third_party/rust-mirrors/rand"
              path="third_party/rust-mirrors/rand"
