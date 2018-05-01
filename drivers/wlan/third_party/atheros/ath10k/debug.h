@@ -20,7 +20,7 @@
 
 #include <stdint.h>
 
-#include <ddk/debug.h>
+// #include <ddk/debug.h>
 
 enum ath10k_debug_mask {
     ATH10K_DBG_PCI          = 0x00000001,
@@ -69,10 +69,10 @@ extern unsigned int ath10k_debug_mask;
 #define ath10k_warn(fmt, ...) printf("ath10k warn: " fmt, ##__VA_ARGS__)
 #define ath10k_err(fmt, ...) printf("ath10k err: " fmt, ##__VA_ARGS__)
 
-void ath10k_debug_print_hwfw_info(struct ath10k *ar);
-void ath10k_debug_print_board_info(struct ath10k *ar);
-void ath10k_debug_print_boot_info(struct ath10k *ar);
-void ath10k_print_driver_info(struct ath10k *ar);
+void ath10k_debug_print_hwfw_info(struct ath10k* ar);
+void ath10k_debug_print_board_info(struct ath10k* ar);
+void ath10k_debug_print_boot_info(struct ath10k* ar);
+void ath10k_print_driver_info(struct ath10k* ar);
 
 #ifdef CONFIG_ATH10K_DEBUGFS
 int ath10k_debug_start(struct ath10k* ar);

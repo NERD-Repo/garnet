@@ -367,7 +367,7 @@ void ath10k_debug_fw_stats_process(struct ath10k* ar, struct sk_buff* skb) {
         list_splice_tail_init(&stats.vdevs, &ar->debug.fw_stats.vdevs);
     }
 
-    complete(&ar->debug.fw_stats_complete);
+    completion_signal(&ar->debug.fw_stats_complete);
 
 free:
     /* In some cases lists have been spliced and cleared. Free up
@@ -1668,7 +1668,7 @@ void ath10k_debug_tpc_stats_process(struct ath10k* ar,
 
     kfree(ar->debug.tpc_stats);
     ar->debug.tpc_stats = tpc_stats;
-    complete(&ar->debug.tpc_complete);
+    completion_signal(&ar->debug.tpc_complete);
 
     mtx_unlock(&ar->data_lock);
 }

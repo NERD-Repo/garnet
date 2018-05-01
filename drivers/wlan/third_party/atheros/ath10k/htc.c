@@ -89,13 +89,6 @@ zx_status_t ath10k_htc_send(struct ath10k_htc* htc,
 
     ath10k_htc_prepare_tx_buf(ep, msg_buf);
 
-#if defined TRACE_HTC_TRAFFIC
-    static size_t msg_num = 0;
-    char prefix[100];
-    sprintf(prefix, "S%zu: ", msg_num);
-    ath10k_msg_buf_dump(msg_buf, prefix);
-    msg_num++;
-#endif
 
     sg_item.transfer_id = ep->eid;
     sg_item.transfer_context = msg_buf;
@@ -347,14 +340,6 @@ void ath10k_htc_rx_completion_handler(struct ath10k* ar, struct ath10k_msg_buf* 
     msg_buf->used = sizeof(*hdr) + hdr->len;
     ZX_DEBUG_ASSERT(msg_buf->used <= msg_buf->capacity);
 
-#if defined TRACE_HTC_TRAFFIC
-    static size_t msg_num = 0;
-    char prefix[100];
-    sprintf(prefix, "R%zu: ", msg_num);
-    ath10k_msg_buf_dump(msg_buf, prefix);
-    msg_num++;
-#endif
-
     eid = hdr->eid;
 
     if (eid >= ATH10K_HTC_EP_COUNT) {
@@ -420,6 +405,8 @@ void ath10k_htc_rx_completion_handler(struct ath10k* ar, struct ath10k_msg_buf* 
         goto out;
     }
 
+    ath10k_dbg(ar, ATH10K_DBG_HTC, "htc rx completion ep %d skb %pK\n",
+               eid, skb);
     ep->ep_ops.ep_rx_complete(ar, msg_buf);
 
     /* msg_buf is now owned by the rx completion handler */
