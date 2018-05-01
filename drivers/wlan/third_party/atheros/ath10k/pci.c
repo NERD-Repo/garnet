@@ -2735,7 +2735,7 @@ static int ath10k_pci_interrupt_handler(void* arg) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     zx_status_t status;
 
-    while ((status = zx_irq_wait(ar_pci->irq_handle, NULL)) == ZX_OK) {
+    while ((status = zx_interrupt_wait(ar_pci->irq_handle, NULL)) == ZX_OK) {
         if (ath10k_pci_has_device_gone(ar)) {
             ath10k_warn("target is no longer present\n");
             break;
