@@ -19,6 +19,17 @@
 #include <stddef.h>
 #include <sys/types.h>
 
+// A sparse array provides an association between index values and payloads.
+// The operations available and their time complexity are:
+//   add: add a new element, returning the index into which it was stored, O(1)
+//   get: return the value associated with an index, O(1)
+//   remove: remove the value associated with an index, O(1)
+//   for_each: call a function for each value in the used list, O(n), where n
+//             is the number of indices in use
+
+// Note that concurrent accesses are unsupported, so the caller must provide
+// their own mutex if it's needed.
+
 struct sparse_array;
 typedef struct sparse_array* sparse_array_t;
 

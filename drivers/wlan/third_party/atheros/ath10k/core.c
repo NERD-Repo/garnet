@@ -35,12 +35,17 @@
 #include "wmi-ops.h"
 #include "linuxisms.h"
 
-// Linux module parameters
-unsigned int ath10k_debug_mask;
-static unsigned int ath10k_cryptmode_param;
-static bool uart_print;
-static bool skip_otp;
-static bool rawmode;
+// MODULE PARAMETERS
+// Debugging mask
+unsigned int ath10k_debug_mask = 0;
+// Crypto mode: 0-hardware, 1-software
+unsigned int ath10k_cryptmode_param = 0;
+// Uart target debugging
+bool uart_print = false;
+// Skip otp failure for calibration in testmode
+bool skip_otp = false;
+// Use raw 802.11 frame datapath
+bool rawmode = false;
 
 static const struct ath10k_hw_params ath10k_hw_params_list[] = {
     {
@@ -378,7 +383,7 @@ static unsigned int ath10k_core_get_fw_feature_str(char* buf, size_t buf_len,
                  ATH10K_FW_FEATURE_COUNT);
 
     if (feat >= countof(ath10k_core_fw_feature_str) ||
-        WARN_ON(!ath10k_core_fw_feature_str[feat])) {
+            WARN_ON(!ath10k_core_fw_feature_str[feat])) {
         return scnprintf(buf, buf_len, "bit%d", feat);
     }
 
@@ -1649,6 +1654,7 @@ static void ath10k_core_restart(struct work_struct* work) {
     ath10k_drain_tx(ar);
     completion_signal(&ar->scan.started);
     completion_signal(&ar->scan.completed);
+    completion_signal(&ar->scan.on_channel);
     completion_signal(&ar->offchan_tx_completed);
     completion_signal(&ar->install_key_done);
     completion_signal(&ar->vdev_setup_done);
@@ -2325,7 +2331,7 @@ err_power_down:
     return ret;
 }
 
-static int ath10k_core_register_work(void* thrd_data) {
+static zx_status_t ath10k_core_register_work(void* thrd_data) {
     struct ath10k* ar = thrd_data;
     zx_status_t status;
 
@@ -2367,9 +2373,9 @@ static int ath10k_core_register_work(void* thrd_data) {
 
     set_bit(ATH10K_FLAG_CORE_REGISTERED, ar->dev_flags);
     completion_signal(&ar->init_complete);
-    return 0;
+    return ZX_OK;
 
-#if 0
+#if 0 // NEEDS PORTING
 err_spectral_destroy:
     ath10k_spectral_destroy(ar);
 err_debug_destroy:
@@ -2484,6 +2490,7 @@ zx_status_t ath10k_core_create(struct ath10k** ar_ptr, size_t priv_size,
 
     ar->scan.started = COMPLETION_INIT;
     ar->scan.completed = COMPLETION_INIT;
+    ar->scan.on_channel = COMPLETION_INIT;
     ar->target_suspend = COMPLETION_INIT;
     ar->wow.wakeup_completed = COMPLETION_INIT;
 

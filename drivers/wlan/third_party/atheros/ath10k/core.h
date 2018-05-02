@@ -803,6 +803,7 @@ struct ath10k {
     struct {
         completion_t started;
         completion_t completed;
+        completion_t on_channel;
 #if 0 // NEEDS PORTING
         struct delayed_work timeout;
 #endif // NEEDS PORTING

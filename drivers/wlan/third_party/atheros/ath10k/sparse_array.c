@@ -16,20 +16,31 @@
 
 #include <stdlib.h>
 
+#include <zircon/assert.h>
+
 #include "sparse_array.h"
 
+// An individual element is either a part of the used list or the free list at
+// any given time, each of which is a non-circular doubly-linked list terminated
+// at the head and tail by an index value of -1.
 struct sa_elem {
     ssize_t prev_ndx;
     ssize_t next_ndx;
     void* ptr;
 };
-    
+
+// We store a sparse array as a set of elements with two lists -- one for available
+// elements and one for in use elements. "free" and "used" provide the index of the
+// head of the list of unused and used indices, respectively.
 struct sparse_array {
     size_t size;
     ssize_t free;
     ssize_t used;
     struct sa_elem elems[0];
 };
+
+#define RANGE_CHECK(sa, ndx) \
+    ZX_DEBUG_ASSERT(((ndx) >= 0) && (((size_t)(ndx)) < sa->size))
 
 void sa_init(sparse_array_t* psa, size_t size) {
     size_t total_size = sizeof(sparse_array_t) + (sizeof(struct sa_elem) * size);
@@ -57,22 +68,24 @@ void sa_free(sparse_array_t sa) {
 }
 
 ssize_t sa_add(sparse_array_t sa, void* payload) {
-    if (sa->free == -1) {
+    ssize_t elem_ndx = sa->free;
+    if (elem_ndx == -1) {
         return -1;
     }
-
-    ssize_t elem_ndx = sa->free;
+    RANGE_CHECK(sa, elem_ndx);
     struct sa_elem* elem = &sa->elems[elem_ndx];
 
     // Remove from free list
     sa->free = elem->next_ndx;
     if (sa->free != -1) {
+        RANGE_CHECK(sa, sa->free);
         sa->elems[sa->free].prev_ndx = -1;
     }
 
     // Add to used list
     elem->next_ndx = sa->used;
     if (sa->used != -1) {
+        RANGE_CHECK(sa, sa->used);
         sa->elems[sa->used].next_ndx = elem_ndx;
     }
     sa->used = elem_ndx;
@@ -81,10 +94,12 @@ ssize_t sa_add(sparse_array_t sa, void* payload) {
 }
 
 void* sa_get(sparse_array_t sa, ssize_t ndx) {
+    RANGE_CHECK(sa, ndx);
     return sa->elems[ndx].ptr;
 }
 
 void sa_remove(sparse_array_t sa, ssize_t ndx) {
+    RANGE_CHECK(sa, ndx);
     struct sa_elem* elem = &sa->elems[ndx];
     ssize_t prev_ndx = elem->prev_ndx;
     ssize_t next_ndx = elem->next_ndx;
@@ -93,10 +108,12 @@ void sa_remove(sparse_array_t sa, ssize_t ndx) {
     if (prev_ndx == -1) {
         sa->used = next_ndx;
     } else {
+        RANGE_CHECK(sa, prev_ndx);
         struct sa_elem* prev_elem = &sa->elems[prev_ndx];
         prev_elem->next_ndx = next_ndx;
     }
     if (next_ndx != -1) {
+        RANGE_CHECK(sa, next_ndx);
         struct sa_elem* next_elem = &sa->elems[next_ndx];
         next_elem->prev_ndx = prev_ndx;
     }
@@ -107,6 +124,7 @@ void sa_remove(sparse_array_t sa, ssize_t ndx) {
     elem->next_ndx = next_ndx;
     sa->free = ndx;
     if (next_ndx != -1) {
+        RANGE_CHECK(sa, next_ndx);
         struct sa_elem* next_elem = &sa->elems[next_ndx];
         next_elem->prev_ndx = ndx;
     }
@@ -115,6 +133,7 @@ void sa_remove(sparse_array_t sa, ssize_t ndx) {
 void sa_for_each(sparse_array_t sa, void (*fn)(ssize_t, void*, void*), void* ctx) {
     ssize_t next_ndx = sa->used;
     while (next_ndx != -1) {
+        RANGE_CHECK(sa, next_ndx);
         struct sa_elem* elem = &sa->elems[next_ndx];
         fn(next_ndx, elem->ptr, ctx);
         next_ndx = sa->elems[next_ndx].next_ndx;

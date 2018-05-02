@@ -228,7 +228,6 @@ static zx_status_t ath10k_htt_verify_version(struct ath10k_htt* htt) {
 }
 
 zx_status_t ath10k_htt_setup(struct ath10k_htt* htt) {
-    struct ath10k* ar = htt->ar;
     zx_status_t status;
 
     htt->target_version_received = COMPLETION_INIT;
@@ -261,8 +260,6 @@ zx_status_t ath10k_htt_setup(struct ath10k_htt* htt) {
         ath10k_warn("failed to setup rx ring: %s\n", zx_status_get_string(status));
         return status;
     }
-
-ath10k_wmi_barrier(ar);
 
     status = ath10k_htt_h2t_aggr_cfg_msg(htt,
                                          htt->max_num_ampdu,
