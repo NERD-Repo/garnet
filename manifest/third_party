@@ -15,7 +15,7 @@
     <project name="external/github.com/catapult-project/catapult"
              path="third_party/catapult"
              remote="https://chromium.googlesource.com/catapult"
-             revision="4e78157a8a474a7ee3f42e3b3b9387af35534aa2"/>
+             revision="5b642efe845940626042850327b511ee0c5042d2"/>
     <project name="libc-tests"
              path="third_party/libc-tests"
              remote="https://fuchsia.googlesource.com/libc-tests"
@@ -23,7 +23,7 @@
     <project name="third_party/angle"
              path="third_party/angle"
              remote="https://chromium.googlesource.com/angle/angle"
-             revision="41529e5e0f66fed600eea6d3fa72b48d3ff5d718"/>
+             revision="9aef36705b6653d61fee7e79dac188c279bff5ed"/>
     <project name="third_party/asio"
              path="third_party/asio"
              remote="https://fuchsia.googlesource.com/third_party/asio"
@@ -187,7 +187,7 @@
     <project name="rust-crates"
              path="third_party/rust-crates"
              remote="https://fuchsia.googlesource.com/third_party/rust-crates"
-             revision="d9766e7552cabeed939fdecf782010b990fee2ae"
+             revision="1e074b8d44a40a6fe17ff23153e71363a1f5273a"
              gerrithost="https://fuchsia-review.googlesource.com"/>
     <project name="third_party/cargo-vendor"
              path="third_party/rust-mirrors/cargo-vendor"

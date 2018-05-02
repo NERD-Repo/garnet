@@ -20,8 +20,6 @@
 
 #include <stdint.h>
 
-// #include <ddk/debug.h>
-
 enum ath10k_debug_mask {
     ATH10K_DBG_PCI          = 0x00000001,
     ATH10K_DBG_WMI          = 0x00000002,

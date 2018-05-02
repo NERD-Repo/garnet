@@ -7,6 +7,9 @@
 #include <fbl/unique_ptr.h>
 #include <wlan/common/channel.h>
 #include <wlan/common/mac_frame.h>
+#include <wlan/common/stats.h>
+#include <wlan/mlme/ap/ap_mlme.h>
+#include <wlan/mlme/client/client_mlme.h>
 #include <wlan/mlme/debug.h>
 #include <wlan/mlme/device_interface.h>
 #include <wlan/mlme/frame_handler.h>
@@ -16,7 +19,9 @@
 #include <zircon/types.h>
 
 #include <fuchsia/cpp/wlan_mlme.h>
+#include <fuchsia/c/wlan_stats.h>
 
+#include <atomic>
 #include <cinttypes>
 #include <cstring>
 #include <sstream>
@@ -33,7 +38,7 @@ template <unsigned int N, typename T> T align(T t) {
 }  // namespace
 
 Dispatcher::Dispatcher(DeviceInterface* device, fbl::unique_ptr<Mlme> mlme)
-  : device_(device), mlme_(std::move(mlme)) {
+    : device_(device), mlme_(std::move(mlme)) {
     debugfn();
     ZX_ASSERT(mlme_ != nullptr);
 }
@@ -51,6 +56,15 @@ zx_status_t Dispatcher::HandlePacket(const Packet* packet) {
     ZX_DEBUG_ASSERT(packet->peer() != Packet::Peer::kUnknown);
 
     finspect("Packet: %s\n", debug::Describe(*packet).c_str());
+
+    WLAN_STATS_INC(any_packet.in);
+
+    // If there is no active MLME, block all packets but service ones.
+    // MLME-JOIN.request and MLME-START.request implicitly select a mode and initialize the
+    // MLME. DEVICE_QUERY.request is used to obtain device capabilities.
+
+    auto service_msg = (packet->peer() == Packet::Peer::kService);
+    if (mlme_ == nullptr && !service_msg) { return ZX_OK; }
 
     zx_status_t status = ZX_OK;
     switch (packet->peer()) {
@@ -73,12 +87,15 @@ zx_status_t Dispatcher::HandlePacket(const Packet* packet) {
 
         switch (fc->type()) {
         case FrameType::kManagement:
+            WLAN_STATS_INC(mgmt_frame.in);
             status = HandleMgmtPacket(packet);
             break;
         case FrameType::kControl:
+            WLAN_STATS_INC(ctrl_frame.in);
             status = HandleCtrlPacket(packet);
             break;
         case FrameType::kData:
+            WLAN_STATS_INC(data_frame.in);
             status = HandleDataPacket(packet);
             break;
         default:
@@ -155,7 +172,9 @@ zx_status_t Dispatcher::HandleDataPacket(const Packet* packet) {
     ZX_DEBUG_ASSERT(rxinfo);
 
     switch (hdr->fc.subtype()) {
-    case DataSubtype::kNull: {
+    case DataSubtype::kNull:
+        // Fall-through
+    case DataSubtype::kQosnull: {
         auto frame = ImmutableDataFrame<NilHeader>(hdr, nullptr, 0);
         return mlme_->HandleFrame(frame, *rxinfo);
     }
@@ -432,7 +451,7 @@ zx_status_t Dispatcher::HandleMlmeMethod(const Packet* packet, wlan_mlme::Method
 
 template <>
 zx_status_t Dispatcher::HandleMlmeMethod<wlan_mlme::DeviceQueryRequest>(const Packet* unused_packet,
-                                                             wlan_mlme::Method method) {
+                                                                        wlan_mlme::Method method) {
     debugfn();
     ZX_DEBUG_ASSERT(method == wlan_mlme::Method::DEVICE_QUERY_request);
 
@@ -477,7 +496,7 @@ zx_status_t Dispatcher::HandleMlmeMethod<wlan_mlme::DeviceQueryRequest>(const Pa
     // fidl2 doesn't have a way to get the serialized size yet. 4096 bytes should be enough for
     // everyone.
     size_t buf_len = 4096;
-    //size_t buf_len = sizeof(fidl_message_header_t) + resp->GetSerializedSize();
+    // size_t buf_len = sizeof(fidl_message_header_t) + resp->GetSerializedSize();
     fbl::unique_ptr<Buffer> buffer = GetBuffer(buf_len);
     if (buffer == nullptr) { return ZX_ERR_NO_RESOURCES; }
 

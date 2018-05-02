@@ -47,6 +47,7 @@ driver_module("ath10k_driver") {
     "wmi-ops.h",
     "wmi-tlv.c",
     "wmi-tlv.h",
+    "wow.h",
   ]
 
   deps = [

@@ -2541,8 +2541,6 @@ void ath10k_htt_rx_pktlog_completion_handler(struct ath10k* ar,
     trace_ath10k_htt_pktlog(ar, skb->data, skb->len);
     dev_kfree_skb_any(skb);
 }
-EXPORT_SYMBOL(ath10k_htt_rx_pktlog_completion_handler);
-#endif
 
 bool ath10k_htt_txrx_compl_task(struct ath10k* ar) {
     struct ath10k_htt* htt = &ar->htt;
