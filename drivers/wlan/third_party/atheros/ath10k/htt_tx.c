@@ -170,7 +170,9 @@ zx_status_t ath10k_htt_tx_inc_pending(struct ath10k_htt* htt) {
     ASSERT_MTX_HELD(&htt->tx_lock);
 
     if (htt->num_pending_tx >= htt->max_num_pending_tx) {
-        return ZX_ERR_SHOULD_WAIT;
+        // Don't return ZX_ERR_SHOULD_WAIT here, that has a special meaning to the
+        // queue_tx caller.
+        return ZX_ERR_NO_RESOURCES;
     }
 
     htt->num_pending_tx++;

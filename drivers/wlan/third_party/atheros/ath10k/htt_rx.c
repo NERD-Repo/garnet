@@ -61,7 +61,7 @@ ath10k_htt_rx_find_msg_buf_paddr(struct ath10k* ar, uint32_t paddr) {
         }
     }
 
-    WARN_ON_ONCE(1);
+    ath10k_warn("Unable to find buffer corresponding to phys addr %x\n", paddr);
     return NULL;
 }
 

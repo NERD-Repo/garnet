@@ -62,7 +62,7 @@ void sa_init(sparse_array_t* psa, size_t size) {
         sa->elems[ndx + 1].prev_ndx = ndx;
         sa->elems[ndx].next_ndx = ndx + 1;
     }
-    sa->elems[size].next_ndx = -1;
+    sa->elems[size - 1].next_ndx = -1;
 
     // Initialize free list to point to a list of all elements
     sa->free = 0;
