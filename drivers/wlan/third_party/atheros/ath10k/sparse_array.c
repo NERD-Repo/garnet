@@ -43,6 +43,7 @@ struct sparse_array {
     ZX_DEBUG_ASSERT(((ndx) >= 0) && (((size_t)(ndx)) < sa->size))
 
 void sa_init(sparse_array_t* psa, size_t size) {
+    ZX_DEBUG_ASSERT(size > 0);
     size_t total_size = sizeof(sparse_array_t) + (sizeof(struct sa_elem) * size);
     *psa = calloc(1, total_size);
     if (*psa == NULL) {
@@ -56,10 +57,14 @@ void sa_init(sparse_array_t* psa, size_t size) {
     sa->used = -1;
 
     // Add all elements to the free list
-    for (ssize_t ndx = 0; ndx < (ssize_t)size; ndx++) {
-        sa->elems[ndx].prev_ndx = ndx - 1;
+    sa->elems[0].prev_ndx = -1;
+    for (ssize_t ndx = 0; ndx < ((ssize_t)size - 1); ndx++) {
+        sa->elems[ndx + 1].prev_ndx = ndx;
         sa->elems[ndx].next_ndx = ndx + 1;
     }
+    sa->elems[size].next_ndx = -1;
+
+    // Initialize free list to point to a list of all elements
     sa->free = 0;
 }
 
