@@ -892,8 +892,6 @@ struct ath10k {
 
     struct ath10k_msg_buf* svc_rdy_buf;
 
-    struct ath10k_msg_buf_state msg_buf_state;
-
 #if 0 // NEEDS PORTING
     struct work_struct offchan_tx_work;
     struct sk_buff_head offchan_tx_queue;

@@ -1078,6 +1078,7 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
                            htt->ar->htc.endpoint[htt->eid].ul_pipe_id,
                            sg_items, countof(sg_items));
     if (ret != ZX_OK) {
+        ath10k_warn("failed to transmit msdu %d\n", msdu_id);
         goto err_free_msdu_id;
     }
 

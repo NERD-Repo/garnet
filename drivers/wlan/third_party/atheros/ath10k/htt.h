@@ -1848,10 +1848,10 @@ zx_status_t ath10k_htt_tx_inc_pending(struct ath10k_htt* htt);
 void ath10k_htt_tx_mgmt_dec_pending(struct ath10k_htt* htt);
 zx_status_t ath10k_htt_tx_mgmt_inc_pending(struct ath10k_htt* htt, bool is_mgmt, bool is_presp);
 
-#if 0 // TODO
-int ath10k_htt_tx_alloc_msdu_id(struct ath10k_htt* htt, struct sk_buff* skb);
+zx_status_t ath10k_htt_tx_alloc_msdu_id(struct ath10k_htt* htt,
+                                        struct ath10k_msg_buf* buf,
+                                        ssize_t* id_ptr);
 void ath10k_htt_tx_free_msdu_id(struct ath10k_htt* htt, uint16_t msdu_id);
-#endif
 zx_status_t ath10k_htt_mgmt_tx(struct ath10k_htt* htt, struct ath10k_msg_buf* tx_buf);
 zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
                           enum ath10k_hw_txrx_mode txmode,

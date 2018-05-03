@@ -54,33 +54,35 @@ out:
 #endif // NEEDS PORTING
 
 zx_status_t ath10k_txrx_tx_unref(struct ath10k_htt* htt, const struct htt_tx_done* tx_done) {
-#if 0 // NEEDS PORTING
     struct ath10k* ar = htt->ar;
+#if 0 // NEEDS PORTING
     struct device* dev = ar->dev;
     struct ieee80211_tx_info* info;
     struct ieee80211_txq* txq;
     struct ath10k_skb_cb* skb_cb;
     struct ath10k_txq* artxq;
-    struct sk_buff* msdu;
+#endif
+    struct ath10k_msg_buf* msdu;
 
     ath10k_dbg(ar, ATH10K_DBG_HTT,
                "htt tx completion msdu_id %u status %d\n",
-               tx_don:->msdu_id, tx_done->status);
+               tx_done->msdu_id, tx_done->status);
 
     if (tx_done->msdu_id >= htt->max_num_pending_tx) {
         ath10k_warn("warning: msdu_id %d too big, ignoring\n",
                     tx_done->msdu_id);
-        return -EINVAL;
+        return ZX_ERR_INVALID_ARGS;
     }
 
     mtx_lock(&htt->tx_lock);
     msdu = sa_get(htt->pending_tx, tx_done->msdu_id);
-    if (!msdu) {
+    if (msdu == NULL) {
         ath10k_warn("received tx completion for invalid msdu_id: %d\n",
                     tx_done->msdu_id);
         mtx_unlock(&htt->tx_lock);
-        return -ENOENT;
+        return ZX_ERR_IO;
     }
+#if 0
 
     skb_cb = ATH10K_SKB_CB(msdu);
     txq = skb_cb->txq;
@@ -89,21 +91,24 @@ zx_status_t ath10k_txrx_tx_unref(struct ath10k_htt* htt, const struct htt_tx_don
         artxq = (void*)txq->drv_priv;
         artxq->num_fw_queued--;
     }
+#endif
 
     ath10k_htt_tx_free_msdu_id(htt, tx_done->msdu_id);
     ath10k_htt_tx_dec_pending(htt);
+#if 0
     if (htt->num_pending_tx == 0) {
         wake_up(&htt->empty_tx_wq);
     }
+#endif
     mtx_unlock(&htt->tx_lock);
 
+#if 0
     dma_unmap_single(dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
 
     ath10k_report_offchan_tx(htt->ar, msdu);
 
     info = IEEE80211_SKB_CB(msdu);
     memset(&info->status, 0, sizeof(info->status));
-    trace_ath10k_txrx_tx_unref(ar, tx_done->msdu_id);
 
     if (tx_done->status == HTT_TX_COMPL_STATE_DISCARD) {
         ieee80211_free_txskb(htt->ar->hw, msdu);
@@ -127,6 +132,7 @@ zx_status_t ath10k_txrx_tx_unref(struct ath10k_htt* htt, const struct htt_tx_don
     /* we do not own the msdu anymore */
 
 #endif // NEEDS PORTING
+    ath10k_msg_buf_free(msdu);
     return ZX_OK;
 }
 

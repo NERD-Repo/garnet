@@ -61,7 +61,7 @@ enum ath10k_tx_flags {
 };
 
 struct ath10k_msg_buf {
-    struct ath10k_msg_buf_state* state;
+    struct ath10k* ar;
     enum ath10k_msg_type type;
     list_node_t listnode;
     io_buffer_t buf;
@@ -79,14 +79,6 @@ struct ath10k_msg_buf {
             wlan_tx_info_t tx_info;
         } tx;
     };
-};
-
-struct ath10k_msg_buf_state {
-    struct ath10k* ar;
-    mtx_t lock;
-
-    // Lists of previously-allocated buffers of each message type
-    list_node_t buf_pool[ATH10K_MSG_TYPE_COUNT];
 };
 
 // Initialize the module

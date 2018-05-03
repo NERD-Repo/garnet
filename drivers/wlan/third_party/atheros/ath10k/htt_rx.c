@@ -1572,12 +1572,12 @@ static void ath10k_htt_rx_proc_rx_ind(struct ath10k_htt* htt,
 
 static void ath10k_htt_rx_tx_compl_ind(struct ath10k* ar,
                                        struct ath10k_msg_buf* buf) {
-//    struct ath10k_htt* htt = &ar->htt;
-    struct htt_resp* resp = ath10k_msg_buf_get_payload(buf);
+    struct ath10k_htt* htt = &ar->htt;
+    struct htt_resp* resp = ath10k_msg_buf_get_header(buf, ATH10K_MSG_TYPE_HTT_RESP);
     struct htt_tx_done tx_done = {};
     int status = MS(resp->data_tx_completion.flags, HTT_DATA_TX_STATUS);
-//    uint16_t msdu_id;
-//    int i;
+    uint16_t msdu_id;
+    int i;
 
     switch (status) {
     case HTT_DATA_TX_STATUS_NO_ACK:
@@ -1600,26 +1600,11 @@ static void ath10k_htt_rx_tx_compl_ind(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_HTT, "htt tx completion num_msdus %d\n",
                resp->data_tx_completion.num_msdus);
 
-#if 0
     for (i = 0; i < resp->data_tx_completion.num_msdus; i++) {
         msdu_id = resp->data_tx_completion.msdus[i];
         tx_done.msdu_id = msdu_id;
-
-        /* kfifo_put: In practice firmware shouldn't fire off per-CE
-         * interrupt and main interrupt (MSI/-X range case) for the same
-         * HTC service so it should be safe to use kfifo_put w/o lock.
-         *
-         * From kfifo_put() documentation:
-         *  Note that with only one concurrent reader and one concurrent
-         *  writer, you don't need extra locking to use these macro.
-         */
-        if (!kfifo_put(&htt->txdone_fifo, tx_done)) {
-            ath10k_warn("txdone fifo overrun, msdu_id %d status %d\n",
-                        tx_done.msdu_id, tx_done.status);
-            ath10k_txrx_tx_unref(htt, &tx_done);
-        }
+        ath10k_txrx_tx_unref(htt, &tx_done);
     }
-#endif
 }
 
 #if 0
@@ -1824,8 +1809,9 @@ static zx_status_t ath10k_htt_rx_in_ord_ind(struct ath10k* ar,
         struct htt_rx_desc* rx_desc = ath10k_msg_buf_get_header(msdu, ATH10K_MSG_TYPE_HTT_RX);
         wlan_rx_info_t rx_info = {};
         memcpy(&rx_info.chan, &ar->rx_channel, sizeof(wlan_channel_t));
-        // TODO fill in rx_info from rx_desc
+        // TODO: fill in rx_info from rx_desc
         ar->wlanmac.ifc->recv(ar->wlanmac.cookie, 0, rx_desc->msdu_payload, msdu_len, &rx_info);
+        ath10k_msg_buf_free(msdu);
     }
 
     return ZX_OK;
@@ -2395,11 +2381,11 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
     }
     case HTT_T2H_MSG_TYPE_MGMT_TX_COMPLETION: {
         struct htt_tx_done tx_done = {};
-        int status = resp->mgmt_tx_completion.status;
+        int compl_status = resp->mgmt_tx_completion.status;
 
         tx_done.msdu_id = resp->mgmt_tx_completion.desc_id;
 
-        switch (status) {
+        switch (compl_status) {
         case HTT_MGMT_TX_STATUS_OK:
             tx_done.status = HTT_TX_COMPL_STATE_ACK;
             break;
@@ -2411,8 +2397,8 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
             break;
         }
 
-        status = ath10k_txrx_tx_unref(htt, &tx_done);
-        if (!status) {
+        zx_status_t status = ath10k_txrx_tx_unref(htt, &tx_done);
+        if (status != ZX_OK) {
             mtx_lock(&htt->tx_lock);
             ath10k_htt_tx_mgmt_dec_pending(htt);
             mtx_unlock(&htt->tx_lock);

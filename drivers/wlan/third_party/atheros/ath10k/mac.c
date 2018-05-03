@@ -3105,7 +3105,7 @@ invalid_data:
 
 int ath10k_mac_bss_assoc(void* thrd_data) {
     struct ath10k_msg_buf* buf = thrd_data;
-    struct ath10k* ar = buf->state->ar;
+    struct ath10k* ar = buf->ar;
     mtx_lock(&ar->conf_mutex);
     struct ath10k_vif* arvif = &ar->arvif;
     struct wmi_peer_assoc_complete_arg assoc_arg;
