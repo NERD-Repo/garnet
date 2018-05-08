@@ -1275,11 +1275,8 @@ static void ath10k_pci_htt_htc_rx_cb(struct ath10k_ce_pipe* ce_state) {
  * Only 10.4 firmware uses separate CE to transfer pktlog data.
  */
 static void ath10k_pci_pktlog_rx_cb(struct ath10k_ce_pipe* ce_state) {
-    ZX_DEBUG_ASSERT_MSG(0, "ath10k_pci_pktlog_rx_cb not implemented");
-#if 0 // TODO
     ath10k_pci_process_rx_cb(ce_state,
                              ath10k_htt_rx_pktlog_completion_handler);
-#endif // TODO
 }
 
 /* Called by lower (CE) layer when a send to HTT Target completes. */

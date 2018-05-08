@@ -153,17 +153,17 @@ void ath10k_htt_tx_txq_update(struct ieee80211_hw* hw,
     __ath10k_htt_tx_txq_sync(ar);
     mtx_unlock(&ar->htt.tx_lock);
 }
-#endif
+#endif // NEEDS PORTING
 
 void ath10k_htt_tx_dec_pending(struct ath10k_htt* htt) {
     ASSERT_MTX_HELD(&htt->tx_lock);
 
     htt->num_pending_tx--;
-#if 0
+#if 0 // NEEDS PORTING
     if (htt->num_pending_tx == htt->max_num_pending_tx - 1) {
         ath10k_mac_tx_unlock(htt->ar, ATH10K_TX_PAUSE_Q_FULL);
     }
-#endif
+#endif // NEEDS PORTING
 }
 
 zx_status_t ath10k_htt_tx_inc_pending(struct ath10k_htt* htt) {
@@ -176,11 +176,11 @@ zx_status_t ath10k_htt_tx_inc_pending(struct ath10k_htt* htt) {
     }
 
     htt->num_pending_tx++;
-#if 0
+#if 0 // NEEDS PORTING
     if (htt->num_pending_tx == htt->max_num_pending_tx) {
         ath10k_mac_tx_lock(htt->ar, ATH10K_TX_PAUSE_Q_FULL);
     }
-#endif
+#endif // NEEDS PORTING
 
     return ZX_OK;
 }
@@ -314,7 +314,7 @@ static zx_status_t ath10k_htt_tx_alloc_cont_frag_desc(struct ath10k_htt* htt) {
 static void ath10k_htt_tx_free_txq(struct ath10k_htt* htt) {
     struct ath10k* ar = htt->ar;
 
-    if (!(test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->running_fw->fw_file.fw_features))) {
+    if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->running_fw->fw_file.fw_features)) {
         return;
     }
 
@@ -399,9 +399,9 @@ static zx_status_t ath10k_htt_tx_alloc_buf(struct ath10k_htt* htt) {
 
     return ZX_OK;
 
-#if 0
+#if 0 // NEEDS PORTING
 free_txq:
-#endif
+#endif // NEEDS PORTING
     ath10k_htt_tx_free_txq(htt);
 
 free_frag_desc:
@@ -553,7 +553,7 @@ int ath10k_htt_h2t_stats_req(struct ath10k_htt* htt, uint8_t mask, uint64_t cook
 
     return 0;
 }
-#endif
+#endif // NEEDS PORTING
 
 zx_status_t ath10k_htt_send_frag_desc_bank_cfg(struct ath10k_htt* htt) {
     struct ath10k* ar = htt->ar;
@@ -743,7 +743,7 @@ zx_status_t ath10k_htt_h2t_aggr_cfg_msg(struct ath10k_htt* htt,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 int ath10k_htt_tx_fetch_resp(struct ath10k* ar,
                              uint32_t token,
                              uint16_t fetch_seq_num,
@@ -792,16 +792,16 @@ err_free_skb:
 
     return ret;
 }
-#endif
+#endif // NEEDS PORTING
 
 static uint8_t ath10k_htt_tx_get_vdev_id(struct ath10k* ar) {
     struct ath10k_vif* arvif = &ar->arvif;
 
-#if 0
+#if 0 // NEEDS PORTING
     if (info->flags & IEEE80211_TX_CTL_TX_OFFCHAN) {
         return ar->scan.vdev_id;
     } else
-#endif
+#endif // NEEDS PORTING
     return arvif->vdev_id;
 }
 
@@ -819,7 +819,7 @@ static uint8_t ath10k_htt_tx_get_tid(struct ath10k_msg_buf* tx_buf, bool is_eth)
 
 zx_status_t ath10k_htt_mgmt_tx(struct ath10k_htt* htt, struct ath10k_msg_buf* tx_buf) {
 ath10k_err("ath10k_htt_mgmt_tx unimplemented - dropping tx packet!\n");
-#if 0
+#if 0 // NEEDS PORTING
     struct ath10k* ar = htt->ar;
     struct device* dev = ar->dev;
     struct sk_buff* txdesc = NULL;
@@ -893,18 +893,13 @@ err_free_msdu_id:
     mtx_unlock(&htt->tx_lock);
 err:
     return res;
-#endif
+#endif // NEEDS PORTING
 return ZX_ERR_NOT_SUPPORTED;
 }
 
 zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
                           enum ath10k_hw_txrx_mode txmode,
                           struct ath10k_msg_buf* msdu) {
-#if 0
-    struct device* dev = ar->dev;
-    struct ieee80211_hdr* hdr = (struct ieee80211_hdr*)msdu->data;
-    struct ieee80211_tx_info* info = IEEE80211_SKB_CB(msdu);
-#endif
     struct ath10k* ar = htt->ar;
     struct ath10k_hif_sg_item sg_items[2];
     struct htt_data_tx_desc_frag* frags;
@@ -948,11 +943,11 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
         msdu->used += IEEE80211_CCMP_MIC_LEN;
     }
 
-#if 0
+#if 0 // NEEDS PORTING
     if (unlikely(info->flags & IEEE80211_TX_CTL_TX_OFFCHAN)) {
         freq = ar->scan.roc_freq;
     }
-#endif
+#endif // NEEDS PORTING
 
     switch (txmode) {
     case ATH10K_HW_TXRX_RAW:
@@ -1021,7 +1016,7 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
 
     flags1 |= SM((uint16_t)vdev_id, HTT_DATA_TX_DESC_FLAGS1_VDEV_ID);
     flags1 |= SM((uint16_t)tid, HTT_DATA_TX_DESC_FLAGS1_EXT_TID);
-#if 0
+#if 0 // NEEDS PORTING
     if (msdu->ip_summed == CHECKSUM_PARTIAL &&
             !test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags)) {
         flags1 |= HTT_DATA_TX_DESC_FLAGS1_CKSUM_L3_OFFLOAD;
@@ -1030,7 +1025,7 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
             ext_desc->flags |= HTT_MSDU_CHECKSUM_ENABLE;
         }
     }
-#endif
+#endif // NEEDS PORTING
 
     /* Prevent firmware from sending up tx inspection requests. There's
      * nothing ath10k can do with frames requested for inspection so force

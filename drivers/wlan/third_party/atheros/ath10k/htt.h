@@ -1644,13 +1644,13 @@ struct ath10k_htt {
             unsigned int msdu_payld;
         } sw_rd_idx;
 
-#if 0 // TODO
+#if 0 // NEEDS PORTING
         /*
          * refill_retry_timer - timer triggered when the ring is
          * not refilled to the level expected
          */
         struct timer_list refill_retry_timer;
-#endif
+#endif // NEEDS PORTING
 
         /* Protects access to all rx ring buffer state variables */
         mtx_t lock;
@@ -1664,12 +1664,6 @@ struct ath10k_htt {
     int num_pending_tx;
     int num_pending_mgmt_tx;
     sparse_array_t pending_tx;
-#if 0 // TODO
-    wait_queue_head_t empty_tx_wq;
-
-    /* FIFO for storing tx done status {ack, no-ack, discard} and msdu id */
-    DECLARE_KFIFO_PTR(txdone_fifo, struct htt_tx_done);
-#endif // TODO
 
     /* set if host-fw communication goes haywire
      * used to avoid further failures
@@ -1683,11 +1677,6 @@ struct ath10k_htt {
     list_node_t rx_compl_q;
     list_node_t rx_in_ord_compl_q;
     list_node_t tx_fetch_ind_q;
-
-#if 0
-    /* rx_status template */
-    struct ieee80211_rx_status rx_status;
-#endif
 
     struct {
         io_buffer_t handle;
@@ -1821,28 +1810,23 @@ void ath10k_htt_htc_tx_complete(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
 void ath10k_htt_htc_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_buf);
 bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_buf);
 zx_status_t ath10k_htt_h2t_ver_req_msg(struct ath10k_htt* htt);
-#if 0 // TODO
+#if 0 // NEEDS PORTING
 int ath10k_htt_h2t_stats_req(struct ath10k_htt* htt, uint8_t mask, uint64_t cookie);
-#endif // TODO
+#endif // NEEDS PORTING
 zx_status_t ath10k_htt_send_frag_desc_bank_cfg(struct ath10k_htt* htt);
 zx_status_t ath10k_htt_send_rx_ring_cfg_ll(struct ath10k_htt* htt);
 zx_status_t ath10k_htt_h2t_aggr_cfg_msg(struct ath10k_htt* htt,
                                         uint8_t max_subfrms_ampdu,
                                         uint8_t max_subfrms_amsdu);
 void ath10k_htt_hif_tx_complete(struct ath10k* ar, struct ath10k_msg_buf* msg_buf);
-#if 0 // TODO
+#if 0 // NEEDS PORTING
 int ath10k_htt_tx_fetch_resp(struct ath10k* ar,
                              uint32_t token,
                              uint16_t fetch_seq_num,
                              struct htt_tx_fetch_record* records,
                              size_t num_records);
 
-void ath10k_htt_tx_txq_update(struct ieee80211_hw* hw,
-                              struct ieee80211_txq* txq);
-void ath10k_htt_tx_txq_recalc(struct ieee80211_hw* hw,
-                              struct ieee80211_txq* txq);
-void ath10k_htt_tx_txq_sync(struct ath10k* ar);
-#endif // TODO
+#endif // NEEDS PORTING
 void ath10k_htt_tx_dec_pending(struct ath10k_htt* htt);
 zx_status_t ath10k_htt_tx_inc_pending(struct ath10k_htt* htt);
 void ath10k_htt_tx_mgmt_dec_pending(struct ath10k_htt* htt);
@@ -1856,10 +1840,7 @@ zx_status_t ath10k_htt_mgmt_tx(struct ath10k_htt* htt, struct ath10k_msg_buf* tx
 zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
                           enum ath10k_hw_txrx_mode txmode,
                           struct ath10k_msg_buf* msdu);
-#if 0
-void ath10k_htt_rx_pktlog_completion_handler(struct ath10k* ar,
-        struct sk_buff* skb);
-#endif // TODO
+void ath10k_htt_rx_pktlog_completion_handler(struct ath10k* ar, struct ath10k_msg_buf* buf);
 bool ath10k_htt_txrx_compl_task(struct ath10k* ar);
 
 #endif

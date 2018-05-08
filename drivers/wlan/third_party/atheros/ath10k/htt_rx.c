@@ -28,9 +28,6 @@
 #include "linuxisms.h"
 #include "txrx.h"
 #include "debug.h"
-#if 0 // TODO
-#include "trace.h"
-#endif // TODO
 #include "mac.h"
 
 #define HTT_RX_RING_SIZE HTT_RX_RING_SIZE_MAX
@@ -41,9 +38,9 @@
 
 #define HTT_RX_RING_REFILL_RESCHED_MS 5
 
-#if 0 // TODO
+#if 0 // NEEDS PORTING
 static int ath10k_htt_rx_get_csum_state(struct sk_buff* skb);
-#endif // TODO
+#endif // NEEDS PORTING
 
 static_assert(is_power_of_2(HTT_RX_BUF_HTABLE_SZ),
               "Invalid hash table size, must be power of 2");
@@ -153,6 +150,22 @@ static zx_status_t ath10k_htt_rx_ring_fill_n(struct ath10k_htt* htt, int num) {
 static void ath10k_htt_rx_msdu_buff_replenish(struct ath10k_htt* htt) {
     int num_deficit;
 
+    /* Refilling the whole RX ring buffer proves to be a bad idea. The
+     * reason is RX may take up significant amount of CPU cycles and starve
+     * other tasks, e.g. TX on an ethernet device while acting as a bridge
+     * with ath10k wlan interface. This ended up with very poor performance
+     * once CPU the host system was overwhelmed with RX on ath10k.
+     *
+     * By limiting the number of refills the replenishing occurs
+     * progressively. This in turns makes use of the fact tasklets are
+     * processed in FIFO order. This means actual RX processing can starve
+     * out refilling. If there's not enough buffers on RX ring FW will not
+     * report RX until it is refilled with enough buffers. This
+     * automatically balances load wrt to CPU power.
+     *
+     * This probably comes at a cost of lower maximum throughput but
+     * improves the average and stability.
+     */
     mtx_lock(&htt->rx_ring.lock);
     num_deficit = htt->rx_ring.fill_level - htt->rx_ring.fill_cnt;
     ath10k_htt_rx_ring_fill_n(htt, num_deficit);
@@ -171,6 +184,7 @@ zx_status_t ath10k_htt_rx_ring_refill(struct ath10k* ar) {
     if (ret != ZX_OK) {
         ath10k_htt_rx_ring_free(htt);
     }
+
     return ret;
 }
 
@@ -325,7 +339,7 @@ static int ath10k_htt_rx_amsdu_pop(struct ath10k_htt* htt,
 
     return msdu_chaining;
 }
-#endif
+#endif // NEEDS PORTING
 
 static struct ath10k_msg_buf* ath10k_htt_rx_pop_paddr(struct ath10k_htt* htt, uint32_t paddr) {
     struct ath10k* ar = htt->ar;
@@ -341,11 +355,11 @@ static struct ath10k_msg_buf* ath10k_htt_rx_pop_paddr(struct ath10k_htt* htt, ui
     list_delete(&msdu->listnode);
     htt->rx_ring.fill_cnt--;
 
-#if 0
+#if 0 // NEEDS PORTING
     dma_unmap_single(htt->ar->dev, rxcb->paddr,
                      msdu->len + skb_tailroom(msdu),
                      DMA_FROM_DEVICE);
-#endif
+#endif // NEEDS PORTING
 
     ath10k_dbg_dump(ar, ATH10K_DBG_HTT_DUMP, NULL, "htt rx netbuf pop: ",
                     msdu->vaddr, msdu->used);
@@ -353,7 +367,7 @@ static struct ath10k_msg_buf* ath10k_htt_rx_pop_paddr(struct ath10k_htt* htt, ui
     return msdu;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static zx_status_t ath10k_htt_rx_pop_paddr_list(struct ath10k_htt* htt,
                                                 struct htt_rx_in_ord_ind* ev,
                                                 list_node_t* list) {
@@ -400,7 +414,7 @@ static zx_status_t ath10k_htt_rx_pop_paddr_list(struct ath10k_htt* htt,
 
     return ZX_OK;
 }
-#endif
+#endif // NEEDS PORTING
 
 zx_status_t ath10k_htt_rx_alloc(struct ath10k_htt* htt) {
     struct ath10k* ar = htt->ar;
@@ -1498,11 +1512,11 @@ static void ath10k_htt_rx_h_filter(struct ath10k* ar,
 
     __skb_queue_purge(amsdu);
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t ath10k_htt_rx_handle_amsdu(struct ath10k_htt* htt) {
     ath10k_err("ath10k_htt_rx_handle_amsdu not implemented -- dropping rx packets\n");
-#if 0
+#if 0 // NEEDS PORTING
     struct ath10k* ar = htt->ar;
     struct ieee80211_rx_status* rx_status = &htt->rx_status;
     struct sk_buff_head amsdu;
@@ -1541,11 +1555,11 @@ static zx_status_t ath10k_htt_rx_handle_amsdu(struct ath10k_htt* htt) {
     ath10k_htt_rx_h_deliver(ar, &amsdu, rx_status);
 
     return num_msdus;
-#endif
+#endif // NEEDS PORTING
     return ZX_ERR_NOT_SUPPORTED;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static void ath10k_htt_rx_proc_rx_ind(struct ath10k_htt* htt,
                                       struct htt_rx_indication* rx) {
     struct ath10k* ar = htt->ar;
@@ -1568,7 +1582,7 @@ static void ath10k_htt_rx_proc_rx_ind(struct ath10k_htt* htt,
 
     atomic_fetch_add(&htt->num_mpdus_ready, mpdu_count);
 }
-#endif
+#endif // NEEDS PORTING
 
 static void ath10k_htt_rx_tx_compl_ind(struct ath10k* ar,
                                        struct ath10k_msg_buf* buf) {
@@ -1607,7 +1621,7 @@ static void ath10k_htt_rx_tx_compl_ind(struct ath10k* ar,
     }
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static void ath10k_htt_rx_addba(struct ath10k* ar, struct htt_resp* resp) {
     struct htt_rx_addba* ev = &resp->rx_addba;
     struct ath10k_peer* peer;
@@ -1790,7 +1804,7 @@ static int ath10k_htt_rx_h_rx_offload(struct ath10k* ar,
     }
     return num_msdu;
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t ath10k_htt_rx_in_ord_ind(struct ath10k* ar,
                                             struct ath10k_msg_buf* buf) {
@@ -1817,7 +1831,7 @@ static zx_status_t ath10k_htt_rx_in_ord_ind(struct ath10k* ar,
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static zx_status_t ath10k_htt_rx_in_ord_ind(struct ath10k* ar,
                                             struct ath10k_msg_buf* buf,
                                             int* num_msdus) {
@@ -2181,7 +2195,7 @@ static void ath10k_htt_rx_tx_mode_switch_ind(struct ath10k* ar,
 
     ath10k_mac_tx_push_pending(ar);
 }
-#endif // TODO
+#endif // NEEDS PORTING
 
 void ath10k_htt_htc_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_buf) {
     bool release;
@@ -2194,7 +2208,7 @@ void ath10k_htt_htc_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* ms
     }
 }
 
-#if 0 // TODO
+#if 0 // NEEDS PORTING
 static inline bool is_valid_legacy_rate(uint8_t rate) {
     static const uint8_t legacy_rates[] = {1, 2, 5, 11, 6, 9, 12,
                                            18, 24, 36, 48, 54
@@ -2325,7 +2339,7 @@ out:
     mtx_unlock(&ar->data_lock);
     rcu_read_unlock();
 }
-#endif // TODO
+#endif // NEEDS PORTING
 
 bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_buf) {
     struct ath10k_htt* htt = &ar->htt;
@@ -2355,28 +2369,30 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
     }
     case HTT_T2H_MSG_TYPE_RX_IND:
         ath10k_err("HTT_T2H_MSG_TYPE_RX_IND unimplemented\n");
-//        ath10k_htt_rx_proc_rx_ind(htt, &resp->rx_ind);
+#if 0 // NEEDS PORTING
+        ath10k_htt_rx_proc_rx_ind(htt, &resp->rx_ind);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_PEER_MAP: {
         ath10k_err("HTT_T2H_MSG_TYPE_PEER_MAP unimplemented\n");
-#if 0 // TODO
+#if 0 // NEEDS PORTING
         struct htt_peer_map_event ev = {
             .vdev_id = resp->peer_map.vdev_id,
             .peer_id = resp->peer_map.peer_id,
         };
         memcpy(ev.addr, resp->peer_map.addr, sizeof(ev.addr));
         ath10k_peer_map_event(htt, &ev);
-#endif // TODO
+#endif // NEEDS PORTING
         break;
     }
     case HTT_T2H_MSG_TYPE_PEER_UNMAP: {
         ath10k_err("HTT_T2H_MSG_TYPE_PEER_UNMAP unimplemented\n");
-#if 0 // TODO
+#if 0 // NEEDS PORTING
         struct htt_peer_unmap_event ev = {
             .peer_id = resp->peer_unmap.peer_id,
         };
         ath10k_peer_unmap_event(htt, &ev);
-#endif // TODO
+#endif // NEEDS PORTING
         break;
     }
     case HTT_T2H_MSG_TYPE_MGMT_TX_COMPLETION: {
@@ -2430,7 +2446,9 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
         break;
     case HTT_T2H_MSG_TYPE_STATS_CONF:
         ath10k_err("HTT_T2H_MSG_TYPE_STATS_CONF unimplemented\n");
-//        trace_ath10k_htt_stats(ar, skb->data, skb->len);
+#if 0 // NEEDS PORTING
+        trace_ath10k_htt_stats(ar, skb->data, skb->len);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_TX_INSPECT_IND:
         /* Firmware can return tx frames if it's unable to fully
@@ -2442,20 +2460,24 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
         break;
     case HTT_T2H_MSG_TYPE_RX_ADDBA:
         ath10k_err("HTT_T2H_MSG_TYPE_RX_ADDBA unimplemented\n");
-//        ath10k_htt_rx_addba(ar, resp);
+#if 0 // NEEDS PORTING
+        ath10k_htt_rx_addba(ar, resp);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_RX_DELBA:
         ath10k_err("HTT_T2H_MSG_TYPE_RX_DELBA unimplemented\n");
-//        ath10k_htt_rx_delba(ar, resp);
+#if 0 // NEEDS PORTING
+        ath10k_htt_rx_delba(ar, resp);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_PKTLOG: {
         ath10k_err("HTT_T2H_MSG_TYPE_PKTLOG unimplemented\n");
-#if 0 // TODO
+#if 0 // NEEDS PORTING
         trace_ath10k_htt_pktlog(ar, resp->pktlog_msg.payload,
                                 skb->len -
                                 offsetof(struct htt_resp,
                                          pktlog_msg.payload));
-#endif // TODO
+#endif // NEEDS PORTING
         break;
     }
     case HTT_T2H_MSG_TYPE_RX_FLUSH: {
@@ -2472,7 +2494,7 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
         break;
     case HTT_T2H_MSG_TYPE_CHAN_CHANGE: {
         ath10k_err("HTT_T2H_MSG_TYPE_CHAN_CHANGE unimplemented\n");
-#if 0 // TODO
+#if 0 // NEEDS PORTING
         uint32_t phymode = resp->chan_change.phymode;
         uint32_t freq = resp->chan_change.freq;
 
@@ -2480,14 +2502,14 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
         ath10k_dbg(ar, ATH10K_DBG_HTT,
                    "htt chan change freq %u phymode %s\n",
                    freq, ath10k_wmi_phymode_str(phymode));
-#endif
+#endif // NEEDS PORTING
         break;
     }
     case HTT_T2H_MSG_TYPE_AGGR_CONF:
         break;
     case HTT_T2H_MSG_TYPE_TX_FETCH_IND: {
         ath10k_err("HTT_T2H_MSG_TYPE_TX_FETCH_IND unimplemented\n");
-#if 0 // TODO
+#if 0 // NEEDS PORTING
         struct sk_buff* tx_fetch_ind = skb_copy(skb, GFP_ATOMIC);
 
         if (!tx_fetch_ind) {
@@ -2495,20 +2517,26 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
             break;
         }
         skb_queue_tail(&htt->tx_fetch_ind_q, tx_fetch_ind);
-#endif // TODO
+#endif // NEEDS PORTING
         break;
     }
     case HTT_T2H_MSG_TYPE_TX_FETCH_CONFIRM:
         ath10k_err("HTT_T2H_MSG_TYPE_TX_FETCH_CONFIRM unimplemented\n");
-//        ath10k_htt_rx_tx_fetch_confirm(ar, skb);
+#if 0 // NEEDS PORTING
+        ath10k_htt_rx_tx_fetch_confirm(ar, skb);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_TX_MODE_SWITCH_IND:
         ath10k_err("HTT_T2H_MSG_TYPE_TX_MODE_SWITCH_IND unimplemented\n");
-//        ath10k_htt_rx_tx_mode_switch_ind(ar, skb);
+#if 0 // NEEDS PORTING
+        ath10k_htt_rx_tx_mode_switch_ind(ar, skb);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_PEER_STATS:
         ath10k_err("HTT_T2H_MSG_TYPE_PEER_STATS unimplemented\n");
-//        ath10k_htt_fetch_peer_stats(ar, skb);
+#if 0 // NEEDS PORTING
+        ath10k_htt_fetch_peer_stats(ar, skb);
+#endif // NEEDS PORTING
         break;
     case HTT_T2H_MSG_TYPE_EN_STATS:
     default:
@@ -2521,13 +2549,9 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
     return true;
 }
 
-#if 0 // NEEDS PORTING 
-void ath10k_htt_rx_pktlog_completion_handler(struct ath10k* ar,
-        struct sk_buff* skb) {
-    trace_ath10k_htt_pktlog(ar, skb->data, skb->len);
-    dev_kfree_skb_any(skb);
+void ath10k_htt_rx_pktlog_completion_handler(struct ath10k* ar, struct ath10k_msg_buf* buf) {
+    ath10k_msg_buf_free(buf);
 }
-#endif // NEEDS PORTING
 
 bool ath10k_htt_txrx_compl_task(struct ath10k* ar) {
     struct ath10k_htt* htt = &ar->htt;
@@ -2535,9 +2559,9 @@ bool ath10k_htt_txrx_compl_task(struct ath10k* ar) {
     struct ath10k_msg_buf* buf;
     zx_status_t status;
     list_node_t tx_ind_q;
-#if 0
+#if 0 // NEEDS PORTING
     struct htt_tx_done tx_done = {};
-#endif
+#endif // NEEDS PORTING
 
     list_initialize(&tx_ind_q);
 
