@@ -3105,7 +3105,7 @@ invalid_data:
 
 int ath10k_mac_bss_assoc(void* thrd_data) {
     struct ath10k_msg_buf* buf = thrd_data;
-    struct ath10k* ar = buf->ar;
+    struct ath10k* ar = buf->state->ar;
     mtx_lock(&ar->conf_mutex);
     struct ath10k_vif* arvif = &ar->arvif;
     struct wmi_peer_assoc_complete_arg assoc_arg;
@@ -3994,7 +3994,6 @@ bool ath10k_mac_tx_frm_has_freq(struct ath10k* ar) {
 
 static zx_status_t ath10k_mac_tx_wmi_mgmt(struct ath10k* ar, struct ath10k_msg_buf* tx_buf) {
 ath10k_err("ath10k_mac_tx_wmi_mgmt unimplemented - dropping tx packet!\n");
-ath10k_msg_buf_free(tx_buf);
 #if 0
     struct sk_buff_head* q = &ar->wmi_mgmt_tx_queue;
     int ret = 0;
@@ -4764,6 +4763,7 @@ zx_status_t ath10k_mac_op_tx(struct ath10k* ar,
             }
             mtx_unlock(&ar->htt.tx_lock);
         }
+        ath10k_msg_buf_free(tx_buf);
         return ret;
     }
     return ZX_OK;

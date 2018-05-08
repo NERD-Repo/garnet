@@ -89,7 +89,6 @@ zx_status_t ath10k_htc_send(struct ath10k_htc* htc,
 
     ath10k_htc_prepare_tx_buf(ep, msg_buf);
 
-
     sg_item.transfer_id = ep->eid;
     sg_item.transfer_context = msg_buf;
     sg_item.vaddr = msg_buf->vaddr;
@@ -629,8 +628,7 @@ zx_status_t ath10k_htc_connect_service(struct ath10k_htc* htc,
     }
 
     msg = ath10k_msg_buf_get_header(msg_buf, ATH10K_MSG_TYPE_HTC_MSG);
-    msg->hdr.message_id =
-        ATH10K_HTC_MSG_CONNECT_SERVICE_ID;
+    msg->hdr.message_id = ATH10K_HTC_MSG_CONNECT_SERVICE_ID;
 
     flags |= SM(tx_alloc, ATH10K_HTC_CONN_FLAGS_RECV_ALLOC);
 
@@ -648,6 +646,7 @@ zx_status_t ath10k_htc_connect_service(struct ath10k_htc* htc,
 
     status = ath10k_htc_send(htc, ATH10K_HTC_EP_0, msg_buf);
     if (status != ZX_OK) {
+        ath10k_err("Failed to send connection request: %s\n", zx_status_get_string(status));
         ath10k_msg_buf_free(msg_buf);
         return status;
     }

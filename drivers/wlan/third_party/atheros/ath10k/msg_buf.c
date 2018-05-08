@@ -59,8 +59,34 @@ static struct ath10k_msg_type_info {
 static mtx_t ath10k_msg_types_lock = MTX_INIT;
 static bool ath10k_msg_types_initialized = false;
 
+void ath10k_msg_bufs_init_stats(struct ath10k_msg_buf_state* state) {
+    state->bufs_allocated = 0;
+    state->highest_addr_allocated = 0;
+    list_initialize(&state->bufs_in_use);
+}
+
+#define ATH10K_INITIAL_BUF_COUNT 4096
+
 // One-time initialization of the module
 zx_status_t ath10k_msg_bufs_init(struct ath10k* ar) {
+
+    static mtx_t init_lock = MTX_INIT;
+    static bool initialized = false;
+
+    mtx_lock(&init_lock);
+    if (initialized) {
+        mtx_unlock(&init_lock);
+        return ZX_OK;
+    }
+    initialized = true;
+    mtx_unlock(&init_lock);
+
+    struct ath10k_msg_buf_state* state = &ar->msg_buf_state;
+    state->ar = ar;
+
+    // Clear the buffer pool
+    mtx_init(&state->lock, mtx_plain);
+    list_initialize(&state->buf_pool);
 
     // Organize our msg type information into something more usable (an array indexed by msg
     // type, with total size information).
@@ -81,49 +107,104 @@ zx_status_t ath10k_msg_bufs_init(struct ath10k* ar) {
     }
     mtx_unlock(&ath10k_msg_types_lock);
 
+    struct ath10k_msg_buf* msg_buf;
+    for (unsigned i = 0; i < ATH10K_INITIAL_BUF_COUNT; i++) {
+        ath10k_msg_buf_alloc_real(ar, &msg_buf, ATH10K_MSG_TYPE_BASE, 1, true,
+                                  __FILE__, __LINE__);
+        ath10k_msg_buf_free(msg_buf);
+    }
+
+#if DEBUG_MSG_BUF
+    ath10k_msg_bufs_init_stats(state);
+#endif
+
     return ZX_OK;
 }
 
-zx_status_t ath10k_msg_buf_alloc(struct ath10k* ar,
-                                 struct ath10k_msg_buf** msg_buf_ptr,
-                                 enum ath10k_msg_type type, size_t extra_bytes) {
+zx_status_t ath10k_msg_buf_alloc_real(struct ath10k* ar,
+                                      struct ath10k_msg_buf** msg_buf_ptr,
+                                      enum ath10k_msg_type type,
+                                      size_t extra_bytes,
+                                      bool force_new,
+                                      const char* filename,
+                                      size_t line_num) {
+    struct ath10k_msg_buf_state* state = &ar->msg_buf_state;
     zx_status_t status;
 
     ZX_DEBUG_ASSERT(type < ATH10K_MSG_TYPE_COUNT);
 
     struct ath10k_msg_buf* msg_buf;
+    size_t requested_sz = ath10k_msg_types_info[type].offset
+                          + ath10k_msg_types_info[type].hdr_size
+                          + extra_bytes;
+    ZX_DEBUG_ASSERT(requested_sz > 0);
+    ZX_DEBUG_ASSERT(requested_sz <= PAGE_SIZE);
 
-    // Allocate a new buffer
-    msg_buf = calloc(1, sizeof(struct ath10k_msg_buf));
-    if (!msg_buf) {
-        return ZX_ERR_NO_MEMORY;
+    // First, see if we have any available buffers in our pool
+    mtx_lock(&state->lock);
+    if (!list_is_empty(&state->buf_pool)) {
+        msg_buf = list_remove_head_type(&state->buf_pool, struct ath10k_msg_buf, listnode);
+        ZX_DEBUG_ASSERT(msg_buf->capacity == PAGE_SIZE);
+        ZX_DEBUG_ASSERT(msg_buf->state == state);
+        mtx_unlock(&state->lock);
+        io_buffer_cache_flush_invalidate(&msg_buf->buf, 0, PAGE_SIZE);
+    } else {
+#if DEBUG_MSG_BUF
+        state->bufs_allocated++;
+#endif
+        // Allocate a new buffer
+        mtx_unlock(&state->lock);
+        msg_buf = calloc(1, sizeof(struct ath10k_msg_buf));
+        if (!msg_buf) {
+            return ZX_ERR_NO_MEMORY;
+        }
+
+        zx_handle_t bti_handle;
+        status = ath10k_hif_get_bti_handle(ar, &bti_handle);
+        if (status != ZX_OK) {
+            goto err_free_buf;
+        }
+        status = io_buffer_init(&msg_buf->buf, bti_handle, PAGE_SIZE,
+                                IO_BUFFER_RW | IO_BUFFER_CONTIG);
+        if (status != ZX_OK) {
+            goto err_free_buf;
+        }
+
+        msg_buf->paddr = io_buffer_phys(&msg_buf->buf);
+        if (msg_buf->paddr + PAGE_SIZE > 0x100000000) {
+            status = ZX_ERR_NO_MEMORY;
+            ath10k_warn("attempt to allocate buffer, unable to get mmio with "
+                        "32 bit phys addr (see ZX-1073)\n");
+            goto err_free_iobuf;
+#if DEBUG_MSG_BUF
+        } else {
+            mtx_lock(&state->lock);
+            if (msg_buf->paddr > state->highest_addr_allocated) {
+                state->highest_addr_allocated = msg_buf->paddr;
+            }
+            mtx_unlock(&state->lock);
+#endif
+        }
+        msg_buf->vaddr = io_buffer_virt(&msg_buf->buf);
+        msg_buf->capacity = PAGE_SIZE;
+        msg_buf->state = state;
     }
 
-    zx_handle_t bti_handle;
-    status = ath10k_hif_get_bti_handle(ar, &bti_handle);
-    if (status != ZX_OK) {
-        goto err_free_buf;
-    }
-    size_t buf_sz = ath10k_msg_types_info[type].offset
-                    + ath10k_msg_types_info[type].hdr_size
-                    + extra_bytes;
-    status = io_buffer_init(&msg_buf->buf, bti_handle, buf_sz, IO_BUFFER_RW | IO_BUFFER_CONTIG);
-    if (status != ZX_OK) {
-        goto err_free_buf;
-    }
-
-    msg_buf->ar = ar;
-    msg_buf->paddr = io_buffer_phys(&msg_buf->buf);
-    ZX_DEBUG_ASSERT_MSG(msg_buf->paddr + buf_sz <= 0x100000000,
-                        "unable to acquire an io buffer with a 32 bit phys addr (see ZX-1073)");
-    msg_buf->vaddr = io_buffer_virt(&msg_buf->buf);
-    memset(msg_buf->vaddr, 0, buf_sz);
-    msg_buf->capacity = buf_sz;
+    memset(msg_buf->vaddr, 0, requested_sz);
     msg_buf->type = type;
-    list_initialize(&msg_buf->listnode);
-    msg_buf->used = msg_buf->capacity;
+    msg_buf->used = requested_sz;
+    msg_buf->alloc_file_name = filename;
+    msg_buf->alloc_line_num = line_num;
+#if DEBUG_MSG_BUF
+    mtx_lock(&state->lock);
+    list_add_tail(&state->bufs_in_use, &msg_buf->debug_listnode);
+    mtx_unlock(&state->lock);
+#endif
     *msg_buf_ptr = msg_buf;
     return ZX_OK;
+
+err_free_iobuf:
+    io_buffer_release(&msg_buf->buf);
 
 err_free_buf:
     free(msg_buf);
@@ -156,11 +237,31 @@ size_t ath10k_msg_buf_get_payload_offset(enum ath10k_msg_type type) {
 }
 
 void ath10k_msg_buf_free(struct ath10k_msg_buf* msg_buf) {
-    enum ath10k_msg_type type = msg_buf->type;
-    ZX_DEBUG_ASSERT(type < ATH10K_MSG_TYPE_COUNT);
+    struct ath10k_msg_buf_state* state = msg_buf->state;
+
+    ZX_DEBUG_ASSERT(msg_buf->capacity == PAGE_SIZE);
+#if DEBUG_MSG_BUF
+    mtx_lock(&state->lock);
+    list_delete(&msg_buf->debug_listnode);
+    mtx_unlock(&state->lock);
+#endif
+    // Save in pool for reuse
+    mtx_lock(&state->lock);
+    ZX_DEBUG_ASSERT_MSG(msg_buf->used != 0, "attempt to free already freed buffer");
     msg_buf->used = 0;
-    io_buffer_release(&msg_buf->buf);
-    free(msg_buf);
+    list_add_head(&state->buf_pool, &msg_buf->listnode);
+    mtx_unlock(&state->lock);
+}
+
+void ath10k_msg_buf_dump_stats(struct ath10k* ar) {
+    struct ath10k_msg_buf_state* state = &ar->msg_buf_state;
+    mtx_lock(&state->lock);
+    printf("msg_buf stats:\n");
+    printf("  Total buffers allocated: %zd\n", state->bufs_allocated);
+    printf("  Highest address allocated: %lu\n", state->highest_addr_allocated);
+    printf("  Buffers in use: %d\n", (int)list_length(&state->bufs_in_use));
+    printf("  Buffers available for reuse: %zd\n", list_length(&state->buf_pool));
+    mtx_unlock(&state->lock);
 }
 
 void ath10k_msg_buf_dump(struct ath10k_msg_buf* msg_buf, const char* prefix) {

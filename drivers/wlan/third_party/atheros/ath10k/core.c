@@ -1983,8 +1983,6 @@ zx_status_t ath10k_core_start(struct ath10k* ar, enum ath10k_firmware_mode mode,
     ar->htc.htc_ops.target_send_suspend_complete =
         ath10k_send_suspend_complete;
 
-    status = ath10k_msg_bufs_init(ar);
-
     status = ath10k_htc_init(ar);
     if (status != ZX_OK) {
         ath10k_err("could not init HTC (%s)\n", zx_status_get_string(status));

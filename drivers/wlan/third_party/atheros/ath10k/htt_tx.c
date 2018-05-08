@@ -819,7 +819,6 @@ static uint8_t ath10k_htt_tx_get_tid(struct ath10k_msg_buf* tx_buf, bool is_eth)
 
 zx_status_t ath10k_htt_mgmt_tx(struct ath10k_htt* htt, struct ath10k_msg_buf* tx_buf) {
 ath10k_err("ath10k_htt_mgmt_tx unimplemented - dropping tx packet!\n");
-ath10k_msg_buf_free(tx_buf);
 #if 0
     struct ath10k* ar = htt->ar;
     struct device* dev = ar->dev;

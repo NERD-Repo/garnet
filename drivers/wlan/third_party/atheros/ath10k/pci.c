@@ -868,8 +868,6 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
     struct ath10k_ce_pipe* ce_diag;
     /* Host buffer address in CE space */
     uint32_t ce_data;
-    zx_paddr_t ce_data_base = 0;
-    io_buffer_t ce_buf_handle;
     void* data_buf = NULL;
     int i;
 
@@ -883,16 +881,15 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
      */
     alloc_nbytes = min_t(unsigned int, nbytes, DIAG_TRANSFER_LIMIT);
 
-    ret = io_buffer_init(&ce_buf_handle, ar_pci->btih, alloc_nbytes,
-                         IO_BUFFER_RO | IO_BUFFER_CONTIG);
+    struct ath10k_msg_buf* iobuf;
+    ret = ath10k_msg_buf_alloc(ar, &iobuf, ATH10K_MSG_TYPE_BASE, alloc_nbytes);
     if (ret != ZX_OK) {
         goto done;
     }
-    data_buf = io_buffer_virt(&ce_buf_handle);
-    ce_data_base = io_buffer_phys(&ce_buf_handle);
-    ZX_DEBUG_ASSERT((ce_data_base + alloc_nbytes) <= 0x100000000ULL);
+    data_buf = iobuf->vaddr;
+    // ath10k_msg_buf_alloc verifies that the address will fit into 32 bits
+    ce_data = iobuf->paddr;
     remaining_bytes = nbytes;
-    ce_data = ce_data_base;
     while (remaining_bytes) {
         nbytes = min_t(unsigned int, remaining_bytes,
                        DIAG_TRANSFER_LIMIT);
@@ -964,7 +961,7 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
 
 done:
     if (data_buf) {
-        io_buffer_release(&ce_buf_handle);
+        ath10k_msg_buf_free(iobuf);
     }
 
     mtx_unlock(&ar_pci->ce_lock);
@@ -1015,7 +1012,7 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
     void* data_buf = NULL;
     uint32_t ce_data;    /* Host buffer address in CE space */
     zx_paddr_t ce_data_base = 0;
-    io_buffer_t ce_buf_handle;
+    struct ath10k_msg_buf* iobuf;
     int i;
 
     mtx_lock(&ar_pci->ce_lock);
@@ -1027,14 +1024,12 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
      * to be DMA'ed to Target.
      */
     orig_nbytes = nbytes;
-    ret = io_buffer_init(&ce_buf_handle, ar_pci->btih, orig_nbytes,
-                         IO_BUFFER_RW | IO_BUFFER_CONTIG);
+    ret = ath10k_msg_buf_alloc(ar, &iobuf, ATH10K_MSG_TYPE_BASE, orig_nbytes);
     if (ret != ZX_OK) {
         goto done;
     }
-    data_buf = io_buffer_virt(&ce_buf_handle);
-    ce_data_base = io_buffer_phys(&ce_buf_handle);
-    ZX_DEBUG_ASSERT((ce_data_base + orig_nbytes) <= 0x100000000ULL);
+    data_buf = iobuf->vaddr;
+    ce_data_base = iobuf->paddr;
 
     /* Copy caller's data to allocated DMA buf */
     memcpy(data_buf, data, orig_nbytes);
@@ -1092,7 +1087,7 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
         while (ath10k_ce_completed_recv_next_nolock(ce_diag,
                 (void**)&buf,
                 &completed_nbytes)
-                != 0) {
+                != ZX_OK) {
             mdelay(1);
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
@@ -1118,7 +1113,7 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
 
 done:
     if (data_buf) {
-        io_buffer_release(&ce_buf_handle);
+        ath10k_msg_buf_free(iobuf);
     }
 
     if (ret != ZX_OK) {
@@ -1166,7 +1161,7 @@ static void ath10k_pci_htc_tx_cb(struct ath10k_ce_pipe* ce_state) {
 
 static void ath10k_pci_process_rx_cb(struct ath10k_ce_pipe* ce_state,
                                      void (*callback)(struct ath10k* ar,
-                                     struct ath10k_msg_buf* buf)) {
+                                                      struct ath10k_msg_buf* buf)) {
     struct ath10k* ar = ce_state->ar;
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct ath10k_pci_pipe* pipe_info =  &ar_pci->pipe_info[ce_state->id];
@@ -1206,7 +1201,7 @@ static void ath10k_pci_process_rx_cb(struct ath10k_ce_pipe* ce_state,
 static void ath10k_pci_process_htt_rx_cb(struct ath10k_ce_pipe* ce_state,
                                          void (*callback)(struct ath10k* ar,
                                                struct ath10k_msg_buf* msg_buf)) {
-    printf("***** processing htt rx\n");
+    ZX_DEBUG_ASSERT_MSG(0, "ath10k_pci_process_htt_rx_cb not implemented\n");
 #if 0
     struct ath10k* ar = ce_state->ar;
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
@@ -1290,7 +1285,7 @@ static void ath10k_pci_pktlog_rx_cb(struct ath10k_ce_pipe* ce_state) {
 /* Called by lower (CE) layer when a send to HTT Target completes. */
 static void ath10k_pci_htt_tx_cb(struct ath10k_ce_pipe* ce_state) {
     struct ath10k* ar = ce_state->ar;
-    struct ath10k_msg_buf* msg_buf;;
+    struct ath10k_msg_buf* msg_buf;
 
     while (ath10k_ce_completed_send_next(ce_state, (void**)&msg_buf) == ZX_OK) {
         /* no need to call tx completion for NULL pointers */
@@ -1774,7 +1769,7 @@ zx_status_t ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar,
     zx_paddr_t req_paddr = 0;
     zx_paddr_t resp_paddr = 0;
     struct bmi_xfer xfer = {};
-    io_buffer_t treq, tresp;
+    struct ath10k_msg_buf* treq, *tresp;
     void* req_vaddr, *resp_vaddr = NULL;
     zx_status_t ret = ZX_OK;
 
@@ -1786,24 +1781,23 @@ zx_status_t ath10k_pci_hif_exchange_bmi_msg(struct ath10k* ar,
         return ZX_ERR_INVALID_ARGS;
     }
 
-    ret = io_buffer_init(&treq, ar_pci->btih, req_len, IO_BUFFER_RW | IO_BUFFER_CONTIG);
+    ret = ath10k_msg_buf_alloc(ar, &treq, ATH10K_MSG_TYPE_BASE, req_len);
     if (ret != ZX_OK) {
         return ret;
     }
-    req_vaddr = io_buffer_virt(&treq);
+    req_vaddr = treq->vaddr;
     memcpy(req_vaddr, req, req_len);
 
-    req_paddr = io_buffer_phys(&treq);
+    req_paddr = treq->paddr;
     ZX_DEBUG_ASSERT((req_paddr + req_len) <= 0x100000000ULL);
 
     if (resp && resp_len) {
-        if (io_buffer_init(&tresp, ar_pci->btih, *resp_len,
-                           IO_BUFFER_RO | IO_BUFFER_CONTIG) != ZX_OK) {
-            ret = ZX_ERR_NO_MEMORY;
+        ret = ath10k_msg_buf_alloc(ar, &tresp, ATH10K_MSG_TYPE_BASE, *resp_len);
+        if (ret != ZX_OK) {
             goto err_req;
         }
-        resp_vaddr = io_buffer_virt(&tresp);
-        resp_paddr = io_buffer_phys(&tresp);
+        resp_vaddr = tresp->vaddr;
+        resp_paddr = tresp->paddr;
 
         xfer.wait_for_resp = true;
         xfer.resp_len = 0;
@@ -1840,9 +1834,9 @@ err_req:
         *resp_len = min(*resp_len, xfer.resp_len);
         memcpy(resp, resp_vaddr, xfer.resp_len);
     }
-    io_buffer_release(&treq);
+    ath10k_msg_buf_free(treq);
     if (resp_vaddr != NULL) {
-        io_buffer_release(&tresp);
+        ath10k_msg_buf_free(tresp);
     }
 
     return ret;
@@ -2898,6 +2892,17 @@ zx_status_t ath10k_pci_wait_for_target_init(struct ath10k* ar) {
     return ZX_OK;
 }
 
+#if DEBUG_MSG_BUF
+static int ath10k_monitor(void* arg) {
+    struct ath10k* ar = arg;
+    while (1) {
+        zx_nanosleep(zx_deadline_after(ZX_SEC(5)));
+        ath10k_msg_buf_dump_stats(ar);
+    }
+    return 0;
+}
+#endif
+
 static zx_status_t ath10k_pci_cold_reset(struct ath10k* ar) {
     uint32_t val;
 
@@ -3304,6 +3309,12 @@ static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
     ar->id.subsystem_vendor = subsystem_vendor_id;
     ar->id.subsystem_device = subsystem_device_id;
 
+    ret = ath10k_msg_bufs_init(ar);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to initialize msg_bufs structures\n");
+        return ret;
+    }
+
     ret = ath10k_pci_setup_resource(ar);
     if (ret != ZX_OK) {
         ath10k_err("failed to setup resource: %s\n", zx_status_get_string(ret));
@@ -3361,6 +3372,11 @@ static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
                    pci_info.device_id, chip_id);
         goto err_free_irq;
     }
+
+#if DEBUG_MSG_BUF
+    thrd_create_with_name(&ar->monitor_thread, ath10k_monitor, ar, "ath10k-monitor");
+    thrd_detach(ar->monitor_thread);
+#endif
 
     ret = ath10k_core_register(ar, chip_id);
     if (ret != ZX_OK) {

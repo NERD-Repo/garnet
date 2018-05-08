@@ -892,6 +892,8 @@ struct ath10k {
 
     struct ath10k_msg_buf* svc_rdy_buf;
 
+    struct ath10k_msg_buf_state msg_buf_state;
+
 #if 0 // NEEDS PORTING
     struct work_struct offchan_tx_work;
     struct sk_buff_head offchan_tx_queue;
@@ -905,6 +907,7 @@ struct ath10k {
     enum ath10k_state state;
 
     thrd_t isr_thread;
+    thrd_t monitor_thread;
     thrd_t register_work;
     thrd_t restart_work;
     thrd_t assoc_work;

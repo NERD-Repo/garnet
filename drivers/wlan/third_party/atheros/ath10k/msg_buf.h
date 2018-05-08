@@ -26,6 +26,8 @@
 #include "wmi.h"
 #include "wmi-tlv.h"
 
+// #define DEBUG_MSG_BUF 1
+
 // Each of the modules that generate or parse messages should instantiate its
 // top-level macro (e.g., WMI_MSGS) with a comma-delimited list of messages,
 // defined as MSG(name, base-name, type). The top-level macros will be used
@@ -61,7 +63,7 @@ enum ath10k_tx_flags {
 };
 
 struct ath10k_msg_buf {
-    struct ath10k* ar;
+    struct ath10k_msg_buf_state* state;
     enum ath10k_msg_type type;
     list_node_t listnode;
     io_buffer_t buf;
@@ -79,16 +81,38 @@ struct ath10k_msg_buf {
             wlan_tx_info_t tx_info;
         } tx;
     };
+
+    const char* alloc_file_name;
+    size_t alloc_line_num;
+    list_node_t debug_listnode;
+};
+
+struct ath10k_msg_buf_state {
+    struct ath10k* ar;
+    mtx_t lock;
+
+    // Lists of previously-allocated buffers
+    list_node_t buf_pool;
+
+    size_t bufs_allocated;
+    list_node_t bufs_in_use;
+    zx_paddr_t highest_addr_allocated;
 };
 
 // Initialize the module
 zx_status_t ath10k_msg_bufs_init(struct ath10k* ar);
 
 // Allocate a new buffer of the specified type, plus any extra space requested
-zx_status_t ath10k_msg_buf_alloc(struct ath10k* ar,
-                                 struct ath10k_msg_buf** msg_buf_ptr,
-                                 enum ath10k_msg_type type,
-                                 size_t extra_bytes);
+zx_status_t ath10k_msg_buf_alloc_real(struct ath10k* ar,
+                                      struct ath10k_msg_buf** msg_buf_ptr,
+                                      enum ath10k_msg_type type,
+                                      size_t extra_bytes,
+                                      bool force_new,
+                                      const char* filename,
+                                      size_t line_num);
+
+#define ath10k_msg_buf_alloc(ar, ptr, type, bytes) \
+        ath10k_msg_buf_alloc_real(ar, ptr, type, bytes, false, __FILE__, __LINE__)
 
 void* ath10k_msg_buf_get_header(struct ath10k_msg_buf* msg_buf,
                                 enum ath10k_msg_type msg_type);
@@ -103,5 +127,7 @@ size_t ath10k_msg_buf_get_offset(enum ath10k_msg_type msg_type);
 size_t ath10k_msg_buf_get_payload_offset(enum ath10k_msg_type msg_type);
 
 void ath10k_msg_buf_free(struct ath10k_msg_buf* msg_buf);
+
+void ath10k_msg_buf_dump_stats(struct ath10k* ar);
 
 void ath10k_msg_buf_dump(struct ath10k_msg_buf* msg_buf, const char* prefix);
