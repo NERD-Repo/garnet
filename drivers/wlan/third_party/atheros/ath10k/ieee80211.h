@@ -109,4 +109,6 @@ enum ieee80211_a_mpdu_params {
 #define IEEE80211_CCMP_MIC_LEN 8
 #define IEEE80211_QOS_CTL_LEN 2
 
+#define IEEE_MSDU_SIZE_MAX 2304
+
 #endif /* _IEEE80211_H_ */

@@ -42,6 +42,7 @@
 #include "htc.h"
 #include "ce.h"
 #include "pci.h"
+#include "ieee80211.h"
 
 enum ath10k_pci_reset_mode {
     ATH10K_PCI_RESET_AUTO = 0,
