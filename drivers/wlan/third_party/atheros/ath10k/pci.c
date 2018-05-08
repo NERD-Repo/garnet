@@ -3066,37 +3066,35 @@ static void ath10k_band_query_info(const struct ath10k_band* dev_band, void* coo
 }
 
 static zx_status_t ath10k_pci_query(void* ctx, uint32_t options, wlanmac_info_t* info) {
-    // TODO: Problem #1 - query results are only available after probing firmware. There
-    //                    should be some way to indicate that we aren't ready to provide
-    //                    query results.
-    //       Problem #2 - ALL of the values below are hard-coded and faked for now.
+    // TODO: ALL of the values below are hard-coded and faked for now.
     struct ath10k* ar = ctx;
 
-    if (completion_wait(&ar->init_complete, ZX_SEC(5)) == ZX_ERR_TIMED_OUT
-        || !test_bit(ATH10K_FLAG_CORE_REGISTERED, ar->dev_flags)) {
-        return ZX_ERR_BAD_STATE;
-    }
+    ZX_DEBUG_ASSERT(test_bit(ATH10K_FLAG_CORE_REGISTERED, ar->dev_flags));
 
     memset(info, 0, sizeof(*info));
 
     // eth_info
     ethmac_info_t* eth_info = &info->eth_info;
     eth_info->features = ETHMAC_FEATURE_WLAN;
-    eth_info->mtu = 1500;
+    eth_info->mtu = IEEE_MSDU_SIZE_MAX;
     ZX_DEBUG_ASSERT(ETH_ALEN == ETH_MAC_SIZE);
     memcpy(eth_info->mac, ar->mac_addr, ETH_MAC_SIZE);
 
-    // supported_phys
-    info->supported_phys = WLAN_PHY_DSSS | WLAN_PHY_CCK | WLAN_PHY_OFDM | WLAN_PHY_HT;
-
-    // driver_features
-    info->driver_features = WLAN_DRIVER_FEATURE_SCAN_OFFLOAD;
-
-    // mac_modes
+    // mac_role
     info->mac_role = WLAN_MAC_ROLE_CLIENT;
 
+    // supported_phys
+    info->supported_phys = WLAN_PHY_DSSS | WLAN_PHY_CCK | WLAN_PHY_OFDM;
+    if (ar->ht_cap_info & WMI_HT_CAP_ENABLED) {
+        info->supported_phys |= WLAN_PHY_HT;
+    }
+    info->supported_phys |= WLAN_PHY_VHT;
+
+    // driver_features
+    info->driver_features = WLAN_DRIVER_FEATURE_SCAN_OFFLOAD | WLAN_DRIVER_FEATURE_RATE_SELECTION;
+
     // caps
-    info->caps = WLAN_CAP_SHORT_PREAMBLE | WLAN_CAP_SHORT_SLOT_TIME;
+    info->caps = WLAN_CAP_SHORT_PREAMBLE | WLAN_CAP_SPECTRUM_MGMT | WLAN_CAP_SHORT_SLOT_TIME;
 
     // bands
     ath10k_foreach_band(ath10k_band_query_info, info);
