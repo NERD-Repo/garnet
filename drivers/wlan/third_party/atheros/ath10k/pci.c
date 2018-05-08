@@ -3375,12 +3375,6 @@ static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
     thrd_detach(ar->monitor_thread);
 #endif
 
-    ret = ath10k_core_register(ar, chip_id);
-    if (ret != ZX_OK) {
-        ath10k_err("failed to register driver core: %s\n", zx_status_get_string(ret));
-        goto err_free_irq;
-    }
-
     device_add_args_t args = {
         .version = DEVICE_ADD_ARGS_VERSION,
         .name = "ath10k",
@@ -3388,6 +3382,7 @@ static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
         .ops = &device_ops,
         .proto_id = ZX_PROTOCOL_WLANMAC,
         .proto_ops = &wlanmac_ops,
+        .flags = DEVICE_ADD_INVISIBLE,
     };
 
     ret = device_add(dev, &args, &ar->zxdev);
@@ -3395,7 +3390,16 @@ static zx_status_t ath10k_pci_probe(void* ctx, zx_device_t* dev) {
         goto err_free_irq;
     }
 
+    ret = ath10k_core_register(ar, chip_id);
+    if (ret != ZX_OK) {
+        ath10k_err("failed to register driver core: %s\n", zx_status_get_string(ret));
+        goto err_free_device;
+    }
+
     return ZX_OK;
+
+err_free_device:
+    device_remove(dev);
 
 err_free_irq:
     ath10k_pci_free_irq(ar);

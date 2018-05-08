@@ -2371,6 +2371,11 @@ static zx_status_t ath10k_core_register_work(void* thrd_data) {
 
     set_bit(ATH10K_FLAG_CORE_REGISTERED, ar->dev_flags);
     completion_signal(&ar->init_complete);
+
+    // Now that we have completed initialization, we are ready to handle calls
+    // from wlanmac.
+    device_make_visible(ar->zxdev);
+
     return ZX_OK;
 
 #if 0 // NEEDS PORTING
