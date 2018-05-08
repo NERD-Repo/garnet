@@ -30,6 +30,9 @@ class Renderer : public Sink {
   // |Provision|.
   void Deprovision();
 
+  // Sink implementation.
+  void Dump(std::ostream& os, NodeRef ref) const override;
+
   // Returns the types of the streams the renderer is able
   // to consume.
   virtual const std::vector<std::unique_ptr<StreamTypeSet>>&
@@ -82,8 +85,12 @@ class Renderer : public Sink {
   // specified reference time.
   void UpdateTimelineAt(int64_t reference_time);
 
+  // Called when the timeline function changes. The default implementation
+  // does nothing.
+  virtual void OnTimelineTransition();
+
   // Gets the current timeline function.
-  const media::TimelineFunction& current_timeline_function() {
+  const media::TimelineFunction& current_timeline_function() const {
     return current_timeline_function_;
   }
 
@@ -91,6 +98,8 @@ class Renderer : public Sink {
   bool end_of_stream_pending() const {
     return end_of_stream_pts_ != media::kUnspecifiedTime;
   }
+
+  int64_t end_of_stream_pts() { return end_of_stream_pts_; }
 
   // Returns the minimum PTS for the specified program.
   int64_t min_pts(uint64_t program) {

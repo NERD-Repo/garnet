@@ -44,10 +44,11 @@ class LinearSamplerImpl : public LinearSampler {
                   Gain::AScale amplitude_scale);
 
   static inline int32_t Interpolate(int32_t A, int32_t B, uint32_t alpha) {
-    // Called very frequently: optimized to 3 add, 1 mult, 2 shift, 1 compare.
-    A = (A << kPtsFractionalBits) + (B - A) * static_cast<int32_t>(alpha);
-    A += (A >= 0 ? kPtsRoundingVal : kPtsRoundingVal - 1);
-    return A >> kPtsFractionalBits;
+    // Called very frequently: optimized to cast, mult, compare, 2 shift, 3 add.
+    int64_t val = (static_cast<int64_t>(A) << kPtsFractionalBits) +
+                  (B - A) * static_cast<int32_t>(alpha);
+    val += (val >= 0 ? kPtsRoundingVal : kPtsRoundingVal - 1);
+    return val >> kPtsFractionalBits;
   }
 
   int32_t filter_data_[2 * DChCount];
@@ -91,10 +92,11 @@ class NxNLinearSamplerImpl : public LinearSampler {
 
   static inline int32_t Interpolate(int32_t A, int32_t B, uint32_t alpha) {
     // TODO(mpuryear): MTWN-75 minimize LinearSamplerImpl code duplication.
-    // Called very frequently: optimized to 3 add, 1 mult, 2 shift, 1 compare.
-    A = (A << kPtsFractionalBits) + (B - A) * static_cast<int32_t>(alpha);
-    A += (A >= 0 ? kPtsRoundingVal : kPtsRoundingVal - 1);
-    return A >> kPtsFractionalBits;
+    // Called very frequently: optimized to cast, mult, compare, 2 shift, 3 add.
+    int64_t val = (static_cast<int64_t>(A) << kPtsFractionalBits) +
+                  (B - A) * static_cast<int32_t>(alpha);
+    val += (val >= 0 ? kPtsRoundingVal : kPtsRoundingVal - 1);
+    return val >> kPtsFractionalBits;
   }
 
   size_t chan_count_;
@@ -118,7 +120,7 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
       ScaleType != ScalerType::MUTED || DoAccumulate == true,
       "Mixing muted streams without accumulation is explicitly unsupported");
 
-  // Although the number of source frames is expressed in fixed-point 20.12
+  // Although the number of source frames is expressed in fixed-point 19.13
   // format, the actual number of frames must always be an integer.
   FXL_DCHECK((frac_src_frames & kPtsFractionalMask) == 0);
   FXL_DCHECK(frac_src_frames >= FRAC_ONE);
@@ -133,7 +135,7 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
   uint32_t doff = *dst_offset;
   int32_t soff = *frac_src_offset;
 
-  // "Source end" is the last valid renderer sub-frame that can be sampled.
+  // "Source end" is the last valid input sub-frame that can be sampled.
   int32_t src_end =
       static_cast<int32_t>(frac_src_frames - pos_filter_width() - 1);
 
@@ -142,8 +144,15 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
   FXL_DCHECK(frac_src_frames <=
              static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
   // "Source offset" can be negative, but within the bounds of pos_filter_width.
-  // For linear_sampler this means that soff > -FRAC_ONE.
-  FXL_DCHECK(soff + pos_filter_width() >= 0);
+  // Otherwise, all these samples are in the future and irrelevant here. Callers
+  // explicitly avoid calling Mix in this case, so we have detected an error.
+  // For linear_sampler this implies the requirement that soff > -FRAC_ONE.
+  FXL_DCHECK(soff + static_cast<int32_t>(pos_filter_width()) >= 0);
+  // Source offset must also be within neg_filter_width of our last sample.
+  // Otherwise, all these samples are in the past and irrelevant here. Callers
+  // explicitly avoid calling Mix in this case, so we have detected an error.
+  // For linear_sampler this implies a requirement that soff < frac_src_frames.
+  FXL_DCHECK(soff + FRAC_ONE <= frac_src_frames + neg_filter_width());
 
   // If we are not attenuated to the point of being muted, go ahead and perform
   // the mix.  Otherwise, just update the source and dest offsets and hold onto
@@ -221,14 +230,21 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
   *dst_offset = doff;
   *frac_src_offset = soff;
 
-  // If the next source position for us to consume is beyond the start of the
-  // last frame, cache those samples for use in future interpolation.
+  // If next source position to consume is beyond start of last frame ...
   if (soff > src_end) {
     uint32_t S = (src_end >> kPtsFractionalBits) * SChCount;
-    for (size_t D = 0; D < DChCount; ++D) {
-      filter_data_[D] = SR::Read(src + S + (D / SR::DstPerSrc));
+    // ... and if we are not mute, of course...
+    if (ScaleType != ScalerType::MUTED) {
+      // ... cache our final frame for use in future interpolation ...
+      for (size_t D = 0; D < DChCount; ++D) {
+        filter_data_[D] = SR::Read(src + S + (D / SR::DstPerSrc));
+      }
+    } else {
+      // ... otherwise cache silence (which is what we actually produced).
+      for (size_t D = 0; D < DChCount; ++D) {
+        filter_data_[D] = 0;
+      }
     }
-
     // At this point the source offset (soff) is either somewhere within the
     // last source sample, or entirely beyond the end of the source buffer (if
     // frac_step_size is greater than unity).  Either way, we've extracted all
@@ -290,7 +306,7 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
       ScaleType != ScalerType::MUTED || DoAccumulate == true,
       "Mixing muted streams without accumulation is explicitly unsupported");
 
-  // Although the number of source frames is expressed in fixed-point 20.12
+  // Although the number of source frames is expressed in fixed-point 19.13
   // format, the actual number of frames must always be an integer.
   FXL_DCHECK((frac_src_frames & kPtsFractionalMask) == 0);
   FXL_DCHECK(frac_src_frames >= FRAC_ONE);
@@ -304,7 +320,7 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
   uint32_t doff = *dst_offset;
   int32_t soff = *frac_src_offset;
 
-  // "Source end" is the last valid renderer sub-frame that can be sampled.
+  // This is the last sub-frame at which we can output without additional data.
   int32_t src_end =
       static_cast<int32_t>(frac_src_frames - pos_filter_width() - 1);
 
@@ -312,9 +328,12 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
   FXL_DCHECK(src_end >= 0);
   FXL_DCHECK(frac_src_frames <=
              static_cast<uint32_t>(std::numeric_limits<int32_t>::max()));
+
   // "Source offset" can be negative, but within the bounds of pos_filter_width.
   // For linear_sampler this means that soff > -FRAC_ONE.
-  FXL_DCHECK(soff + pos_filter_width() >= 0);
+  FXL_DCHECK(soff + static_cast<int32_t>(pos_filter_width()) >= 0);
+  // Source offset must also be within neg_filter_width of our last sample.
+  FXL_DCHECK(soff + FRAC_ONE <= frac_src_frames + neg_filter_width());
 
   // If we are not attenuated to the point of being muted, go ahead and perform
   // the mix.  Otherwise, just update the source and dest offsets and hold onto
@@ -392,14 +411,21 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
   *dst_offset = doff;
   *frac_src_offset = soff;
 
-  // If the next source position for us to consume is beyond the start of the
-  // last frame, cache those samples for use in future interpolation.
+  // If next source position to consume is beyond start of last frame ...
   if (soff > src_end) {
     uint32_t S = (src_end >> kPtsFractionalBits) * chan_count;
-    for (size_t D = 0; D < chan_count; ++D) {
-      filter_data_u_[D] = SampleNormalizer<SType>::Read(src + S + D);
+    // ... and if we are not mute, of course...
+    if (ScaleType != ScalerType::MUTED) {
+      // ... cache our final frame for use in future interpolation ...
+      for (size_t D = 0; D < chan_count; ++D) {
+        filter_data_u_[D] = SampleNormalizer<SType>::Read(src + S + D);
+      }
+    } else {
+      // ... otherwise cache silence (which is what we actually produced).
+      for (size_t D = 0; D < chan_count; ++D) {
+        filter_data_u_[D] = 0;
+      }
     }
-
     // At this point the source offset (soff) is either somewhere within the
     // last source sample, or entirely beyond the end of the source buffer (if
     // frac_step_size is greater than unity).  Either way, we've extracted all
@@ -448,7 +474,7 @@ bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
 }
 
 // Templates used to expand all of the different combinations of the possible
-// Linear Sampler Mixer configurations.
+// LinearSampler Mixer configurations.
 template <size_t DChCount, typename SType, size_t SChCount>
 static inline MixerPtr SelectLSM(const AudioMediaTypeDetails& src_format,
                                  const AudioMediaTypeDetails& dst_format) {

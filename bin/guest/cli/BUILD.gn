@@ -12,17 +12,20 @@ executable("bin") {
     "dump.h",
     "launch.cc",
     "launch.h",
+    "list.cc",
+    "list.h",
     "main.cc",
     "serial.cc",
     "serial.h",
+    "service.cc",
     "service.h",
   ]
 
   deps = [
-    "//garnet/lib/machina/fidl",
     "//garnet/public/lib/app/cpp",
     "//garnet/public/lib/app/fidl",
     "//garnet/public/lib/fsl",
+    "//garnet/public/lib/guest/fidl",
     "//garnet/public/lib/svc/cpp",
     "//garnet/public/lib/ui/presentation/fidl",
     "//garnet/public/lib/ui/views/fidl:v1",

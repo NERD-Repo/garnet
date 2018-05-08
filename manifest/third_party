@@ -15,7 +15,7 @@
     <project name="external/github.com/catapult-project/catapult"
              path="third_party/catapult"
              remote="https://chromium.googlesource.com/catapult"
-             revision="5b642efe845940626042850327b511ee0c5042d2"/>
+             revision="e853531767d21d94507e2f0b786b374de030248b"/>
     <project name="libc-tests"
              path="third_party/libc-tests"
              remote="https://fuchsia.googlesource.com/libc-tests"
@@ -23,7 +23,7 @@
     <project name="third_party/angle"
              path="third_party/angle"
              remote="https://chromium.googlesource.com/angle/angle"
-             revision="9aef36705b6653d61fee7e79dac188c279bff5ed"/>
+             revision="3b9b027c59f38580cb038f94d49887e98a80b082"/>
     <project name="third_party/asio"
              path="third_party/asio"
              remote="https://fuchsia.googlesource.com/third_party/asio"
@@ -187,7 +187,7 @@
     <project name="rust-crates"
              path="third_party/rust-crates"
              remote="https://fuchsia.googlesource.com/third_party/rust-crates"
-             revision="1e074b8d44a40a6fe17ff23153e71363a1f5273a"
+             revision="0ea512a32917e5f110de68ceddaa9a68502508dd"
              gerrithost="https://fuchsia-review.googlesource.com"/>
     <project name="third_party/cargo-vendor"
              path="third_party/rust-mirrors/cargo-vendor"
@@ -204,7 +204,7 @@
     <project name="third_party/xi-editor"
              path="third_party/rust-mirrors/xi-editor"
              remote="https://fuchsia.googlesource.com/third_party/xi-editor"
-             revision="0d2f8a739848d77caadb8d3b854eb0daa0950963"
+             revision="2100f968cb9a5f9e55f96962ec72a0f6e4147cfb"
              gerrithost="https://fuchsia-review.googlesource.com"/>
     <project name="third_party/rust-mirrors/rand"
              path="third_party/rust-mirrors/rand"
@@ -243,7 +243,7 @@
              path="third_party/openssh-portable"
              remote="https://fuchsia.googlesource.com/third_party/openssh-portable"
              gerrithost="https://fuchsia-review.googlesource.com"
-             revision="810daa94bca2cccaa7435d39d458011cb6f20abe"/>
+             revision="ba54349d6011ab7751ded44266b1ae2ce13c5fec"/>
     <project name="third_party/vim"
              path="third_party/vim"
              remote="https://fuchsia.googlesource.com/third_party/vim"

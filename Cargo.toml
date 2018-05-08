@@ -8,12 +8,8 @@ members =  [
   "bin/log_listener",
   "bin/logger",
   "bin/power_manager",
-  "bin/wlan-hw-sim",
-  "bin/wlancfg",
-  "bin/wlanstack",
   "bin/wlantool",
   "bin/xi_core",
-  "drivers/wlan/testing/util",
   "bin/bluetooth_tests/integration",
   "examples/bluetooth/ble_battery_service",
   "examples/fidl/*rust",
@@ -22,14 +18,11 @@ members =  [
   "examples/rust/testing",
   "lib/rust/crates/eapol",
   "lib/rust/crates/fuchsia-bluetooth",
-  "lib/rust/crates/fuchsia-wlan-dev",
   "lib/rust/crates/wlan-rsn",
   "lib/rust/crates/wlan-sme",
-  "lib/rust/crates/wlantap-client",
   "lib/rust/fidl_crates/fidl_bluetooth_host",
   "lib/rust/fidl_crates/fidl_wlan_device",
   "lib/rust/fidl_crates/fidl_wlan_device_service",
-  "lib/rust/fidl_crates/fidl_wlantap",
   "public/lib/fidl/rust/fidl",
   "public/rust/crates/fuchsia-ddk",
   "public/rust/crates/fuchsia-ddk/examples/ddk_toy",
@@ -67,6 +60,7 @@ members =  [
   "public/rust/fidl_crates/fidl_views",
   "public/rust/fidl_crates/fidl_views_v1",
   "public/rust/fidl_crates/fidl_views_v1_token",
+  "public/rust/fidl_crates/fidl_wlan_service",
   "public/rust/fidl_crates/fidl_xi",
 ]
 
@@ -99,7 +93,7 @@ fidl_views_v1 = { path = "public/rust/fidl_crates/fidl_views_v1" }
 fidl_views_v1_token = { path = "public/rust/fidl_crates/fidl_views_v1_token" }
 fidl_wlan_device = { path = "lib/rust/fidl_crates/fidl_wlan_device" }
 fidl_wlan_device_service = { path = "lib/rust/fidl_crates/fidl_wlan_device_service" }
-fidl_wlantap = { path = "lib/rust/fidl_crates/fidl_wlantap" }
+fidl_wlan_service = { path = "public/rust/fidl_crates/fidl_wlan_service" }
 fidl_xi = { path = "public/rust/fidl_crates/fidl_xi" }
 fuchsia-ddk = { path = "public/rust/crates/fuchsia-ddk" }
 eapol = { path = "lib/rust/crates/eapol" }
@@ -110,7 +104,6 @@ fuchsia-syslog = { path = "public/rust/crates/fuchsia-syslog" }
 fuchsia-async = { path = "public/rust/crates/fuchsia-async" }
 fuchsia-bluetooth = { path = "lib/rust/crates/fuchsia-bluetooth" }
 fuchsia-vfs-watcher = { path = "public/rust/crates/fuchsia-vfs/fuchsia-vfs-watcher" }
-fuchsia-wlan-dev = { path = "lib/rust/crates/fuchsia-wlan-dev" }
 fuchsia-zircon = { path = "public/rust/crates/fuchsia-zircon" }
 fuchsia-zircon-sys = { path = "public/rust/crates/fuchsia-zircon/fuchsia-zircon-sys" }
 mio = { path = "../third_party/rust-mirrors/mio" }
@@ -120,7 +113,6 @@ rand = { path = "../third_party/rust-mirrors/rand" }
 tokio-core = { path = "../third_party/rust-mirrors/tokio-core" }
 wlan-rsn = { path = "lib/rust/crates/wlan-rsn" }
 wlan-sme = { path = "lib/rust/crates/wlan-sme" }
-wlantap-client = { path = "lib/rust/crates/wlantap-client" }
 xi-core-lib = { path = "../third_party/rust-mirrors/xi-editor/rust/core-lib" }
 xi-rope = { path = "../third_party/rust-mirrors/xi-editor/rust/rope" }
 xi-rpc = { path = "../third_party/rust-mirrors/xi-editor/rust/rpc" }

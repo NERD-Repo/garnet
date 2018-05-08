@@ -35,17 +35,17 @@ double MeasureSourceNoiseFloor(double* sinad_db) {
     mixer = SelectMixer(AudioSampleFormat::UNSIGNED_8, 1, 48000, 1, 48000,
                         Resampler::SampleAndHold);
     amplitude = std::numeric_limits<int8_t>::max();
-    expected_amplitude = std::numeric_limits<int8_t>::max() * (1 << 8);
+    expected_amplitude = amplitude * (1 << (kAudioPipelineWidth - 8));
   } else if (std::is_same<T, int16_t>::value) {
     mixer = SelectMixer(AudioSampleFormat::SIGNED_16, 1, 48000, 1, 48000,
                         Resampler::SampleAndHold);
     amplitude = std::numeric_limits<int16_t>::max();
-    expected_amplitude = std::numeric_limits<int16_t>::max();
+    expected_amplitude = amplitude * (1 << (kAudioPipelineWidth - 16));
   } else if (std::is_same<T, float>::value) {
     mixer = SelectMixer(AudioSampleFormat::FLOAT, 1, 48000, 1, 48000,
                         Resampler::SampleAndHold);
     amplitude = 1.0;
-    expected_amplitude = -std::numeric_limits<int16_t>::min();
+    expected_amplitude = amplitude * (1 << (kAudioPipelineWidth - 1));
   } else {
     FXL_DCHECK(false) << "Unsupported source format";
   }
@@ -74,66 +74,84 @@ double MeasureSourceNoiseFloor(double* sinad_db) {
   // We can directly compare 'signal' and 'other', regardless of source format.
   *sinad_db = ValToDb(magn_signal / magn_other);
 
-  // All sources (8-bit, 16-bit, ...) are normalized to int16 in accum buffer.
+  // All sources (8-bit, 16-bit, ...) are normalized to "int18" in accum buffer.
   return ValToDb(magn_signal / expected_amplitude);
 }
 
 // Measure level response and noise floor for 1kHz sine from 8-bit source.
 TEST(NoiseFloor, Source_8) {
-  double level_db =
+  AudioResult::LevelSource8 =
       MeasureSourceNoiseFloor<uint8_t>(&AudioResult::FloorSource8);
 
-  EXPECT_GE(level_db, -AudioResult::kLevelToleranceSource8);
-  EXPECT_LE(level_db, AudioResult::kLevelToleranceSource8);
+  EXPECT_GE(AudioResult::LevelSource8,
+            0.0 - AudioResult::kPrevLevelToleranceSource8);
+  EXPECT_LE(AudioResult::LevelSource8,
+            0.0 + AudioResult::kPrevLevelToleranceSource8);
+  AudioResult::LevelToleranceSource8 =
+      fmax(AudioResult::LevelToleranceSource8, abs(AudioResult::LevelSource8));
 
   EXPECT_GE(AudioResult::FloorSource8, AudioResult::kPrevFloorSource8);
 }
 
 // Measure level response and noise floor for 1kHz sine from 16bit source.
 TEST(NoiseFloor, Source_16) {
-  double level_db =
+  AudioResult::LevelSource16 =
       MeasureSourceNoiseFloor<int16_t>(&AudioResult::FloorSource16);
 
-  EXPECT_GE(level_db, -AudioResult::kLevelToleranceSource16);
-  EXPECT_LE(level_db, AudioResult::kLevelToleranceSource16);
+  EXPECT_GE(AudioResult::LevelSource16,
+            0.0 - AudioResult::kPrevLevelToleranceSource16);
+  EXPECT_LE(AudioResult::LevelSource16,
+            0.0 + AudioResult::kPrevLevelToleranceSource16);
+  AudioResult::LevelToleranceSource16 = fmax(
+      AudioResult::LevelToleranceSource16, abs(AudioResult::LevelSource16));
 
   EXPECT_GE(AudioResult::FloorSource16, AudioResult::kPrevFloorSource16);
 }
 
 // Measure level response and noise floor for 1kHz sine from 16bit source.
 TEST(NoiseFloor, Source_Float) {
-  double level_db =
+  AudioResult::LevelSourceFloat =
       MeasureSourceNoiseFloor<float>(&AudioResult::FloorSourceFloat);
 
-  EXPECT_GE(level_db, -AudioResult::kLevelToleranceSourceFloat);
-  EXPECT_LE(level_db, AudioResult::kLevelToleranceSourceFloat);
+  EXPECT_GE(AudioResult::LevelSourceFloat,
+            0.0 - AudioResult::kPrevLevelToleranceSourceFloat);
+  EXPECT_LE(AudioResult::LevelSourceFloat,
+            0.0 + AudioResult::kPrevLevelToleranceSourceFloat);
+  AudioResult::LevelToleranceSourceFloat =
+      fmax(AudioResult::LevelToleranceSourceFloat,
+           abs(AudioResult::LevelSourceFloat));
 
   EXPECT_GE(AudioResult::FloorSourceFloat, AudioResult::kPrevFloorSourceFloat);
 }
 
+// Calculate magnitude of primary signal strength, compared to max value. Do the
+// same for noise level, compared to the received signal.  For 8-bit output,
+// using int8::max (not uint8::max) is intentional, as within uint8 we still use
+// a maximum amplitude of 127 (it is just centered on 128). For float, we
+// populate the accumulator with full-range vals that translate to [-1.0, +1.0].
 template <typename T>
 double MeasureOutputNoiseFloor(double* sinad_db) {
   OutputFormatterPtr output_formatter;
+  double amplitude, expected_amplitude;
 
-  double amplitude = std::numeric_limits<int16_t>::max();
   // Calculate expected magnitude of signal strength, compared to max value.
   // For 8-bit output, compensate for the shift it got on the way to accum.
   // N.B.: using int8::max (not uint8::max) is intentional, as within uint8
   // we still use a maximum amplitude of 127 (it is just centered on 128).
   // For float, 7FFF equates to less than 1.0, so adjust by (32768/32767).
-  double expected_amplitude;
 
   if (std::is_same<T, uint8_t>::value) {
     output_formatter = SelectOutputFormatter(AudioSampleFormat::UNSIGNED_8, 1);
     expected_amplitude = std::numeric_limits<int8_t>::max();
+    amplitude = expected_amplitude * (1 << (kAudioPipelineWidth - 8));
   } else if (std::is_same<T, int16_t>::value) {
     output_formatter = SelectOutputFormatter(AudioSampleFormat::SIGNED_16, 1);
     expected_amplitude = std::numeric_limits<int16_t>::max();
+    amplitude = expected_amplitude * (1 << (kAudioPipelineWidth - 16));
   } else if (std::is_same<T, float>::value) {
     output_formatter = SelectOutputFormatter(AudioSampleFormat::FLOAT, 1);
-    expected_amplitude =
-        static_cast<double>(std::numeric_limits<int16_t>::max()) /
-        -std::numeric_limits<int16_t>::min();
+    expected_amplitude = 1.0;
+    amplitude = expected_amplitude * (1 << (kAudioPipelineWidth - 1));
   } else {
     FXL_DCHECK(false) << "Unsupported source format";
   }
@@ -160,33 +178,46 @@ double MeasureOutputNoiseFloor(double* sinad_db) {
 
 // Measure level response and noise floor for 1kHz sine, to an 8bit output.
 TEST(NoiseFloor, Output_8) {
-  double level_db =
+  AudioResult::LevelOutput8 =
       MeasureOutputNoiseFloor<uint8_t>(&AudioResult::FloorOutput8);
 
-  EXPECT_GE(level_db, -AudioResult::kLevelToleranceOutput8);
-  EXPECT_LE(level_db, AudioResult::kLevelToleranceOutput8);
+  EXPECT_GE(AudioResult::LevelOutput8,
+            0.0 - AudioResult::kPrevLevelToleranceOutput8);
+  EXPECT_LE(AudioResult::LevelOutput8,
+            0.0 + AudioResult::kPrevLevelToleranceOutput8);
+  AudioResult::LevelToleranceOutput8 =
+      fmax(AudioResult::LevelToleranceOutput8, abs(AudioResult::LevelOutput8));
 
   EXPECT_GE(AudioResult::FloorOutput8, AudioResult::kPrevFloorOutput8);
 }
 
 // Measure level response and noise floor for 1kHz sine, to a 16bit output.
 TEST(NoiseFloor, Output_16) {
-  double level_db =
+  AudioResult::LevelOutput16 =
       MeasureOutputNoiseFloor<int16_t>(&AudioResult::FloorOutput16);
 
-  EXPECT_GE(level_db, -AudioResult::kLevelToleranceOutput16);
-  EXPECT_LE(level_db, AudioResult::kLevelToleranceOutput16);
+  EXPECT_GE(AudioResult::LevelOutput16,
+            0.0 - AudioResult::kPrevLevelToleranceOutput16);
+  EXPECT_LE(AudioResult::LevelOutput16,
+            0.0 + AudioResult::kPrevLevelToleranceOutput16);
+  AudioResult::LevelToleranceOutput16 = fmax(
+      AudioResult::LevelToleranceOutput16, abs(AudioResult::LevelOutput16));
 
   EXPECT_GE(AudioResult::FloorOutput16, AudioResult::kPrevFloorOutput16);
 }
 
 // Measure level response and noise floor for 1kHz sine, to a 16bit output.
 TEST(NoiseFloor, Output_Float) {
-  double level_db =
+  AudioResult::LevelOutputFloat =
       MeasureOutputNoiseFloor<float>(&AudioResult::FloorOutputFloat);
 
-  EXPECT_GE(level_db, -AudioResult::kLevelToleranceOutputFloat);
-  EXPECT_LE(level_db, AudioResult::kLevelToleranceOutputFloat);
+  EXPECT_GE(AudioResult::LevelOutputFloat,
+            0.0 - AudioResult::kPrevLevelToleranceOutputFloat);
+  EXPECT_LE(AudioResult::LevelOutputFloat,
+            0.0 + AudioResult::kPrevLevelToleranceOutputFloat);
+  AudioResult::LevelToleranceOutputFloat =
+      fmax(AudioResult::LevelToleranceOutputFloat,
+           abs(AudioResult::LevelOutputFloat));
 
   EXPECT_GE(AudioResult::FloorOutputFloat, AudioResult::kPrevFloorOutputFloat);
 }
@@ -239,8 +270,7 @@ void MeasureFreqRespSinad(MixerPtr mixer,
 
     // Populate the source buffer with a sinusoid at each reference frequency.
     OverwriteCosine(source.data(), src_buf_size,
-                    FrequencySet::kReferenceFreqs[freq_idx], 1.0);
-
+                    FrequencySet::kReferenceFreqs[freq_idx]);
     source[src_buf_size] = source[0];
 
     // Resample the source into the accumulation buffer, in pieces. (Why in
@@ -270,7 +300,7 @@ void MeasureFreqRespSinad(MixerPtr mixer,
 
     // Calculate Frequency Response and Signal-to-Noise-And-Distortion (SINAD).
     level_db[freq_idx] =
-        ValToDb(magn_signal / -std::numeric_limits<int16_t>::min());
+        ValToDb(magn_signal / (1 << (kAudioPipelineWidth - 1)));
     sinad_db[freq_idx] = ValToDb(magn_signal / magn_other);
   }
 }
@@ -290,8 +320,10 @@ void EvaluateFreqRespResults(double* freq_resp_results,
                         : FrequencySet::kSummaryIdxs[idx];
     EXPECT_GE(freq_resp_results[freq], freq_resp_limits[freq]) << freq;
     EXPECT_LE(freq_resp_results[freq],
-              0.0 + AudioResult::kLevelToleranceInterpolation)
+              0.0 + AudioResult::kPrevLevelToleranceInterpolation)
         << freq;
+    AudioResult::LevelToleranceInterpolation =
+        fmax(AudioResult::LevelToleranceInterpolation, freq_resp_results[freq]);
   }
 }
 
@@ -322,7 +354,7 @@ void TestUnitySampleRatio(Resampler sampler_type,
                        sinad_results);
 }
 
-// For the given resampler, target 96000->48000 downsampling. We articulate this
+// For the given resampler, target a 2:1 downsampling ratio. We articulate this
 // by specifying a source buffer twice the length of the destination buffer.
 void TestDownSampleRatio1(Resampler sampler_type,
                           double* freq_resp_results,
@@ -330,7 +362,8 @@ void TestDownSampleRatio1(Resampler sampler_type,
   MixerPtr mixer =
       SelectMixer(AudioSampleFormat::FLOAT, 1, 96000, 1, 48000, sampler_type);
 
-  MeasureFreqRespSinad(std::move(mixer), kFreqTestBufSize << 1,
+  MeasureFreqRespSinad(std::move(mixer),
+                       round(kFreqTestBufSize * 96000.0 / 48000.0),
                        freq_resp_results, sinad_results);
 }
 
@@ -368,7 +401,20 @@ void TestUpSampleRatio2(Resampler sampler_type,
   MixerPtr mixer =
       SelectMixer(AudioSampleFormat::FLOAT, 1, 24000, 1, 48000, sampler_type);
 
-  MeasureFreqRespSinad(std::move(mixer), kFreqTestBufSize >> 1,
+  MeasureFreqRespSinad(std::move(mixer),
+                       round(kFreqTestBufSize * 24000.0 / 48000.0),
+                       freq_resp_results, sinad_results);
+}
+
+// For the given resampler, target micro-sampling -- with a 47999:48000 ratio.
+void TestMicroSampleRatio(Resampler sampler_type,
+                          double* freq_resp_results,
+                          double* sinad_results) {
+  MixerPtr mixer =
+      SelectMixer(AudioSampleFormat::FLOAT, 1, 47999, 1, 48000, sampler_type);
+
+  MeasureFreqRespSinad(std::move(mixer),
+                       round(kFreqTestBufSize * 47999.0 / 48000.0),
                        freq_resp_results, sinad_results);
 }
 
@@ -472,6 +518,26 @@ TEST(Sinad, Point_UpSamp2) {
                        AudioResult::kPrevSinadPointUp2.data());
 }
 
+// Measure Freq Response for Point sampler with minimum rate change.
+TEST(FrequencyResponse, Point_MicroSRC) {
+  TestMicroSampleRatio(Resampler::SampleAndHold,
+                       AudioResult::FreqRespPointMicro.data(),
+                       AudioResult::SinadPointMicro.data());
+
+  EvaluateFreqRespResults(AudioResult::FreqRespPointMicro.data(),
+                          AudioResult::kPrevFreqRespPointMicro.data());
+}
+
+// Measure SINAD for Point sampler with minimum rate change.
+TEST(Sinad, Point_MicroSRC) {
+  TestMicroSampleRatio(Resampler::SampleAndHold,
+                       AudioResult::FreqRespPointMicro.data(),
+                       AudioResult::SinadPointMicro.data());
+
+  EvaluateSinadResults(AudioResult::SinadPointMicro.data(),
+                       AudioResult::kPrevSinadPointMicro.data());
+}
+
 // Measure Freq Response for Point sampler, no rate conversion.
 TEST(FrequencyResponse, Linear_Unity) {
   TestUnitySampleRatio(Resampler::LinearInterpolation,
@@ -570,6 +636,26 @@ TEST(Sinad, Linear_UpSamp2) {
 
   EvaluateSinadResults(AudioResult::SinadLinearUp2.data(),
                        AudioResult::kPrevSinadLinearUp2.data());
+}
+
+// Measure Freq Response for Linear sampler with minimum rate change.
+TEST(FrequencyResponse, Linear_MicroSRC) {
+  TestMicroSampleRatio(Resampler::LinearInterpolation,
+                       AudioResult::FreqRespLinearMicro.data(),
+                       AudioResult::SinadLinearMicro.data());
+
+  EvaluateFreqRespResults(AudioResult::FreqRespLinearMicro.data(),
+                          AudioResult::kPrevFreqRespLinearMicro.data());
+}
+
+// Measure SINAD for Linear sampler with minimum rate change.
+TEST(Sinad, Linear_MicroSRC) {
+  TestMicroSampleRatio(Resampler::LinearInterpolation,
+                       AudioResult::FreqRespLinearMicro.data(),
+                       AudioResult::SinadLinearMicro.data());
+
+  EvaluateSinadResults(AudioResult::SinadLinearMicro.data(),
+                       AudioResult::kPrevSinadLinearMicro.data());
 }
 
 }  // namespace test

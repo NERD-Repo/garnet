@@ -33,22 +33,22 @@
 struct sparse_array;
 typedef struct sparse_array* sparse_array_t;
 
-// Allocate a new sparse array
+// Allocate a new sparse array into *psa. Sets to NULL if memory allocation fails.
 void sa_init(sparse_array_t* psa, size_t size);
 
-// Deallocate a sparse array
+// Deallocate a sparse array.
 void sa_free(sparse_array_t sa);
 
-// Add an element to a sparse array, returns the index
+// Add an element to a sparse array, returns the index or -1 if no entries are available.
 ssize_t sa_add(sparse_array_t sa, void* payload);
 
-// Get the element at the specified index
+// Get the element at the specified index, which must be in the used list.
 void* sa_get(sparse_array_t sa, ssize_t ndx);
 
-// Remove an element from a sparse array
+// Remove an element from a sparse array, which must be in the used list.
 void sa_remove(sparse_array_t sa, ssize_t ndx);
 
-// Call a function on each element in a sparse array
+// Call a function on each element in a sparse array.
 void sa_for_each(sparse_array_t sa, void (*fn)(ssize_t ndx, void* ptr, void* ctx), void* ctx);
 
 #endif

@@ -203,6 +203,7 @@ zx_status_t ath10k_htt_init(struct ath10k* ar) {
         break;
     case ATH10K_FW_HTT_OP_VERSION_MAX:
     case ATH10K_FW_HTT_OP_VERSION_UNSET:
+    default:
         WARN_ON(1);
         return ZX_ERR_OUT_OF_RANGE;
     }

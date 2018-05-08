@@ -37,6 +37,7 @@ driver_module("ath10k_driver") {
     "msg_buf.c",
     "msg_buf.h",
     "pci.c",
+    "pci.h",
     "rx_desc.h",
     "sparse_array.c",
     "sparse_array.h",

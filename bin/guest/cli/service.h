@@ -5,28 +5,10 @@
 #ifndef GARNET_BIN_GUEST_CLI_SERVICE_H_
 #define GARNET_BIN_GUEST_CLI_SERVICE_H_
 
-#include <fbl/function.h>
-#include <fdio/util.h>
-#include <iostream>
+#include <fuchsia/cpp/guest.h>
 
-#include <fuchsia/cpp/machina.h>
+extern guest::GuestControllerPtr g_guest_controller;
 
-// Interface of the inspect service of the guest.
-extern machina::InspectServicePtr inspect_svc;
-// Path to the inspect service of the guest.
-extern std::string svc_path;
-
-using InspectReq = fidl::InterfaceRequest<machina::InspectService>;
-using ConnectFunc = fbl::Function<zx_status_t(InspectReq)>;
-
-static inline zx_status_t connect(InspectReq req) {
-  zx_status_t status =
-      fdio_service_connect(svc_path.c_str(), req.TakeChannel().release());
-  if (status != ZX_OK) {
-    std::cerr << "Failed to connect to " << svc_path << "\n";
-    return ZX_ERR_UNAVAILABLE;
-  }
-  return ZX_OK;
-}
+guest::GuestController* connect(uint32_t guest_id);
 
 #endif  // GARNET_BIN_GUEST_CLI_SERVICE_H_

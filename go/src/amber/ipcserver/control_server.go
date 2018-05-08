@@ -14,6 +14,7 @@ import (
 	"fuchsia/go/amber"
 
 	"amber/daemon"
+	"amber/lg"
 	"amber/pkg"
 	"amber/source"
 
@@ -21,16 +22,33 @@ import (
 )
 
 type ControlSrvr struct {
-	daemonSrc  *daemon.DaemonProvider
-	daemonGate sync.Once
-	daemon     *daemon.Daemon
-	pinger     *source.TickGenerator
-	bs         bindings.BindingSet
+	daemonSrc   *daemon.DaemonProvider
+	daemonGate  sync.Once
+	daemon      *daemon.Daemon
+	pinger      *source.TickGenerator
+	bs          bindings.BindingSet
+	actMon      *ActivationMonitor
+	activations chan<- string
+	compReqs    chan<- *completeUpdateRequest
+	writeReqs   chan<- *startUpdateRequest
 }
 
 func NewControlSrvr(d *daemon.DaemonProvider, r *source.TickGenerator) *ControlSrvr {
 	go bindings.Serve()
-	return &ControlSrvr{daemonSrc: d, pinger: r}
+	a := make(chan string, 5)
+	c := make(chan *completeUpdateRequest, 1)
+	w := make(chan *startUpdateRequest, 1)
+	m := NewActivationMonitor(c, w, a)
+	go m.Do()
+
+	return &ControlSrvr{
+		daemonSrc:   d,
+		pinger:      r,
+		actMon:      m,
+		activations: a,
+		compReqs:    c,
+		writeReqs:   w,
+	}
 }
 
 func (c *ControlSrvr) DoTest(in int32) (out string, err error) {
@@ -54,7 +72,37 @@ func (c *ControlSrvr) ListSrcs() ([]string, error) {
 	return []string{}, nil
 }
 
-func (c *ControlSrvr) GetUpdate(name string, version *string) (*string, error) {
+func (c *ControlSrvr) getAndWaitForUpdate(name string, version *string, ch *zx.Channel) {
+	res, err := c.downloadPkgMeta(name, version)
+	if err != nil {
+		ch.Close()
+		return
+	}
+	lg.Log.Println("Package metadata retrieved, sending for additional processing")
+	compReq := completeUpdateRequest{pkgData: res, replyChan: ch}
+	c.compReqs <- &compReq
+}
+
+func (c *ControlSrvr) GetUpdateComplete(name string, version *string) (zx.Channel, error) {
+	r, w, e := zx.NewChannel(0)
+	if e != nil {
+		lg.Log.Printf("Could not create channel")
+		return 0, e
+	}
+
+	go c.getAndWaitForUpdate(name, version, &w)
+	return r, nil
+}
+
+func (c *ControlSrvr) PackagesActivated(merkle []string) error {
+	for _, m := range merkle {
+		c.activations <- m
+		lg.Log.Printf("Got package activation for %s\n", m)
+	}
+	return nil
+}
+
+func (c *ControlSrvr) downloadPkgMeta(name string, version *string) (*daemon.GetResult, error) {
 	d := ""
 	if version == nil {
 		version = &d
@@ -81,12 +129,21 @@ func (c *ControlSrvr) GetUpdate(name string, version *string) (*string, error) {
 		return nil, res.Err
 	}
 
-	_, err := daemon.WriteUpdateToPkgFS(res)
+	return res, nil
+}
+
+func (c *ControlSrvr) GetUpdate(name string, version *string) (*string, error) {
+	res, err := c.downloadPkgMeta(name, version)
 	if err != nil {
 		return nil, err
 	}
 
-	return &res.Update.Merkle, nil
+	wrtReq := startUpdateRequest{pkgData: res, wg: &sync.WaitGroup{}, err: nil}
+	wrtReq.wg.Add(1)
+	c.writeReqs <- &wrtReq
+	wrtReq.wg.Wait()
+
+	return &res.Update.Merkle, wrtReq.err
 }
 
 func (c *ControlSrvr) GetBlob(merkle string) error {
@@ -100,6 +157,9 @@ func (c *ControlSrvr) GetBlob(merkle string) error {
 
 func (c *ControlSrvr) Quit() {
 	c.bs.Close()
+	close(c.activations)
+	close(c.compReqs)
+	close(c.writeReqs)
 }
 
 func (c *ControlSrvr) Bind(ch zx.Channel) error {

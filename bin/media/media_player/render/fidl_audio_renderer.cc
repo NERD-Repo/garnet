@@ -20,18 +20,31 @@ std::shared_ptr<FidlAudioRenderer> FidlAudioRenderer::Create(
 }
 
 FidlAudioRenderer::FidlAudioRenderer(media::AudioRenderer2Ptr audio_renderer)
-    : audio_renderer_(std::move(audio_renderer)), allocator_(0) {
+    : audio_renderer_(std::move(audio_renderer)),
+      allocator_(0),
+      arrivals_(true),
+      departures_(false) {
   FXL_DCHECK(audio_renderer_);
 
-  audio_renderer_->GetMinLeadTime([this](int64_t min_lead_time_nsec) {
-    if (min_lead_time_nsec == 0) {
-      FXL_LOG(WARNING)
-          << "AudioRenderer2.GetMinLeadTime returned zero, ignoring.";
-      return;
+  // |demand_task_| is used to wake up when demand might transition from
+  // negative to positive.
+  demand_task_.set_handler([this]() {
+    Demand demand = current_demand();
+    if (demand != Demand::kNegative) {
+      stage()->SetDemand(demand);
     }
-
-    min_lead_time_ns_ = min_lead_time_nsec;
   });
+
+  audio_renderer_.events().OnMinLeadTimeChanged =
+      [this](int64_t min_lead_time_nsec) {
+        // Pad this number just a bit so we are sure to have time to get the
+        // payloads delivered to the mixer over our channel.
+        min_lead_time_nsec += ZX_MSEC(10);
+        if (min_lead_time_nsec > min_lead_time_ns_) {
+          min_lead_time_ns_ = min_lead_time_nsec;
+        }
+      };
+  audio_renderer_->EnableMinLeadTimeEvents(true);
 
   supported_stream_types_.push_back(AudioStreamTypeSet::Create(
       {StreamType::kAudioEncodingLpcm},
@@ -53,6 +66,22 @@ FidlAudioRenderer::FidlAudioRenderer(media::AudioRenderer2Ptr audio_renderer)
 
 FidlAudioRenderer::~FidlAudioRenderer() {}
 
+const char* FidlAudioRenderer::label() const {
+  return "audio renderer";
+}
+
+void FidlAudioRenderer::Dump(std::ostream& os, NodeRef ref) const {
+  Renderer::Dump(os, ref);
+
+  if (arrivals_.count() != 0) {
+    os << newl << "packet arrivals: " << indent << arrivals_ << outdent;
+  }
+
+  if (departures_.count() != 0) {
+    os << newl << "packet departures: " << indent << departures_ << outdent;
+  }
+}
+
 void FidlAudioRenderer::Flush(bool hold_frame_not_used) {
   flushed_ = true;
   last_supplied_pts_ = 0;
@@ -64,20 +93,30 @@ Demand FidlAudioRenderer::SupplyPacket(PacketPtr packet) {
   FXL_DCHECK(packet);
   FXL_DCHECK(bytes_per_frame_ != 0);
 
-  UpdateTimeline(media::Timeline::local_now());
+  int64_t now = media::Timeline::local_now();
+  UpdateTimeline(now);
 
+  int64_t start_pts_ns = packet->GetPts(media::TimelineRate::NsPerSecond);
   int64_t start_pts = packet->GetPts(pts_rate_);
   int64_t end_pts = start_pts + packet->size() / bytes_per_frame_;
+
   if (flushed_ || end_pts < from_ns(min_pts(0)) ||
       start_pts > from_ns(max_pts(0))) {
     // Discard this packet.
     return current_demand();
   }
 
+  arrivals_.AddSample(now, current_timeline_function()(now), start_pts_ns,
+                      Progressing());
+
   last_supplied_pts_ = end_pts;
 
   if (packet->end_of_stream()) {
-    SetEndOfStreamPts(packet->GetPts(media::TimelineRate::NsPerSecond));
+    SetEndOfStreamPts(start_pts_ns);
+    if (current_timeline_function().invertable()) {
+      // Make sure we wake up to signal end-of-stream when the time comes.
+      UpdateTimelineAt(current_timeline_function().ApplyInverse(start_pts_ns));
+    }
 
     if (prime_callback_) {
       // We won't get any more packets, so we're as primed as we're going to
@@ -97,8 +136,14 @@ Demand FidlAudioRenderer::SupplyPacket(PacketPtr packet) {
     audioPacket.payload_size = packet->size();
 
     audio_renderer_->SendPacket(audioPacket, [this, packet]() {
-      UpdateTimeline(media::Timeline::local_now());
+      int64_t now = media::Timeline::local_now();
+
+      UpdateTimeline(now);
       stage()->SetDemand(current_demand());
+
+      departures_.AddSample(now, current_timeline_function()(now),
+                            packet->GetPts(media::TimelineRate::NsPerSecond),
+                            Progressing());
     });
   }
 
@@ -197,8 +242,20 @@ void FidlAudioRenderer::ReleasePayloadBuffer(void* buffer) {
   allocator_.ReleaseRegion(buffer_.OffsetFromPtr(buffer));
 }
 
+void FidlAudioRenderer::OnTimelineTransition() {
+  if (end_of_stream_pending() && current_timeline_function().invertable()) {
+    // Make sure we wake up to signal end-of-stream when the time comes.
+    UpdateTimelineAt(
+        current_timeline_function().ApplyInverse(end_of_stream_pts()));
+  }
+}
+
 Demand FidlAudioRenderer::current_demand() {
+  demand_task_.Cancel();
+
   if (flushed_ || end_of_stream_pending()) {
+    // If we're flushed or we've seen end of stream, we don't need any more
+    // packets.
     return Demand::kNegative;
   }
 
@@ -207,9 +264,24 @@ Demand FidlAudioRenderer::current_demand() {
 
   int64_t last_supplied_ns = to_ns(last_supplied_pts_);
 
-  return (presentation_time_ns + min_lead_time_ns_ > last_supplied_ns)
-             ? Demand::kPositive
-             : Demand::kNegative;
+  if (presentation_time_ns + min_lead_time_ns_ > last_supplied_ns) {
+    // We need more packets to meet lead time commitments.
+    return Demand::kPositive;
+  }
+
+  if (!current_timeline_function().invertable()) {
+    // We don't need packets now, and the timeline isn't progressing, so we
+    // won't need packets until the timeline starts progressing.
+    return Demand::kNegative;
+  }
+
+  // We don't need packets now. Predict when we might need the next packet
+  // and check then.
+  demand_task_.PostForTime(async(),
+                           zx::time(current_timeline_function().ApplyInverse(
+                               last_supplied_ns - min_lead_time_ns_)));
+
+  return Demand::kNegative;
 }
 
 }  // namespace media_player
