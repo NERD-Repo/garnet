@@ -1141,7 +1141,7 @@ void ath10k_ce_dump_registers(struct ath10k* ar,
             crash_data->ce_crash_data[id] = ce;
         }
 
-        ath10k_err("[%02d]: 0x%08x %3u %3u %3u %3u", id,
+        ath10k_err("[%02d]: 0x%08x %3u %3u %3u %3u\n", id,
                    ce.base_addr, ce.src_wr_idx, ce.src_r_idx, ce.dst_wr_idx, ce.dst_r_idx);
     }
 
