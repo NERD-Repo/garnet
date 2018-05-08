@@ -1,0 +1,5 @@
+{
+    "packages": {
+        "recovery-netstack": "//garnet/bin/recovery-netstack"
+    }
+}
