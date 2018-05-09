@@ -65,7 +65,7 @@ void ath10k_msg_bufs_init_stats(struct ath10k_msg_buf_state* state) {
     list_initialize(&state->bufs_in_use);
 }
 
-#define ATH10K_INITIAL_BUF_COUNT 4096
+#define ATH10K_INITIAL_BUF_COUNT 2048
 
 // One-time initialization of the module
 zx_status_t ath10k_msg_bufs_init(struct ath10k* ar) {
@@ -87,6 +87,10 @@ zx_status_t ath10k_msg_bufs_init(struct ath10k* ar) {
     // Clear the buffer pool
     mtx_init(&state->lock, mtx_plain);
     list_initialize(&state->buf_pool);
+
+#if DEBUG_MSG_BUF
+    ath10k_msg_bufs_init_stats(state);
+#endif
 
     // Organize our msg type information into something more usable (an array indexed by msg
     // type, with total size information).
@@ -114,10 +118,6 @@ zx_status_t ath10k_msg_bufs_init(struct ath10k* ar) {
         ath10k_msg_buf_free(msg_buf);
     }
 
-#if DEBUG_MSG_BUF
-    ath10k_msg_bufs_init_stats(state);
-#endif
-
     return ZX_OK;
 }
 
@@ -142,7 +142,7 @@ zx_status_t ath10k_msg_buf_alloc_real(struct ath10k* ar,
 
     // First, see if we have any available buffers in our pool
     mtx_lock(&state->lock);
-    if (!list_is_empty(&state->buf_pool)) {
+    if (!list_is_empty(&state->buf_pool) && !force_new) {
         msg_buf = list_remove_head_type(&state->buf_pool, struct ath10k_msg_buf, listnode);
         ZX_DEBUG_ASSERT(msg_buf->capacity == PAGE_SIZE);
         ZX_DEBUG_ASSERT(msg_buf->state == state);
@@ -175,6 +175,8 @@ zx_status_t ath10k_msg_buf_alloc_real(struct ath10k* ar,
             status = ZX_ERR_NO_MEMORY;
             ath10k_warn("attempt to allocate buffer, unable to get mmio with "
                         "32 bit phys addr (see ZX-1073)\n");
+            while (1)
+                ;
             goto err_free_iobuf;
 #if DEBUG_MSG_BUF
         } else {
@@ -258,7 +260,7 @@ void ath10k_msg_buf_dump_stats(struct ath10k* ar) {
     mtx_lock(&state->lock);
     printf("msg_buf stats:\n");
     printf("  Total buffers allocated: %zd\n", state->bufs_allocated);
-    printf("  Highest address allocated: %lu\n", state->highest_addr_allocated);
+    printf("  Highest address allocated: %#lx\n", state->highest_addr_allocated);
     printf("  Buffers in use: %d\n", (int)list_length(&state->bufs_in_use));
     printf("  Buffers available for reuse: %zd\n", list_length(&state->buf_pool));
     mtx_unlock(&state->lock);
