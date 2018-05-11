@@ -65,7 +65,7 @@ void ath10k_msg_bufs_init_stats(struct ath10k_msg_buf_state* state) {
     list_initialize(&state->bufs_in_use);
 }
 
-#define ATH10K_INITIAL_BUF_COUNT 2048
+#define ATH10K_INITIAL_BUF_COUNT 2560
 
 // One-time initialization of the module
 zx_status_t ath10k_msg_bufs_init(struct ath10k* ar) {
@@ -255,6 +255,49 @@ void ath10k_msg_buf_free(struct ath10k_msg_buf* msg_buf) {
     mtx_unlock(&state->lock);
 }
 
+#define MAX_BUFFER_LOCS 16
+
+static void dump_buffer_locs(list_node_t* buf_list) {
+    struct {
+        const char* filename;
+        size_t line_number;
+        size_t count;
+    } buffer_origins[MAX_BUFFER_LOCS];
+
+    // Initialize
+    for (size_t ndx = 0; ndx < MAX_BUFFER_LOCS; ndx++) {
+        buffer_origins[ndx].count = 0;
+    }
+
+    // Count
+    struct ath10k_msg_buf* next_buf;
+    list_for_every_entry(buf_list, next_buf, struct ath10k_msg_buf, debug_listnode) {
+        size_t ndx;
+        for (ndx = 0; ndx < MAX_BUFFER_LOCS; ndx++) {
+            if (buffer_origins[ndx].count == 0) {
+                buffer_origins[ndx].filename = next_buf->alloc_file_name;
+                buffer_origins[ndx].line_number = next_buf->alloc_line_num;
+                buffer_origins[ndx].count = 1;
+                break;
+            } else if ((buffer_origins[ndx].line_number == next_buf->alloc_line_num)
+                       && !strcmp(buffer_origins[ndx].filename, next_buf->alloc_file_name)) {
+                buffer_origins[ndx].count++;
+                break;
+            }
+        }
+        ZX_DEBUG_ASSERT(ndx < MAX_BUFFER_LOCS);
+    }
+
+    // Report
+    printf("  Buffer origins:\n");
+    for (size_t ndx = 0; ndx < MAX_BUFFER_LOCS && buffer_origins[ndx].count != 0; ndx++) {
+        printf("    %s:%zd... %zd\n",
+               buffer_origins[ndx].filename,
+               buffer_origins[ndx].line_number,
+               buffer_origins[ndx].count);
+    }
+}
+
 void ath10k_msg_buf_dump_stats(struct ath10k* ar) {
     struct ath10k_msg_buf_state* state = &ar->msg_buf_state;
     mtx_lock(&state->lock);
@@ -263,6 +306,7 @@ void ath10k_msg_buf_dump_stats(struct ath10k* ar) {
     printf("  Highest address allocated: %#lx\n", state->highest_addr_allocated);
     printf("  Buffers in use: %d\n", (int)list_length(&state->bufs_in_use));
     printf("  Buffers available for reuse: %zd\n", list_length(&state->buf_pool));
+    dump_buffer_locs(&state->bufs_in_use);
     mtx_unlock(&state->lock);
 }
 

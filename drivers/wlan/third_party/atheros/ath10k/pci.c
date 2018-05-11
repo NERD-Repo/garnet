@@ -146,7 +146,7 @@ static struct ce_attr host_ce_config_wlan[] = {
 
     /* CE4: host->target HTT */
     {
-        .flags = CE_ATTR_FLAGS | CE_ATTR_DIS_INTR,
+        .flags = CE_ATTR_FLAGS,
         .src_nentries = CE_HTT_H2T_MSG_SRC_NENTRIES,
         .src_sz_max = 256,
         .dest_nentries = 0,
@@ -2717,10 +2717,7 @@ static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
 static void ath10k_pci_interrupt_poll(struct ath10k* ar) {
     while (CE_INTERRUPT_SUMMARY(ar)) {
         ath10k_ce_per_engine_service_any(ar);
-        ath10k_htt_txrx_compl_task(ar);
     }
-    ath10k_pci_enable_legacy_irq(ar);
-    ath10k_pci_irq_msi_fw_unmask(ar);
 }
 
 static int ath10k_pci_interrupt_handler(void* arg) {
@@ -2733,17 +2730,6 @@ static int ath10k_pci_interrupt_handler(void* arg) {
             ath10k_warn("target is no longer present\n");
             break;
         }
-        status = ath10k_pci_force_wake(ar);
-        if (status != ZX_OK) {
-            ath10k_warn("failed to wake device up on irq: %s\n", zx_status_get_string(status));
-            break;
-        }
-        if ((ar_pci->oper_irq_mode == ATH10K_PCI_IRQ_LEGACY)
-            && !ath10k_pci_irq_pending(ar)) {
-            continue;
-        }
-        ath10k_pci_disable_and_clear_legacy_irq(ar);
-        ath10k_pci_irq_msi_fw_mask(ar);
         ath10k_pci_interrupt_poll(ar);
     }
 
@@ -2896,6 +2882,7 @@ static int ath10k_monitor(void* arg) {
     while (1) {
         zx_nanosleep(zx_deadline_after(ZX_SEC(5)));
         ath10k_msg_buf_dump_stats(ar);
+        printf("  Interrupt status: %#x\n", CE_INTERRUPT_SUMMARY(ar));
     }
     return 0;
 }

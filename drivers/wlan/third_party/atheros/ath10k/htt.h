@@ -1675,7 +1675,6 @@ struct ath10k_htt {
      * in batches to reduce cache stalls
      */
     list_node_t rx_compl_q;
-    list_node_t rx_in_ord_compl_q;
     list_node_t tx_fetch_ind_q;
 
     struct {
