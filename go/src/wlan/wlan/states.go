@@ -615,9 +615,18 @@ func (s *authState) handleMLMEMsg(msg interface{}, c *Client) (state, error) {
 			PrintAuthenticateConfirm(v)
 		}
 
-		if v.ResultCode == mlme.AuthenticateResultCodesSuccess {
+		switch v.ResultCode {
+		case mlme.AuthenticateResultCodesSuccess:
 			return newAssocState(), nil
-		} else {
+		case mlme.AuthenticateResultCodesAuthFailureTimeout:
+			return newScanState(c), nil
+		case mlme.AuthenticateResultCodesAuthenticationRejected:
+			log.Printf("Authentication rejected by %v (%v), reset wlanstack state", c.cfg.SSID, c.cfg.BSSID)
+			c.cfg = nil
+			return newScanState(c), nil
+		default:
+			log.Printf("Authentication failed with result code %v, reset wlanstack state", v.ResultCode)
+			c.cfg = nil
 			return newScanState(c), nil
 		}
 	default:
@@ -757,6 +766,9 @@ func (s *assocState) handleMLMEMsg(msg interface{}, c *Client) (state, error) {
 		}
 
 		if v.ResultCode == mlme.AssociateResultCodesSuccess {
+			if c.eapolC == nil {
+				log.Printf("WLAN connected (Open Authentication)")
+			}
 			return newAssociatedState(), nil
 		} else {
 			return newScanState(c), nil
@@ -856,7 +868,13 @@ func (s *associatedState) handleMLMEMsg(msg interface{}, c *Client) (state, erro
 		if debug {
 			PrintDeauthenticateIndication(v)
 		}
-		return newAuthState(), nil
+		if v.ReasonCode == mlme.ReasonCodeInvalidAuthentication { // INVALID_AUTHENTICATION
+			log.Printf("Invalid authentication (possibly a wrong password?) with %v (%v), reset wlanstack state", c.cfg.SSID, c.cfg.BSSID)
+		} else {
+			log.Printf("DeauthenticateIndication received, reason code: %v, reset wlanstack state", v.ReasonCode)
+		}
+		c.cfg = nil
+		return newScanState(c), nil
 	case *mlme.SignalReportIndication:
 		if debug {
 			PrintSignalReportIndication(v)
@@ -870,6 +888,9 @@ func (s *associatedState) handleMLMEMsg(msg interface{}, c *Client) (state, erro
 		return s, nil
 	case *mlme.EapolConfirm:
 		// TODO(hahnr): Evaluate response code.
+		if c.eapolC.KeyExchange().IsComplete() {
+			log.Printf("WLAN connected (EAPOL)")
+		}
 		return s, nil
 	default:
 		if s.scanner != nil {

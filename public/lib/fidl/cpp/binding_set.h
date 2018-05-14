@@ -14,7 +14,7 @@
 
 namespace fidl {
 
-// Manages a set of bindings to implemenations owned by the bound channels.
+// Manages a set of bindings to implementations owned by the bound channels.
 //
 // The implementation pointer type of the binding is also parameterized,
 // allowing the use of smart pointer types such as |std::unique_ptr<>| to
@@ -78,8 +78,7 @@ class BindingSet {
   InterfaceHandle<Interface> AddBinding(ImplPtr impl) {
     InterfaceHandle<Interface> handle;
     InterfaceRequest<Interface> request = handle.NewRequest();
-    if (!request)
-      return nullptr;
+    if (!request) return nullptr;
     AddBinding(std::forward<ImplPtr>(impl), std::move(request));
     return handle;
   }
@@ -94,8 +93,7 @@ class BindingSet {
   void CloseAndCheckForEmpty(const_iterator iterator) {
     (*iterator)->set_error_handler(nullptr);
     bindings_.erase(iterator);
-    if (bindings_.empty() && empty_set_handler_)
-      empty_set_handler_();
+    if (bindings_.empty() && empty_set_handler_) empty_set_handler_();
   }
 
   // The number of bindings in this |BindingSet|.

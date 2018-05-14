@@ -7,7 +7,7 @@ import("//build/fidl/fidl.gni")
 fidl("v1") {
   name = "views_v1"
 
-  sdk_candidate = true
+  sdk_category = "partner"
 
   sources = [
     "view_containers.fidl",
@@ -22,6 +22,7 @@ fidl("v1") {
   public_deps = [
     ":view_token",
     "//garnet/public/lib/app/fidl",
+    "//garnet/public/lib/ui/geometry/fidl",
     "//garnet/public/lib/ui/gfx/fidl",
     "//garnet/public/lib/ui/input/fidl",
     "//garnet/public/lib/ui/scenic/fidl",
@@ -33,7 +34,7 @@ fidl("v1") {
 fidl("v2") {
   name = "views"
 
-  sdk_candidate = true
+  sdk_category = "partner"
 
   sources = [
     "commands.fidl",
@@ -51,7 +52,7 @@ fidl("v2") {
 fidl("view_token") {
   name = "views_v1_token"
 
-  sdk_candidate = true
+  sdk_category = "partner"
 
   sources = [
     "view_token.fidl",

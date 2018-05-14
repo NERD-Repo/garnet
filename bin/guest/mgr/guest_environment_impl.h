@@ -10,6 +10,8 @@
 #include <unordered_map>
 
 #include "garnet/bin/guest/mgr/guest_holder.h"
+#include "garnet/bin/guest/mgr/host_vsock_endpoint.h"
+#include "garnet/bin/guest/mgr/vsock_server.h"
 #include "lib/app/cpp/application_context.h"
 #include "lib/fidl/cpp/binding.h"
 #include "lib/fxl/macros.h"
@@ -17,10 +19,14 @@
 
 namespace guestmgr {
 
+// Per the virto-vsock spec, CID values 0 and 1 are reserved and CID 2 is used
+// to address the host. We'll allocate CIDs linearly starting at 3 for each
+// guest in the environment.
+static constexpr uint32_t kFirstGuestCid = 3;
+
 class GuestEnvironmentImpl : public guest::GuestEnvironment {
  public:
-  GuestEnvironmentImpl(uint32_t id,
-                       const std::string& label,
+  GuestEnvironmentImpl(uint32_t id, const std::string& label,
                        component::ApplicationContext* context,
                        fidl::InterfaceRequest<guest::GuestEnvironment> request);
   ~GuestEnvironmentImpl() override;
@@ -33,15 +39,15 @@ class GuestEnvironmentImpl : public guest::GuestEnvironment {
 
  private:
   // |guest::GuestEnvironment|
-  void LaunchGuest(
-      guest::GuestLaunchInfo launch_info,
-      fidl::InterfaceRequest<guest::GuestController> controller) override;
-  void GetSocketEndpoint(
-      fidl::InterfaceRequest<guest::SocketEndpoint> socket_endpoint) override;
+  void LaunchGuest(guest::GuestLaunchInfo launch_info,
+                   fidl::InterfaceRequest<guest::GuestController> controller,
+                   LaunchGuestCallback callback) override;
   void ListGuests(ListGuestsCallback callback) override;
   void ConnectToGuest(
       uint32_t id,
       fidl::InterfaceRequest<guest::GuestController> controller) override;
+  void GetHostSocketEndpoint(
+      fidl::InterfaceRequest<guest::ManagedSocketEndpoint> endpoint) override;
 
   void CreateApplicationEnvironment(const std::string& label);
 
@@ -56,7 +62,11 @@ class GuestEnvironmentImpl : public guest::GuestEnvironment {
   component::ApplicationLauncherPtr app_launcher_;
   component::ServiceProviderBridge service_provider_bridge_;
 
+  uint32_t next_guest_cid_ = kFirstGuestCid;
   std::unordered_map<uint32_t, std::unique_ptr<GuestHolder>> guests_;
+
+  VsockServer socket_server_;
+  HostVsockEndpoint host_socket_endpoint_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(GuestEnvironmentImpl);
 };

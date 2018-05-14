@@ -13,6 +13,8 @@
 #include <zircon/compiler.h>
 #include <zircon/types.h>
 
+#include <fuchsia/cpp/wlan_mlme.h>
+
 #include <cstdint>
 
 namespace wlan {
@@ -169,6 +171,8 @@ class CapabilityInfo : public common::BitField<uint16_t> {
     WLAN_BIT_FIELD(immediate_block_ack, 15, 1);
 };
 
+
+// TODO: Replace native ReasonCode with FIDL ReasonCode
 // IEEE Std 802.11-2016, 9.4.1.7, Table 9-45
 namespace reason_code {
 enum ReasonCode : uint16_t {
@@ -695,38 +699,5 @@ struct EapolFrame {
     uint16_t packet_body_length;
     uint8_t packet_body[];
 } __PACKED;
-
-template <typename Header, typename Body> struct ImmutableFrame {
-    ImmutableFrame(const Header* hdr, const Body* body, size_t body_len)
-        : hdr(hdr), body(body), body_len(body_len) {}
-
-    const Header* hdr;
-    const Body* body;
-    const size_t body_len;
-};
-
-template <typename Header, typename Body> struct Frame {
-    Frame(Header* hdr, Body* body, size_t body_len) : hdr(hdr), body(body), body_len(body_len) {}
-
-    Header* hdr;
-    Body* body;
-    size_t body_len;
-};
-
-using Payload = uint8_t;
-struct NilHeader {};
-
-// Frame which contains a known header but unknown payload.
-template <typename Header> using BaseFrame = Frame<Header, Payload>;
-template <typename Header> using ImmutableBaseFrame = ImmutableFrame<Header, Payload>;
-
-template <typename T> using MgmtFrame = Frame<MgmtFrameHeader, T>;
-template <typename T> using ImmutableMgmtFrame = ImmutableFrame<MgmtFrameHeader, T>;
-
-template <typename T> using CtrlFrame = BaseFrame<T>;
-template <typename T> using ImmutableCtrlFrame = ImmutableBaseFrame<T>;
-
-template <typename T> using DataFrame = Frame<DataFrameHeader, T>;
-template <typename T> using ImmutableDataFrame = ImmutableFrame<DataFrameHeader, T>;
 
 }  // namespace wlan

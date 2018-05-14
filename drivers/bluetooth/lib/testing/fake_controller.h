@@ -41,10 +41,13 @@ class FakeController : public FakeControllerBase,
     Settings();
     ~Settings() = default;
 
-    void ApplyDefaults();
+    void ApplyDualModeDefaults();
     void ApplyLEOnlyDefaults();
     void ApplyLegacyLEConfig();
     void ApplyLEConfig();
+
+    void AddBREDRSupportedCommands();
+    void AddLESupportedCommands();
 
     // HCI settings.
     hci::HCIVersion hci_version;      // Default: HCIVersion::k5_0.
@@ -128,6 +131,9 @@ class FakeController : public FakeControllerBase,
   const common::DeviceAddress& le_random_address() const {
     return le_random_address_;
   }
+
+  // Returns the current Local Name.set in the controller
+  const std::string& local_name() const { return local_name_; }
 
   // Adds a fake remote device. This device will be used to during LE scan and
   // connection procedures.
@@ -269,6 +275,15 @@ class FakeController : public FakeControllerBase,
   // Used for Advertising, Create Connection, and Active Scanning
   // Set by HCI_LE_Set_Random_Address
   common::DeviceAddress le_random_address_;
+
+  // Used for BR/EDR Scans
+  uint8_t bredr_scan_state_;
+  hci::PageScanType page_scan_type_;
+  uint16_t page_scan_interval_;
+  uint16_t page_scan_window_;
+
+  // The GAP local name, as written/read by HCI_(Read/Write)_Local_Name
+  std::string local_name_;
 
   // Variables used for
   // HCI_LE_Create_Connection/HCI_LE_Create_Connection_Cancel.

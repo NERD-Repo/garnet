@@ -5,6 +5,7 @@
 #include "adapter_server.h"
 
 #include "garnet/drivers/bluetooth/lib/gap/adapter.h"
+#include "garnet/drivers/bluetooth/lib/gap/bredr_connection_manager.h"
 #include "garnet/drivers/bluetooth/lib/gap/bredr_discovery_manager.h"
 #include "garnet/drivers/bluetooth/lib/gap/gap.h"
 #include "garnet/drivers/bluetooth/lib/gap/low_energy_discovery_manager.h"
@@ -65,7 +66,10 @@ void AdapterServer::SetDelegate(
 
 void AdapterServer::SetLocalName(::fidl::StringPtr local_name,
                                  SetLocalNameCallback callback) {
-  FXL_NOTIMPLEMENTED();
+  adapter()->SetLocalName(local_name, [self = weak_ptr_factory_.GetWeakPtr(),
+                                       callback](auto status) {
+    callback(fidl_helpers::StatusToFidl(status, "Can't Set Local Name"));
+  });
 }
 
 void AdapterServer::StartDiscovery(StartDiscoveryCallback callback) {
@@ -137,6 +141,14 @@ void AdapterServer::StartDiscovery(StartDiscoveryCallback callback) {
 
       self->le_discovery_session_ = std::move(session);
       self->requesting_discovery_ = false;
+
+      // Send the adapter state update.
+      if (self->delegate_) {
+        AdapterState state;
+        state.discovering = bluetooth::Bool::New();
+        state.discovering->value = true;
+        self->delegate_->OnAdapterStateChanged(std::move(state));
+      }
       callback(Status());
     });
   });
@@ -153,7 +165,70 @@ void AdapterServer::StopDiscovery(StopDiscoveryCallback callback) {
 
   bredr_discovery_session_ = nullptr;
   le_discovery_session_ = nullptr;
+  if (delegate_) {
+    AdapterState state;
+    state.discovering = bluetooth::Bool::New();
+    state.discovering->value = false;
+    delegate_->OnAdapterStateChanged(std::move(state));
+  }
   callback(Status());
+}
+
+void AdapterServer::SetConnectable(bool connectable,
+                                   SetConnectableCallback callback) {
+  FXL_VLOG(1) << "Adapter SetConnectable(" << connectable << ")";
+
+  adapter()->bredr_connection_manager()->SetConnectable(
+      connectable, [callback](const auto& status) {
+        callback(fidl_helpers::StatusToFidl(status));
+      });
+}
+
+void AdapterServer::SetDiscoverable(bool discoverable,
+                                    SetDiscoverableCallback callback) {
+  FXL_VLOG(1) << "Adapter SetDiscoverable(" << discoverable << ")";
+  // TODO(NET-830): advertise LE here
+  if (!discoverable) {
+    bredr_discoverable_session_ = nullptr;
+    if (delegate_) {
+      AdapterState state;
+      state.discoverable = bluetooth::Bool::New();
+      state.discoverable->value = false;
+      delegate_->OnAdapterStateChanged(std::move(state));
+    }
+    callback(Status());
+  }
+  if (discoverable && requesting_discoverable_) {
+    FXL_VLOG(1) << "Discoverable already being set";
+    callback(fidl_helpers::NewFidlError(ErrorCode::IN_PROGRESS,
+                                        "Discovery already in progress"));
+    return;
+  }
+  requesting_discoverable_ = true;
+  auto bredr_manager = adapter()->bredr_discovery_manager();
+  bredr_manager->RequestDiscoverable(
+      [self = weak_ptr_factory_.GetWeakPtr(), callback](
+          btlib::hci::Status status, auto session) {
+        if (!self) {
+          callback(fidl_helpers::NewFidlError(ErrorCode::FAILED,
+                                              "Adapter Shutdown"));
+          return;
+        }
+        if (!status || !session) {
+          FXL_VLOG(1) << "Failed to set discoverable!";
+          callback(
+              fidl_helpers::StatusToFidl(status, "Failed to set discoverable"));
+          self->requesting_discoverable_ = false;
+        }
+        self->bredr_discoverable_session_ = std::move(session);
+        if (self->delegate_) {
+          AdapterState state;
+          state.discoverable = bluetooth::Bool::New();
+          state.discoverable->value = true;
+          self->delegate_->OnAdapterStateChanged(std::move(state));
+        }
+        callback(Status());
+      });
 }
 
 void AdapterServer::OnDiscoveryResult(

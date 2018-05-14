@@ -127,7 +127,7 @@ fn send_beacon(frame_buf: &mut Vec<u8>, channel: &fidl_wlan_device::Channel,
         rcpi: 0,
         snr: 0,
     };
-    proxy.rx(&mut 0, frame_buf, rx_info)?;
+    proxy.rx(0, &mut frame_buf.iter().cloned(), rx_info)?;
     Ok(())
 }
 
@@ -152,7 +152,7 @@ fn main() -> Result<(), failure::Error> {
         .map(|_| ())
         .recover(|e| eprintln!("error running wlantap event listener: {:?}", e))
     };
-    let beacon_timer = async::Interval::new(102_400_000.nanos())?
+    let beacon_timer = async::Interval::<zx::Status>::new(102_400_000.nanos())
         .for_each(move |_| {
             let state = &mut *state.lock().map_err(|e| {
                 eprintln!("beacon timer callback: Failed to lock mutex: {:?}", e);

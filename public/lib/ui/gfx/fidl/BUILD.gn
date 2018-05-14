@@ -7,14 +7,14 @@ import("//build/fidl/fidl.gni")
 fidl("fidl") {
   name = "gfx"
 
-  sdk_candidate = true
+  sdk_category = "partner"
 
   sources = [
-    "display_info.fidl",
-    "hit.fidl",
-    "events.fidl",
-    "nodes.fidl",
     "commands.fidl",
+    "display_info.fidl",
+    "events.fidl",
+    "hit.fidl",
+    "nodes.fidl",
     "renderer.fidl",
     "resources.fidl",
     "shapes.fidl",

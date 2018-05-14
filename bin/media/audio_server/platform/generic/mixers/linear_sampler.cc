@@ -20,27 +20,20 @@ class LinearSamplerImpl : public LinearSampler {
  public:
   LinearSamplerImpl() : LinearSampler(FRAC_ONE - 1, FRAC_ONE - 1) { Reset(); }
 
-  bool Mix(int32_t* dst,
-           uint32_t dst_frames,
-           uint32_t* dst_offset,
-           const void* src,
-           uint32_t frac_src_frames,
-           int32_t* frac_src_offset,
-           uint32_t frac_step_size,
-           Gain::AScale amplitude_scale,
-           bool accumulate) override;
+  bool Mix(int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset,
+           const void* src, uint32_t frac_src_frames, int32_t* frac_src_offset,
+           uint32_t frac_step_size, Gain::AScale amplitude_scale,
+           bool accumulate, uint32_t modulo = 0,
+           uint32_t denominator = 1) override;
 
   void Reset() override { ::memset(filter_data_, 0, sizeof(filter_data_)); }
 
  private:
   template <ScalerType ScaleType, bool DoAccumulate>
-  inline bool Mix(int32_t* dst,
-                  uint32_t dst_frames,
-                  uint32_t* dst_offset,
-                  const void* src,
-                  uint32_t frac_src_frames,
-                  int32_t* frac_src_offset,
-                  uint32_t frac_step_size,
+  inline bool Mix(int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset,
+                  const void* src, uint32_t frac_src_frames,
+                  int32_t* frac_src_offset, uint32_t frac_step_size,
+                  uint32_t modulo, uint32_t denominator,
                   Gain::AScale amplitude_scale);
 
   static inline int32_t Interpolate(int32_t A, int32_t B, uint32_t alpha) {
@@ -64,15 +57,11 @@ class NxNLinearSamplerImpl : public LinearSampler {
     Reset();
   }
 
-  bool Mix(int32_t* dst,
-           uint32_t dst_frames,
-           uint32_t* dst_offset,
-           const void* src,
-           uint32_t frac_src_frames,
-           int32_t* frac_src_offset,
-           uint32_t frac_step_size,
-           Gain::AScale amplitude_scale,
-           bool accumulate) override;
+  bool Mix(int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset,
+           const void* src, uint32_t frac_src_frames, int32_t* frac_src_offset,
+           uint32_t frac_step_size, Gain::AScale amplitude_scale,
+           bool accumulate, uint32_t modulo = 0,
+           uint32_t denominator = 1) override;
 
   void Reset() override {
     ::memset(filter_data_u_.get(), 0, 2 * chan_count_ * sizeof(int32_t));
@@ -80,15 +69,11 @@ class NxNLinearSamplerImpl : public LinearSampler {
 
  private:
   template <ScalerType ScaleType, bool DoAccumulate>
-  inline bool Mix(int32_t* dst,
-                  uint32_t dst_frames,
-                  uint32_t* dst_offset,
-                  const void* src,
-                  uint32_t frac_src_frames,
-                  int32_t* frac_src_offset,
-                  uint32_t frac_step_size,
-                  Gain::AScale amplitude_scale,
-                  size_t chan_count);
+  inline bool Mix(int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset,
+                  const void* src, uint32_t frac_src_frames,
+                  int32_t* frac_src_offset, uint32_t frac_step_size,
+                  uint32_t modulo, uint32_t denominator,
+                  Gain::AScale amplitude_scale, size_t chan_count);
 
   static inline int32_t Interpolate(int32_t A, int32_t B, uint32_t alpha) {
     // TODO(mpuryear): MTWN-75 minimize LinearSamplerImpl code duplication.
@@ -108,13 +93,9 @@ class NxNLinearSamplerImpl : public LinearSampler {
 template <size_t DChCount, typename SType, size_t SChCount>
 template <ScalerType ScaleType, bool DoAccumulate>
 inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
-    int32_t* dst,
-    uint32_t dst_frames,
-    uint32_t* dst_offset,
-    const void* src_void,
-    uint32_t frac_src_frames,
-    int32_t* frac_src_offset,
-    uint32_t frac_step_size,
+    int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset,
+    const void* src_void, uint32_t frac_src_frames, int32_t* frac_src_offset,
+    uint32_t frac_step_size, uint32_t modulo, uint32_t denominator,
     Gain::AScale amplitude_scale) {
   static_assert(
       ScaleType != ScalerType::MUTED || DoAccumulate == true,
@@ -134,6 +115,10 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
   const SType* src = static_cast<const SType*>(src_void);
   uint32_t doff = *dst_offset;
   int32_t soff = *frac_src_offset;
+
+  FXL_DCHECK(denominator > 0);
+  FXL_DCHECK(denominator > modulo);
+  uint32_t source_modulo = 0;
 
   // "Source end" is the last valid input sub-frame that can be sampled.
   int32_t src_end =
@@ -175,6 +160,12 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
 
         doff += 1;
         soff += frac_step_size;
+
+        source_modulo += modulo;
+        if (source_modulo >= denominator) {
+          ++soff;
+          source_modulo -= denominator;
+        }
       } while ((doff < dst_frames) && (soff < 0));
     }
 
@@ -192,6 +183,12 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
 
       doff += 1;
       soff += frac_step_size;
+
+      source_modulo += modulo;
+      if (source_modulo >= denominator) {
+        ++soff;
+        source_modulo -= denominator;
+      }
     }
   } else {
     // We are muted. Don't mix, but figure out how many samples we WOULD have
@@ -204,6 +201,10 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
 
       doff += avail;
       soff += avail * frac_step_size;
+
+      source_modulo += (modulo * avail);
+      soff += (source_modulo / denominator);
+      source_modulo %= denominator;
     }
   }
 
@@ -225,6 +226,12 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
 
     doff += 1;
     soff += frac_step_size;
+
+    source_modulo += modulo;
+    if (source_modulo >= denominator) {
+      ++soff;
+      source_modulo -= denominator;
+    }
   }
 
   *dst_offset = doff;
@@ -259,33 +266,32 @@ inline bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
 
 template <size_t DChCount, typename SType, size_t SChCount>
 bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
-    int32_t* dst,
-    uint32_t dst_frames,
-    uint32_t* dst_offset,
-    const void* src,
-    uint32_t frac_src_frames,
-    int32_t* frac_src_offset,
-    uint32_t frac_step_size,
-    Gain::AScale amplitude_scale,
-    bool accumulate) {
+    int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset, const void* src,
+    uint32_t frac_src_frames, int32_t* frac_src_offset, uint32_t frac_step_size,
+    Gain::AScale amplitude_scale, bool accumulate, uint32_t modulo,
+    uint32_t denominator) {
   if (amplitude_scale == Gain::kUnityScale) {
     return accumulate ? Mix<ScalerType::EQ_UNITY, true>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale)
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale)
                       : Mix<ScalerType::EQ_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale);
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale);
   } else if (amplitude_scale <= Gain::MuteThreshold()) {
-    return Mix<ScalerType::MUTED, true>(dst, dst_frames, dst_offset, src,
-                                        frac_src_frames, frac_src_offset,
-                                        frac_step_size, amplitude_scale);
+    return Mix<ScalerType::MUTED, true>(
+        dst, dst_frames, dst_offset, src, frac_src_frames, frac_src_offset,
+        frac_step_size, modulo, denominator, amplitude_scale);
   } else {
     return accumulate ? Mix<ScalerType::NE_UNITY, true>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale)
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale)
                       : Mix<ScalerType::NE_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale);
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale);
   }
 }
 
@@ -293,15 +299,11 @@ bool LinearSamplerImpl<DChCount, SType, SChCount>::Mix(
 // They guarantee new buffers are cleared before usage; we optimize accordingly.
 template <typename SType>
 template <ScalerType ScaleType, bool DoAccumulate>
-inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
-                                             uint32_t dst_frames,
-                                             uint32_t* dst_offset,
-                                             const void* src_void,
-                                             uint32_t frac_src_frames,
-                                             int32_t* frac_src_offset,
-                                             uint32_t frac_step_size,
-                                             Gain::AScale amplitude_scale,
-                                             size_t chan_count) {
+inline bool NxNLinearSamplerImpl<SType>::Mix(
+    int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset,
+    const void* src_void, uint32_t frac_src_frames, int32_t* frac_src_offset,
+    uint32_t frac_step_size, uint32_t modulo, uint32_t denominator,
+    Gain::AScale amplitude_scale, size_t chan_count) {
   static_assert(
       ScaleType != ScalerType::MUTED || DoAccumulate == true,
       "Mixing muted streams without accumulation is explicitly unsupported");
@@ -319,6 +321,10 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
   const SType* src = static_cast<const SType*>(src_void);
   uint32_t doff = *dst_offset;
   int32_t soff = *frac_src_offset;
+
+  FXL_DCHECK(denominator > 0);
+  FXL_DCHECK(denominator > modulo);
+  uint32_t source_modulo = 0;
 
   // This is the last sub-frame at which we can output without additional data.
   int32_t src_end =
@@ -356,6 +362,12 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
 
         doff += 1;
         soff += frac_step_size;
+
+        source_modulo += modulo;
+        if (source_modulo >= denominator) {
+          ++soff;
+          source_modulo -= denominator;
+        }
       } while ((doff < dst_frames) && (soff < 0));
     }
 
@@ -373,6 +385,12 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
 
       doff += 1;
       soff += frac_step_size;
+
+      source_modulo += modulo;
+      if (source_modulo >= denominator) {
+        ++soff;
+        source_modulo -= denominator;
+      }
     }
   } else {
     // We are muted. Don't mix, but figure out how many samples we WOULD have
@@ -383,8 +401,12 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
       uint32_t dst_avail = (dst_frames - doff);
       uint32_t avail = std::min(src_avail, dst_avail);
 
-      soff += avail * frac_step_size;
       doff += avail;
+      soff += avail * frac_step_size;
+
+      source_modulo += (modulo * avail);
+      soff += (source_modulo / denominator);
+      source_modulo %= denominator;
     }
   }
 
@@ -406,6 +428,12 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
 
     doff += 1;
     soff += frac_step_size;
+
+    source_modulo += modulo;
+    if (source_modulo >= denominator) {
+      ++soff;
+      source_modulo -= denominator;
+    }
   }
 
   *dst_offset = doff;
@@ -439,37 +467,33 @@ inline bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
 }
 
 template <typename SType>
-bool NxNLinearSamplerImpl<SType>::Mix(int32_t* dst,
-                                      uint32_t dst_frames,
-                                      uint32_t* dst_offset,
-                                      const void* src,
-                                      uint32_t frac_src_frames,
-                                      int32_t* frac_src_offset,
-                                      uint32_t frac_step_size,
-                                      Gain::AScale amplitude_scale,
-                                      bool accumulate) {
+bool NxNLinearSamplerImpl<SType>::Mix(
+    int32_t* dst, uint32_t dst_frames, uint32_t* dst_offset, const void* src,
+    uint32_t frac_src_frames, int32_t* frac_src_offset, uint32_t frac_step_size,
+    Gain::AScale amplitude_scale, bool accumulate, uint32_t modulo,
+    uint32_t denominator) {
   if (amplitude_scale == Gain::kUnityScale) {
     return accumulate ? Mix<ScalerType::EQ_UNITY, true>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale,
-                            chan_count_)
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale, chan_count_)
                       : Mix<ScalerType::EQ_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale,
-                            chan_count_);
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale, chan_count_);
   } else if (amplitude_scale <= Gain::MuteThreshold()) {
     return Mix<ScalerType::MUTED, true>(
         dst, dst_frames, dst_offset, src, frac_src_frames, frac_src_offset,
-        frac_step_size, amplitude_scale, chan_count_);
+        frac_step_size, modulo, denominator, amplitude_scale, chan_count_);
   } else {
     return accumulate ? Mix<ScalerType::NE_UNITY, true>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale,
-                            chan_count_)
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale, chan_count_)
                       : Mix<ScalerType::NE_UNITY, false>(
                             dst, dst_frames, dst_offset, src, frac_src_frames,
-                            frac_src_offset, frac_step_size, amplitude_scale,
-                            chan_count_);
+                            frac_src_offset, frac_step_size, modulo,
+                            denominator, amplitude_scale, chan_count_);
   }
 }
 

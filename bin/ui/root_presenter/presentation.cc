@@ -107,15 +107,15 @@ void Presentation::Present(
   yield_callback_ = std::move(yield_callback);
   shutdown_callback_ = std::move(shutdown_callback);
 
-  scenic_->GetDisplayInfo(fxl::MakeCopyable([
-    weak = weak_factory_.GetWeakPtr(), view_owner = std::move(view_owner),
-    presentation_request = std::move(presentation_request)
-  ](gfx::DisplayInfo display_info) mutable {
-    if (weak)
-      weak->CreateViewTree(std::move(view_owner),
-                           std::move(presentation_request),
-                           std::move(display_info));
-  }));
+  scenic_->GetDisplayInfo(fxl::MakeCopyable(
+      [weak = weak_factory_.GetWeakPtr(), view_owner = std::move(view_owner),
+       presentation_request = std::move(presentation_request)](
+          gfx::DisplayInfo display_info) mutable {
+        if (weak)
+          weak->CreateViewTree(std::move(view_owner),
+                               std::move(presentation_request),
+                               std::move(display_info));
+      }));
 }
 
 void Presentation::CreateViewTree(
@@ -435,14 +435,14 @@ void Presentation::OnReport(uint32_t device_id,
   state->Update(std::move(input_report), size);
 }
 
-void Presentation::CaptureKeyboardEvent(
+void Presentation::CaptureKeyboardEventHACK(
     input::KeyboardEvent event_to_capture,
-    fidl::InterfaceHandle<presentation::KeyboardCaptureListener>
+    fidl::InterfaceHandle<presentation::KeyboardCaptureListenerHACK>
         listener_handle) {
-  presentation::KeyboardCaptureListenerPtr listener;
+  presentation::KeyboardCaptureListenerHACKPtr listener;
   listener.Bind(std::move(listener_handle));
   // Auto-remove listeners if the interface closes.
-  listener.set_error_handler([ this, listener = listener.get() ] {
+  listener.set_error_handler([this, listener = listener.get()] {
     captured_keybindings_.erase(
         std::remove_if(captured_keybindings_.begin(),
                        captured_keybindings_.end(),
@@ -454,6 +454,26 @@ void Presentation::CaptureKeyboardEvent(
 
   captured_keybindings_.push_back(
       KeyboardCaptureItem{std::move(event_to_capture), std::move(listener)});
+}
+
+void Presentation::CapturePointerEventsHACK(
+  fidl::InterfaceHandle<presentation::PointerCaptureListenerHACK>
+      listener_handle) {
+  presentation::PointerCaptureListenerHACKPtr listener;
+  listener.Bind(std::move(listener_handle));
+  // Auto-remove listeners if the interface closes.
+  listener.set_error_handler([ this, listener = listener.get() ] {
+    captured_pointerbindings_.erase(
+        std::remove_if(captured_pointerbindings_.begin(),
+                       captured_pointerbindings_.end(),
+                       [listener](const PointerCaptureItem& item) -> bool {
+                         return item.listener.get() == listener;
+                       }),
+        captured_pointerbindings_.end());
+  });
+
+  captured_pointerbindings_.push_back(
+      PointerCaptureItem{std::move(listener)});
 }
 
 void Presentation::GetPresentationMode(GetPresentationModeCallback callback) {
@@ -476,7 +496,6 @@ void Presentation::SetPresentationModeListener(
   presentation_mode_listener_.Bind(std::move(listener));
   FXL_LOG(INFO) << "Presentation mode, now listening.";
 }
-
 
 bool Presentation::GlobalHooksHandleEvent(const input::InputEvent& event) {
   return display_rotater_.OnEvent(event, this) ||
@@ -527,6 +546,25 @@ void Presentation::OnEvent(input::InputEvent event) {
         }
       }
 
+      for (size_t i = 0; i < captured_pointerbindings_.size(); i++) {
+        input::PointerEvent clone;
+        fidl::Clone(pointer, &clone);
+
+        // Adjust pointer origin with simulated screen offset.
+        clone.x -= (display_model_actual_.display_info().width_in_px -
+                      display_metrics_.width_in_px()) /
+                      2;
+        clone.y -= (display_model_actual_.display_info().height_in_px -
+                      display_metrics_.height_in_px()) /
+                      2;
+
+        // Scale by device pixel density.
+        clone.x *= display_metrics_.x_scale_in_pp_per_px();
+        clone.y *= display_metrics_.y_scale_in_pp_per_px();
+
+        captured_pointerbindings_[i].listener->OnPointerEvent(std::move(clone));
+      }
+
     } else if (event.is_keyboard()) {
       const input::KeyboardEvent& kbd = event.keyboard();
 
@@ -570,7 +608,6 @@ void Presentation::OnSensorEvent(uint32_t device_id, input::InputReport event) {
     }
   }
 }
-
 
 void Presentation::OnChildAttached(uint32_t child_key,
                                    views_v1::ViewInfo child_view_info,

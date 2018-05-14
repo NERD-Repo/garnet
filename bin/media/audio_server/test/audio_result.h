@@ -225,11 +225,6 @@ class AudioResult {
   //
   // Scale
   //
-  // Purely when calculating gain (in dB) from gain_scale (fixed-point int),
-  // derived values must be within this multiplier (above or below) of target.
-  static double GainToleranceMultiplier;
-  static constexpr double kPrevGainToleranceMultiplier = 1.000001;
-
   // The nearest-unity scale at which we observe effects on signals.
   static uint32_t ScaleEpsilon;
   static constexpr uint32_t kPrevScaleEpsilon =
@@ -363,6 +358,13 @@ class AudioResult {
 /*
     AudioResult journal - updated upon each CL that affects these measurements
 
+    2018-05-08  Added modulo & denominator parameters, to express resampling
+                precision that cannot be captured by a single frac_step_size
+                uint32. We can now send mix jobs of any size (even 64k) without
+                accumulating position error.
+                With this fix, our first round of audio fidelity improvements is
+                complete. One remaining future focus could be to achieve flatter
+                frequency response, presumably via a higher-order resampler.
     2018-05-01  Added new rate ratio for micro-SRC testing: 47999:48000. Also
                 increased our mix job size to 20 ms (see 04-23 below), to better
                 show the effects of accumulated fractional position errors.

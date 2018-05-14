@@ -23,6 +23,11 @@ void SetBit(NUM_TYPE* num_type, ENUM_TYPE bit) {
   *num_type |= static_cast<NUM_TYPE>(bit);
 }
 
+template <typename NUM_TYPE, typename ENUM_TYPE>
+void UnsetBit(NUM_TYPE* num_type, ENUM_TYPE bit) {
+  *num_type &= ~static_cast<NUM_TYPE>(bit);
+}
+
 hci::LEPeerAddressType ToPeerAddrType(common::DeviceAddress::Type type) {
   hci::LEPeerAddressType result = hci::LEPeerAddressType::kAnonymous;
 
@@ -43,25 +48,52 @@ hci::LEPeerAddressType ToPeerAddrType(common::DeviceAddress::Type type) {
 }  // namespace
 
 FakeController::Settings::Settings() {
-  ApplyDefaults();
-}
-
-void FakeController::Settings::ApplyDefaults() {
   std::memset(this, 0, sizeof(*this));
   hci_version = hci::HCIVersion::k5_0;
   num_hci_command_packets = 250;
 }
 
-void FakeController::Settings::ApplyLEOnlyDefaults() {
-  ApplyDefaults();
+void FakeController::Settings::ApplyDualModeDefaults() {
+  std::memset(this, 0, sizeof(*this));
+  hci_version = hci::HCIVersion::k5_0;
+  num_hci_command_packets = 250;
 
+  acl_data_packet_length = 512;
+  total_num_acl_data_packets = 1;
   le_acl_data_packet_length = 512;
   le_total_num_acl_data_packets = 1;
 
-  SetBit(&lmp_features_page0, hci::LMPFeature::kBREDRNotSupported);
   SetBit(&lmp_features_page0, hci::LMPFeature::kLESupported);
   SetBit(&lmp_features_page0, hci::LMPFeature::kExtendedFeatures);
+  SetBit(&lmp_features_page1, hci::LMPFeature::kSimultaneousLEAndBREDR);
 
+  AddBREDRSupportedCommands();
+  AddLESupportedCommands();
+}
+
+void FakeController::Settings::ApplyLEOnlyDefaults() {
+  ApplyDualModeDefaults();
+
+  UnsetBit(&lmp_features_page1, hci::LMPFeature::kSimultaneousLEAndBREDR);
+  SetBit(&lmp_features_page0, hci::LMPFeature::kBREDRNotSupported);
+
+  std::memset(supported_commands, 0, sizeof(supported_commands));
+  AddLESupportedCommands();
+}
+
+void FakeController::Settings::AddBREDRSupportedCommands() {
+  SetBit(supported_commands + 7, hci::SupportedCommand::kWriteLocalName);
+  SetBit(supported_commands + 7, hci::SupportedCommand::kReadLocalName);
+  SetBit(supported_commands + 7, hci::SupportedCommand::kReadScanEnable);
+  SetBit(supported_commands + 7, hci::SupportedCommand::kWriteScanEnable);
+  SetBit(supported_commands + 8, hci::SupportedCommand::kReadPageScanActivity);
+  SetBit(supported_commands + 8, hci::SupportedCommand::kWritePageScanActivity);
+  SetBit(supported_commands + 13, hci::SupportedCommand::kReadPageScanType);
+  SetBit(supported_commands + 13, hci::SupportedCommand::kWritePageScanType);
+  SetBit(supported_commands + 14, hci::SupportedCommand::kReadBufferSize);
+}
+
+void FakeController::Settings::AddLESupportedCommands() {
   SetBit(supported_commands, hci::SupportedCommand::kDisconnect);
   SetBit(supported_commands + 5, hci::SupportedCommand::kSetEventMask);
   SetBit(supported_commands + 5, hci::SupportedCommand::kReset);
@@ -120,14 +152,16 @@ FakeController::LEAdvertisingState::LEAdvertisingState()
 }
 
 FakeController::FakeController()
-    : next_conn_handle_(0u),
-    le_connect_pending_(false),
-    next_le_sig_id_(1u),
-    scan_state_cb_dispatcher_(nullptr),
-    advertising_state_cb_dispatcher_(nullptr),
-    conn_state_cb_dispatcher_(nullptr),
-    le_conn_params_cb_dispatcher_(nullptr) {
-}
+    : page_scan_type_(hci::PageScanType::kStandardScan),
+      page_scan_interval_(0x0800),
+      page_scan_window_(0x0012),
+      next_conn_handle_(0u),
+      le_connect_pending_(false),
+      next_le_sig_id_(1u),
+      scan_state_cb_dispatcher_(nullptr),
+      advertising_state_cb_dispatcher_(nullptr),
+      conn_state_cb_dispatcher_(nullptr),
+      le_conn_params_cb_dispatcher_(nullptr) {}
 
 FakeController::~FakeController() { Stop(); }
 
@@ -678,6 +712,7 @@ void FakeController::OnCommandPacketReceived(
   if (MaybeRespondWithDefaultStatus(opcode))
     return;
 
+  // TODO(NET-825): Validate size of payload to be the correct length below.
   switch (opcode) {
     case hci::kReadLocalVersionInfo: {
       hci::ReadLocalVersionInfoReturnParams params;
@@ -792,6 +827,78 @@ void FakeController::OnCommandPacketReceived(
     case hci::kDisconnect: {
       OnDisconnectCommandReceived(
           command_packet.payload<hci::DisconnectCommandParams>());
+      break;
+    }
+    case hci::kWriteLocalName: {
+      const auto& in_params =
+          command_packet.payload<hci::WriteLocalNameCommandParams>();
+      local_name_ =
+          std::string(in_params.local_name,
+                      in_params.local_name + hci::kMaxLocalNameLength);
+      RespondWithSuccess(opcode);
+      break;
+    }
+    case hci::kReadLocalName: {
+      hci::ReadLocalNameReturnParams params;
+      params.status = hci::StatusCode::kSuccess;
+      auto mut_view = common::MutableBufferView(params.local_name,
+                                                hci::kMaxLocalNameLength);
+      mut_view.Write((uint8_t*)(local_name_.c_str()), hci::kMaxLocalNameLength);
+      RespondWithCommandComplete(hci::kReadLocalName,
+                                 common::BufferView(&params, sizeof(params)));
+      break;
+    }
+    case hci::kReadScanEnable: {
+      hci::ReadScanEnableReturnParams params;
+      params.status = hci::StatusCode::kSuccess;
+      params.scan_enable = bredr_scan_state_;
+
+      RespondWithCommandComplete(hci::kReadScanEnable,
+                                 common::BufferView(&params, sizeof(params)));
+      break;
+    }
+    case hci::kWriteScanEnable: {
+      const auto& in_params =
+          command_packet.payload<hci::WriteScanEnableCommandParams>();
+      bredr_scan_state_ = in_params.scan_enable;
+
+      RespondWithSuccess(opcode);
+      break;
+    }
+    case hci::kReadPageScanActivity: {
+      hci::ReadPageScanActivityReturnParams params;
+      params.status = hci::StatusCode::kSuccess;
+      params.page_scan_interval = htole16(page_scan_interval_);
+      params.page_scan_window = htole16(page_scan_window_);
+
+      RespondWithCommandComplete(hci::kReadPageScanActivity,
+                                 common::BufferView(&params, sizeof(params)));
+      break;
+    }
+    case hci::kWritePageScanActivity: {
+      const auto& in_params =
+          command_packet.payload<hci::WritePageScanActivityCommandParams>();
+      page_scan_interval_ = letoh16(in_params.page_scan_interval);
+      page_scan_window_ = letoh16(in_params.page_scan_window);
+
+      RespondWithSuccess(opcode);
+      break;
+    }
+    case hci::kReadPageScanType: {
+      hci::ReadPageScanTypeReturnParams params;
+      params.status = hci::StatusCode::kSuccess;
+      params.page_scan_type = page_scan_type_;
+
+      RespondWithCommandComplete(hci::kReadPageScanType,
+                                 common::BufferView(&params, sizeof(params)));
+      break;
+    }
+    case hci::kWritePageScanType: {
+      const auto& in_params =
+          command_packet.payload<hci::WritePageScanTypeCommandParams>();
+      page_scan_type_ = in_params.page_scan_type;
+
+      RespondWithSuccess(opcode);
       break;
     }
     case hci::kLEConnectionUpdate: {

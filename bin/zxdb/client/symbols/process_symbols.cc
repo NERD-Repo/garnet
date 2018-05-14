@@ -36,18 +36,29 @@ void ProcessSymbols::SetModules(const std::vector<ModuleLoadInfo>& info) {
     AddModule(module);
 }
 
-Symbol ProcessSymbols::SymbolAtAddress(uint64_t address) const {
+Location ProcessSymbols::ResolveAddress(uint64_t address) const {
+  Location result(address);
+
   auto found = modules_.lower_bound(address);
   if (found == modules_.begin())
-    return Symbol();  // No symbols or before the start.
+    return result;  // No symbols or before the start.
   --found;  // We want the first one less than or equal to.
   const ModuleSymbolRecord& record = found->second;
 
   auto out = system_->symbolizer()->symbolizeCode(
       record.local_path, address - record.base);
-  if (!out)
-    return Symbol();
-  return SymbolFromDILineInfo(out.get());
+  if (!out) {
+    // Currently it's interesting to see what kinds of errors we get from
+    // LLVM. When we don't want it spewing, the printf should be removed
+    // and replaced with:
+    //   llvm::consumeError(out.takeError());
+    auto err_str = llvm::toString(out.takeError());
+    fprintf(stderr, "Symbol error: %s\n", err_str.c_str());
+    return result;
+  }
+
+  result.set_symbol(SymbolFromDILineInfo(out.get()));
+  return result;
 }
 
 }  // namespace zxdb

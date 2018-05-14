@@ -163,10 +163,8 @@ static bool is_mz(const MzHeader* header) {
          header->pe_off >= sizeof(MzHeader);
 }
 
-static zx_status_t read_fd(const int fd,
-                           const machina::PhysMem& phys_mem,
-                           const uintptr_t off,
-                           size_t* file_size) {
+static zx_status_t read_fd(const int fd, const machina::PhysMem& phys_mem,
+                           const uintptr_t off, size_t* file_size) {
   struct stat stat;
   ssize_t ret = fstat(fd, &stat);
   if (ret < 0) {
@@ -184,10 +182,8 @@ static zx_status_t read_fd(const int fd,
 
 static zx_status_t read_device_tree(const int fd,
                                     const machina::PhysMem& phys_mem,
-                                    const uintptr_t off,
-                                    const uintptr_t limit,
-                                    void** dtb,
-                                    size_t* dtb_size) {
+                                    const uintptr_t off, const uintptr_t limit,
+                                    void** dtb, size_t* dtb_size) {
   zx_status_t status = read_fd(fd, phys_mem, off, dtb_size);
   if (status != ZX_OK) {
     FXL_LOG(ERROR) << "Failed to read device tree";
@@ -254,8 +250,10 @@ static zx_status_t write_boot_params(const machina::PhysMem& phys_mem,
   bp(phys_mem, VIDEO_LINES) = 0;
 
   // Set the address and size of the initial RAM disk.
-  bp(phys_mem, RAMDISK_IMAGE) = kRamdiskOffset;
-  bp(phys_mem, RAMDISK_SIZE) = static_cast<uint32_t>(initrd_size);
+  if (initrd_size > 0) {
+    bp(phys_mem, RAMDISK_IMAGE) = kRamdiskOffset;
+    bp(phys_mem, RAMDISK_SIZE) = static_cast<uint32_t>(initrd_size);
+  }
 
   // Copy the command line string.
   size_t cmdline_len = cmdline.size() + 1;
@@ -373,17 +371,19 @@ static zx_status_t load_device_tree(const int dtb_fd,
     return ZX_ERR_BAD_STATE;
   }
 
-  // Add the memory range of the initial RAM disk.
-  ret = fdt_setprop_u64(dtb, off, "linux,initrd-start", kRamdiskOffset);
-  if (ret != 0) {
-    device_tree_error_msg("linux,initrd-start");
-    return ZX_ERR_BAD_STATE;
-  }
-  ret = fdt_setprop_u64(dtb, off, "linux,initrd-end",
-                        kRamdiskOffset + initrd_size);
-  if (ret != 0) {
-    device_tree_error_msg("linux,initrd-end");
-    return ZX_ERR_BAD_STATE;
+  if (initrd_size > 0) {
+    // Add the memory range of the initial RAM disk.
+    ret = fdt_setprop_u64(dtb, off, "linux,initrd-start", kRamdiskOffset);
+    if (ret != 0) {
+      device_tree_error_msg("linux,initrd-start");
+      return ZX_ERR_BAD_STATE;
+    }
+    ret = fdt_setprop_u64(dtb, off, "linux,initrd-end",
+                          kRamdiskOffset + initrd_size);
+    if (ret != 0) {
+      device_tree_error_msg("linux,initrd-end");
+      return ZX_ERR_BAD_STATE;
+    }
   }
 
   // Add CPUs to device tree.
@@ -474,10 +474,8 @@ static std::string linux_cmdline(std::string cmdline) {
 #endif
 }
 
-zx_status_t setup_linux(const GuestConfig cfg,
-                        const machina::PhysMem& phys_mem,
-                        uintptr_t* guest_ip,
-                        uintptr_t* boot_ptr) {
+zx_status_t setup_linux(const GuestConfig cfg, const machina::PhysMem& phys_mem,
+                        uintptr_t* guest_ip, uintptr_t* boot_ptr) {
   // Read the kernel image.
   zx_status_t status = load_kernel(cfg.kernel_path(), phys_mem, kKernelOffset);
   if (status != ZX_OK) {

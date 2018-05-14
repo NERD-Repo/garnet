@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef LIB_ESCHER_VK_IMAGE_H_
+#define LIB_ESCHER_VK_IMAGE_H_
 
 #include "lib/escher/forward_declarations.h"
 #include "lib/escher/renderer/semaphore.h"
@@ -44,11 +45,8 @@ class Image : public WaitableResource {
   // If |mem| is passed and |bind_image_memory| is true, this method also binds
   // the memory to the image. |mem_offset| is the offset of the image's memory
   // within |mem|.
-  static ImagePtr New(ResourceManager* image_owner,
-                      ImageInfo info,
-                      vk::Image,
-                      GpuMemPtr mem,
-                      vk::DeviceSize mem_offset = 0,
+  static ImagePtr New(ResourceManager* image_owner, ImageInfo info, vk::Image,
+                      GpuMemPtr mem, vk::DeviceSize mem_offset = 0,
                       bool bind_image_memory = true);
 
   // Returns image_ and mem_ to the owner.
@@ -74,10 +72,7 @@ class Image : public WaitableResource {
   // working with images associated with a vk::SwapchainKHR); this is done by
   // passing nullptr as the |mem| argument.
   // |mem_offset| is the offset of the image's memory within |mem|.
-  Image(ResourceManager* image_owner,
-        ImageInfo info,
-        vk::Image,
-        GpuMemPtr mem,
+  Image(ResourceManager* image_owner, ImageInfo info, vk::Image, GpuMemPtr mem,
         vk::DeviceSize mem_offset);
 
  private:
@@ -97,3 +92,5 @@ typedef fxl::RefPtr<Image> ImagePtr;
 ESCHER_DEBUG_PRINTABLE(ImageInfo);
 
 }  // namespace escher
+
+#endif  // LIB_ESCHER_VK_IMAGE_H_

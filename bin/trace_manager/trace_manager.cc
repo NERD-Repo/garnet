@@ -32,8 +32,7 @@ TraceManager::TraceManager(component::ApplicationContext* context,
 
 TraceManager::~TraceManager() = default;
 
-void TraceManager::StartTracing(TraceOptions options,
-                                zx::socket output,
+void TraceManager::StartTracing(TraceOptions options, zx::socket output,
                                 StartTracingCallback start_callback) {
   if (session_) {
     FXL_LOG(ERROR) << "Trace already in progress";
@@ -81,7 +80,7 @@ void TraceManager::GetKnownCategories(GetKnownCategoriesCallback callback) {
 }
 
 void TraceManager::RegisterTraceProvider(
-    fidl::InterfaceHandle<trace_link::Provider> handle) {
+    fidl::InterfaceHandle<fuchsia::tracelink::Provider> handle) {
   auto it = providers_.emplace(
       providers_.end(),
       TraceProviderBundle{handle.Bind(), next_provider_id_++});

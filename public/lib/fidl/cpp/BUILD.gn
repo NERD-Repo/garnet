@@ -7,6 +7,8 @@ import("//build/package.gni")
 import("//build/fidl/fidl.gni")
 
 sdk_source_set("cpp") {
+  category = "partner"
+
   sources = [
     "array.h",
     "binding.h",
@@ -118,6 +120,7 @@ source_set("test_sources") {
     ":fidl_test",
     ":test_support",
     "//garnet/public/lib/fidl/cpp/test",
+    "//garnet/public/lib/fxl",
     "//third_party/googletest:gtest",
   ]
 

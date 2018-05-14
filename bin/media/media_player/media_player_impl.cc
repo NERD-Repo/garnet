@@ -58,48 +58,41 @@ MediaPlayerImpl::MediaPlayerImpl(
       kDumpEntry,
       fbl::AdoptRef(new fs::BufferedPseudoFile([this](fbl::String* out) {
         std::ostringstream os;
+
+        os << newl << "state:              " << ToString(state_);
+        if (state_ == State::kWaiting) {
+          os << " " << waiting_reason_;
+        }
+
+        if (target_state_ != state_) {
+          os << newl << "transitioning to:   " << ToString(target_state_);
+        }
+
+        if (target_position_ != media::kUnspecifiedTime) {
+          os << newl << "pending seek to:    " << AsNs(target_position_);
+        }
+
         player_.Dump(os << std::boolalpha);
         os << "\n";
         *out = os.str();
         return ZX_OK;
       })));
 
+  UpdateStatus();
   AddBinding(std::move(request));
 
   bindings_.set_empty_set_handler([this]() { quit_callback_(); });
 
   player_.SetUpdateCallback([this]() {
-    status_publisher_.SendUpdates();
+    SendStatusUpdates();
     Update();
   });
 
-  status_publisher_.SetCallbackRunner([this](GetStatusCallback callback,
-                                             uint64_t version) {
-    MediaPlayerStatus status;
-    status.timeline_transform =
-        fidl::MakeOptional(player_.timeline_function().ToTimelineTransform());
-    status.end_of_stream = player_.end_of_stream();
-    status.content_has_audio =
-        player_.content_has_medium(StreamType::Medium::kAudio);
-    status.content_has_video =
-        player_.content_has_medium(StreamType::Medium::kVideo);
-    status.audio_connected =
-        player_.medium_connected(StreamType::Medium::kAudio);
-    status.video_connected =
-        player_.medium_connected(StreamType::Medium::kVideo);
-
-    status.metadata = fxl::To<MediaMetadataPtr>(player_.metadata());
-
-    if (video_renderer_) {
-      status.video_size = SafeClone(video_renderer_->video_size());
-      status.pixel_aspect_ratio =
-          SafeClone(video_renderer_->pixel_aspect_ratio());
-    }
-
-    status.problem = SafeClone(player_.problem());
-
-    callback(version, std::move(status));
-  });
+  status_publisher_.SetCallbackRunner(
+      [this](GetStatusCallback callback, uint64_t version) {
+        UpdateStatus();
+        callback(version, fidl::Clone(status_));
+      });
 
   state_ = State::kInactive;
 }
@@ -139,7 +132,7 @@ void MediaPlayerImpl::MaybeCreateRenderer(StreamType::Medium medium) {
       if (!video_renderer_) {
         video_renderer_ = FidlVideoRenderer::Create();
         video_renderer_->SetGeometryUpdateCallback(
-            [this]() { status_publisher_.SendUpdates(); });
+            [this]() { SendStatusUpdates(); });
 
         player_.SetSinkSegment(RendererSinkSegment::Create(video_renderer_),
                                medium);
@@ -196,10 +189,12 @@ void MediaPlayerImpl::Update() {
           // We want to seek. Enter |kWaiting| state until the operation is
           // complete.
           state_ = State::kWaiting;
+          waiting_reason_ = "for renderers to stop progressing prior to seek";
 
-          // Capture the target position and clear it. If we get another seek
-          // request while setting the timeline transform and and seeking the
-          // source, we'll notice that and do those things again.
+          // Capture the target position and clear it. If we get another
+          // seek request while setting the timeline transform and and
+          // seeking the source, we'll notice that and do those things
+          // again.
           int64_t target_position = target_position_;
           target_position_ = media::kUnspecifiedTime;
 
@@ -226,8 +221,6 @@ void MediaPlayerImpl::Update() {
                 // Seek to the new position.
                 player_.Seek(target_position, [this]() {
                   state_ = State::kFlushed;
-                  // Back in |kFlushed|. Call |Update| to see
-                  // if there's further action to be taken.
                   Update();
                 });
               });
@@ -244,6 +237,7 @@ void MediaPlayerImpl::Update() {
           // |SetProgramRange| and |Prime| requests and transition to |kPrimed|
           // when the operation is complete.
           state_ = State::kWaiting;
+          waiting_reason_ = "for priming to complete";
           player_.SetProgramRange(0, program_range_min_pts_, media::kMaxTime);
 
           player_.Prime([this]() {
@@ -265,8 +259,14 @@ void MediaPlayerImpl::Update() {
         if (target_position_ != media::kUnspecifiedTime ||
             target_state_ == State::kFlushed) {
           // Either we want to seek, or we otherwise want to flush.
-          player_.Flush(target_state_ != State::kFlushed);
-          state_ = State::kFlushed;
+          state_ = State::kWaiting;
+          waiting_reason_ = "for flushing to complete";
+
+          player_.Flush(target_state_ != State::kFlushed, [this]() {
+            state_ = State::kFlushed;
+            Update();
+          });
+
           break;
         }
 
@@ -275,11 +275,10 @@ void MediaPlayerImpl::Update() {
           // presentation timeline and transition to |kPlaying| when the
           // operation completes.
           state_ = State::kWaiting;
+          waiting_reason_ = "for renderers to start progressing";
           SetTimelineFunction(
               1.0f, media::Timeline::local_now() + kMinimumLeadTime, [this]() {
                 state_ = State::kPlaying;
-                // Now we're in |kPlaying|. Call |Update| to
-                // see if there's further action to be taken.
                 Update();
               });
 
@@ -302,11 +301,10 @@ void MediaPlayerImpl::Update() {
           // to enter |kWaiting|, stop the presentation timeline and transition
           // to |kPrimed| when the operation completes.
           state_ = State::kWaiting;
+          waiting_reason_ = "for renderers to stop progressing";
           SetTimelineFunction(
               0.0f, media::Timeline::local_now() + kMinimumLeadTime, [this]() {
                 state_ = State::kPrimed;
-                // Now we're in |kPrimed|. Call |Update| to see
-                // if there's further action to be taken.
                 Update();
               });
 
@@ -334,15 +332,14 @@ void MediaPlayerImpl::Update() {
   }
 }
 
-void MediaPlayerImpl::SetTimelineFunction(float rate,
-                                          int64_t reference_time,
+void MediaPlayerImpl::SetTimelineFunction(float rate, int64_t reference_time,
                                           fxl::Closure callback) {
   player_.SetTimelineFunction(
       media::TimelineFunction(transform_subject_time_, reference_time,
                               media::TimelineRate(rate)),
       callback);
   transform_subject_time_ = media::kUnspecifiedTime;
-  status_publisher_.SendUpdates();
+  SendStatusUpdates();
 }
 
 void MediaPlayerImpl::SetHttpSource(fidl::StringPtr http_url) {
@@ -365,6 +362,7 @@ void MediaPlayerImpl::SetReaderSource(
 
 void MediaPlayerImpl::SetReader(std::shared_ptr<Reader> reader) {
   state_ = State::kWaiting;
+  waiting_reason_ = "for the source to initialize";
   target_position_ = media::kUnspecifiedTime;
   program_range_min_pts_ = 0;
   transform_subject_time_ = 0;
@@ -376,7 +374,7 @@ void MediaPlayerImpl::SetReader(std::shared_ptr<Reader> reader) {
 
   player_.SetSourceSegment(DemuxSourceSegment::Create(demux), [this]() {
     state_ = State::kFlushed;
-    status_publisher_.SendUpdates();
+    SendStatusUpdates();
     Update();
   });
 }
@@ -439,6 +437,61 @@ void MediaPlayerImpl::SetAudioRenderer(
 void MediaPlayerImpl::AddBinding(fidl::InterfaceRequest<MediaPlayer> request) {
   FXL_DCHECK(request);
   bindings_.AddBinding(this, std::move(request));
+
+  // Fire |StatusChanged| event for the new client.
+  bindings_.bindings().back()->events().StatusChanged(fidl::Clone(status_));
+}
+
+void MediaPlayerImpl::SendStatusUpdates() {
+  status_publisher_.SendUpdates();
+
+  UpdateStatus();
+
+  for (auto& binding : bindings_.bindings()) {
+    binding->events().StatusChanged(fidl::Clone(status_));
+  }
+}
+
+void MediaPlayerImpl::UpdateStatus() {
+  status_.timeline_transform =
+      fidl::MakeOptional(player_.timeline_function().ToTimelineTransform());
+  status_.end_of_stream = player_.end_of_stream();
+  status_.content_has_audio =
+      player_.content_has_medium(StreamType::Medium::kAudio);
+  status_.content_has_video =
+      player_.content_has_medium(StreamType::Medium::kVideo);
+  status_.audio_connected =
+      player_.medium_connected(StreamType::Medium::kAudio);
+  status_.video_connected =
+      player_.medium_connected(StreamType::Medium::kVideo);
+
+  status_.metadata = fxl::To<MediaMetadataPtr>(player_.metadata());
+
+  if (video_renderer_) {
+    status_.video_size = SafeClone(video_renderer_->video_size());
+    status_.pixel_aspect_ratio =
+        SafeClone(video_renderer_->pixel_aspect_ratio());
+  }
+
+  status_.problem = SafeClone(player_.problem());
+}
+
+// static
+const char* MediaPlayerImpl::ToString(State value) {
+  switch (value) {
+    case State::kInactive:
+      return "inactive";
+    case State::kWaiting:
+      return "waiting";
+    case State::kFlushed:
+      return "flushed";
+    case State::kPrimed:
+      return "primed";
+    case State::kPlaying:
+      return "playing";
+  }
+
+  return "ILLEGAL STATE VALUE";
 }
 
 }  // namespace media_player

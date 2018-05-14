@@ -285,7 +285,11 @@ func (d *Daemon) getUpdates(rec *upRec) map[pkg.Package]*GetResult {
 		updates, err := d.srcs[i].AvailableUpdates(unfoundPkgs)
 		if len(updates) == 0 || err != nil {
 			if err == ErrRateExceeded {
-				log.Printf("Source rate limit exceeded\n")
+				log.Printf("daemon: source rate limit exceeded\n")
+			} else if err != nil {
+				log.Printf("daemon: error checking source for updates %s\n", err)
+			} else {
+				log.Printf("daemon: no update found at source\n")
 			}
 			continue
 		}
