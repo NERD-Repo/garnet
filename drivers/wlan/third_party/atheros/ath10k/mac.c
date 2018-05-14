@@ -3043,7 +3043,7 @@ static void ath10k_mac_parse_a_mpdu(uint8_t response_a_mpdu,
                                     struct wmi_peer_assoc_complete_arg* assoc_arg) {
     assoc_arg->peer_max_mpdu = response_a_mpdu & IEEE80211_A_MPDU_MAX_RX_LEN;
     assoc_arg->peer_mpdu_density = (response_a_mpdu & IEEE80211_A_MPDU_DENSITY) >>
-                                   IEEE80211_A_MPDU_DENSITY_SHIFT_COUNT;
+                                   IEEE80211_A_MPDU_DENSITY_SHIFT;
 }
 
 static void ath10k_mac_parse_assoc_resp(const uint8_t* tagged_data,
@@ -3133,7 +3133,7 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
     assoc_resp = frame_ptr + sizeof(*frame_hdr);
     arvif->aid = (assoc_resp->assoc_id & 0x3fff);
 
-    status = ath10k_wmi_peer_create(ar, arvif->vdev_id, frame_hdr->bssid, WMI_PEER_TYPE_BSS);
+    status = ath10k_wmi_peer_create(ar, arvif->vdev_id, frame_hdr->addr3, WMI_PEER_TYPE_BSS);
     if (status != ZX_OK) {
         ath10k_warn("failed to create peer: %s\n", zx_status_get_string(status));
         result = 1;
@@ -3149,17 +3149,18 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
     }
 
     memset(&assoc_arg, 0, sizeof(assoc_arg));
-    if (memcmp(frame_hdr->bssid, arvif->bssid, ETH_ALEN)) {
+    uint8_t* bssid = ieee80211_get_bssid(frame_hdr);
+    if (memcmp(bssid, arvif->bssid, ETH_ALEN)) {
         char bssid_expected[ETH_ALEN * 3];
         char bssid_actual[ETH_ALEN * 3];
         ethaddr_sprintf(bssid_expected, arvif->bssid);
-        ethaddr_sprintf(bssid_actual, frame_hdr->bssid);
+        ethaddr_sprintf(bssid_actual, bssid);
         ath10k_warn("expected to associate with %s but got response from %s - ignoring\n",
                     bssid_expected, bssid_actual);
         result = 1;
         goto done;
     }
-    memcpy(assoc_arg.addr, frame_hdr->bssid, ETH_ALEN);
+    memcpy(assoc_arg.addr, bssid, ETH_ALEN);
 
     assoc_arg.vdev_id = arvif->vdev_id;
     assoc_arg.peer_reassoc = false;
@@ -3169,7 +3170,7 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
     assoc_arg.peer_num_spatial_streams = 1;
     assoc_arg.peer_caps = assoc_resp->capabilities;
 
-    ath10k_mac_parse_assoc_resp(assoc_resp->rate_info, rate_info_size, &assoc_arg);
+    ath10k_mac_parse_assoc_resp(assoc_resp->info, rate_info_size, &assoc_arg);
 
     // TODO: Ideally we should look this up
     assoc_arg.peer_phymode = ar->rx_channel.primary <= 14 ? MODE_11G : MODE_11A;
@@ -3907,7 +3908,7 @@ static void ath10k_tx_h_nwifi(struct ath10k_msg_buf* tx_buf) {
         tx_buf->tx.flags &= ~ATH10K_TX_BUF_QOS;
     }
 
-    hdr->frame_control &= ~IEEE80211_FRAME_SUBTYPE_QOS;
+    hdr->frame_ctrl &= ~IEEE80211_FRAME_SUBTYPE_QOS;
 }
 
 #if 0

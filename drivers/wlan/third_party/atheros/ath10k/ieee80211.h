@@ -80,6 +80,21 @@ static inline bool ieee80211_pkt_is_protected(const struct ieee80211_frame_heade
     return fh->frame_ctrl & IEEE80211_FRAME_PROTECTED_MASK;
 }
 
+static inline uint8_t* ieee80211_get_dst_addr(struct ieee80211_frame_header* fh) {
+    ZX_ASSERT(ieee80211_get_frame_type(fh) == IEEE80211_FRAME_TYPE_MGMT);
+    return fh->addr1;
+}
+
+static inline uint8_t* ieee80211_get_src_addr(struct ieee80211_frame_header* fh) {
+    ZX_ASSERT(ieee80211_get_frame_type(fh) == IEEE80211_FRAME_TYPE_MGMT);
+    return fh->addr2;
+}
+
+static inline uint8_t* ieee80211_get_bssid(struct ieee80211_frame_header* fh) {
+    ZX_ASSERT(ieee80211_get_frame_type(fh) == IEEE80211_FRAME_TYPE_MGMT);
+    return fh->addr3;
+}
+
 enum ieee80211_assoc_tags {
     IEEE80211_ASSOC_TAG_RATES = 1,
     IEEE80211_ASSOC_TAG_HT_CAPS = 45,
@@ -112,5 +127,7 @@ enum ieee80211_a_mpdu_params {
 
 #define IEEE80211_CCMP_MIC_LEN 8
 #define IEEE80211_QOS_CTL_LEN 2
+
+#define IEEE_MSDU_SIZE_MAX 2304
 
 #endif /* _IEEE80211_H_ */

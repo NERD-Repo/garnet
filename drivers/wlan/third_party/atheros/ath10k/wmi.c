@@ -2325,7 +2325,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
 #endif
 
     struct ieee80211_frame_header* hdr = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
-    uint16_t fc = hdr->frame_control;
+    uint16_t fc = hdr->frame_ctrl;
 
 #if 0
     /* Firmware is guaranteed to report all essential management frames via
