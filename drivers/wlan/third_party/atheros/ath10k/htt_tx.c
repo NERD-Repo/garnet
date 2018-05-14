@@ -935,11 +935,11 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
         && ((ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_ACTION)
             || (ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_DEAUTH)
             || (ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_DISASSOC))
-        && (hdr->frame_control & IEEE80211_FRAME_PROTECTED_MASK)) {
+        && (hdr->frame_ctrl & IEEE80211_FRAME_PROTECTED_MASK)) {
         msdu->used += IEEE80211_CCMP_MIC_LEN;
     } else if (!(msdu->tx.flags & ATH10K_TX_BUF_NO_HWCRYPT) &&
                txmode == ATH10K_HW_TXRX_RAW &&
-               (hdr->frame_control & IEEE80211_FRAME_PROTECTED_MASK)) {
+               (hdr->frame_ctrl & IEEE80211_FRAME_PROTECTED_MASK)) {
         msdu->used += IEEE80211_CCMP_MIC_LEN;
     }
 
