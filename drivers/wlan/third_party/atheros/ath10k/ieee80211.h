@@ -21,22 +21,25 @@
 
 #include "hw.h"
 
+// IEEE Std 802.11-2016, 9.2.3
 struct ieee80211_frame_header {
-    uint16_t frame_control;
+    uint16_t frame_ctrl;
     uint16_t duration;
-    uint8_t dest_addr[ETH_ALEN];
-    uint8_t source_addr[ETH_ALEN];
-    uint8_t bssid[ETH_ALEN];
-    uint16_t sequence_control;
+    uint8_t addr1[ETH_ALEN];
+    uint8_t addr2[ETH_ALEN];
+    uint8_t addr3[ETH_ALEN];
+    uint16_t seq_ctrl;
 } __PACKED;
 
+// IEEE Std 802.11-2016, 9.3.3.7
 struct ieee80211_assoc_resp {
     uint16_t capabilities;
     uint16_t status;
     uint16_t assoc_id;
-    uint8_t rate_info[0];
+    uint8_t info[0];
 } __PACKED;
 
+// IEEE Std 802.11-2016, 9.2.4.1.3
 enum ieee80211_frame_type {
     IEEE80211_FRAME_TYPE_MGMT = 0x0,
     IEEE80211_FRAME_TYPE_CTRL = 0x4,
@@ -44,6 +47,7 @@ enum ieee80211_frame_type {
     IEEE80211_FRAME_TYPE_EXT  = 0xc,
 };
 
+// IEEE Std 802.11-2016, 9.2.4.1.3
 enum ieee80211_frame_subtype {
     /* MGMT */
     IEEE80211_FRAME_SUBTYPE_ASSOC_REQ  = 0x00,
@@ -101,14 +105,12 @@ enum ieee80211_ht_caps {
 };
 
 enum ieee80211_a_mpdu_params {
-    IEEE80211_A_MPDU_MAX_RX_LEN         = 0x03,
-    IEEE80211_A_MPDU_DENSITY            = 0x1c,
-        IEEE80211_A_MPDU_DENSITY_SHIFT_COUNT = 2
+    IEEE80211_A_MPDU_MAX_RX_LEN        = 0x03,
+    IEEE80211_A_MPDU_DENSITY           = 0x1c,
+        IEEE80211_A_MPDU_DENSITY_SHIFT = 2
 };
 
 #define IEEE80211_CCMP_MIC_LEN 8
 #define IEEE80211_QOS_CTL_LEN 2
-
-#define IEEE_MSDU_SIZE_MAX 2304
 
 #endif /* _IEEE80211_H_ */
