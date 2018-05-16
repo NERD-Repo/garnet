@@ -3155,9 +3155,8 @@ static zx_status_t ath10k_pci_configure_bss(void* ctx, uint32_t options,
 }
 
 static zx_status_t ath10k_pci_set_key(void* ctx, uint32_t options, wlan_key_config_t* key_config) {
-    // TODO
-    ath10k_err("Request to set key -- unimplemented!\n");
-    return ZX_ERR_NOT_SUPPORTED;
+    struct ath10k* ar = ctx;
+    return ath10k_mac_set_key(ar, key_config);
 }
 
 static wlanmac_protocol_ops_t wlanmac_ops = {

@@ -6667,8 +6667,9 @@ void ath10k_wmi_event_gtk_offload_status(struct ath10k* ar,
 void ath10k_wmi_event_gtk_rekey_fail(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_delba_complete(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_addba_complete(struct ath10k* ar, struct sk_buff* skb);
-void ath10k_wmi_event_vdev_install_key_complete(struct ath10k* ar,
-        struct sk_buff* skb);
+#endif // NEEDS PORTING
+void ath10k_wmi_event_vdev_install_key_complete(struct ath10k* ar, struct ath10k_msg_buf* msg_buf);
+#if 0 // NEEDS PORTING
 void ath10k_wmi_event_inst_rssi_stats(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_vdev_standby_req(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_vdev_resume_req(struct ath10k* ar, struct sk_buff* skb);

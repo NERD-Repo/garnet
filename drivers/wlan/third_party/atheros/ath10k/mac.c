@@ -344,88 +344,76 @@ zx_status_t ath10k_mac_ext_resource_config(struct ath10k* ar, uint32_t val) {
     return ZX_OK;
 }
 
-#if 0 // TODO
 /**********/
 /* Crypto */
 /**********/
 
-static int ath10k_send_key(struct ath10k_vif* arvif,
-                           struct ieee80211_key_conf* key,
-                           enum set_key_cmd cmd,
-                           const uint8_t* macaddr, uint32_t flags) {
-    struct ath10k* ar = arvif->ar;
+static zx_status_t ath10k_send_key(struct ath10k_vif* arvif,
+                                   wlan_key_config_t* key_config,
+                                   const uint8_t* macaddr, uint32_t flags) {
     struct wmi_vdev_install_key_arg arg = {
         .vdev_id = arvif->vdev_id,
-        .key_idx = key->keyidx,
-        .key_len = key->keylen,
-        .key_data = key->key,
+        .key_idx = key_config->key_idx,
+        .key_len = key_config->key_len,
+        .key_data = key_config->key,
         .key_flags = flags,
         .macaddr = macaddr,
     };
 
     ASSERT_MTX_HELD(&arvif->ar->conf_mutex);
 
-    switch (key->cipher) {
-    case WLAN_CIPHER_SUITE_CCMP:
+    switch (key_config->cipher_type) {
+    case IEEE80211_CIPHER_SUITE_CCMP_128:
+    case IEEE80211_CIPHER_SUITE_CCMP_256:
         arg.key_cipher = WMI_CIPHER_AES_CCM;
-        key->flags |= IEEE80211_KEY_FLAG_GENERATE_IV_MGMT;
         break;
-    case WLAN_CIPHER_SUITE_TKIP:
+    case IEEE80211_CIPHER_SUITE_TKIP:
         arg.key_cipher = WMI_CIPHER_TKIP;
         arg.key_txmic_len = 8;
         arg.key_rxmic_len = 8;
         break;
-    case WLAN_CIPHER_SUITE_WEP40:
-    case WLAN_CIPHER_SUITE_WEP104:
+    case IEEE80211_CIPHER_SUITE_WEP_40:
+    case IEEE80211_CIPHER_SUITE_WEP_104:
         arg.key_cipher = WMI_CIPHER_WEP;
         break;
-    case WLAN_CIPHER_SUITE_AES_CMAC:
-        WARN_ON(1);
-        return -EINVAL;
+    case IEEE80211_CIPHER_SUITE_CMAC_128:
+    case IEEE80211_CIPHER_SUITE_CMAC_256:
+        return ZX_ERR_INVALID_ARGS;
     default:
-        ath10k_warn("cipher %d is not supported\n", key->cipher);
-        return -EOPNOTSUPP;
-    }
-
-    if (test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags)) {
-        key->flags |= IEEE80211_KEY_FLAG_GENERATE_IV;
-    }
-
-    if (cmd == DISABLE_KEY) {
-        arg.key_cipher = WMI_CIPHER_NONE;
-        arg.key_data = NULL;
+        ath10k_warn("cipher %d is not supported\n", key_config->cipher_type);
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
     return ath10k_wmi_vdev_install_key(arvif->ar, &arg);
 }
 
-static int ath10k_install_key(struct ath10k_vif* arvif,
-                              struct ieee80211_key_conf* key,
-                              enum set_key_cmd cmd,
-                              const uint8_t* macaddr, uint32_t flags) {
+static zx_status_t ath10k_install_key(struct ath10k_vif* arvif,
+                                      wlan_key_config_t* key_config,
+                                      const uint8_t* macaddr, uint32_t flags) {
     struct ath10k* ar = arvif->ar;
-    int ret;
+    zx_status_t ret;
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
     completion_reset(&ar->install_key_done);
 
     if (arvif->nohwcrypt) {
-        return 1;
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
-    ret = ath10k_send_key(arvif, key, cmd, macaddr, flags);
+    ret = ath10k_send_key(arvif, key_config, macaddr, flags);
     if (ret) {
         return ret;
     }
 
     if (completion_wait(&ar->install_key_done, ZX_SEC(3)) == ZX_ERR_TIMED_OUT) {
-        return -ETIMEDOUT;
+        return ZX_ERR_TIMED_OUT;
     }
 
-    return 0;
+    return ZX_OK;
 }
 
+#if 0
 static int ath10k_install_peer_wep_keys(struct ath10k_vif* arvif,
                                         const uint8_t* addr) {
     struct ath10k* ar = arvif->ar;
@@ -6273,13 +6261,13 @@ static void ath10k_cancel_hw_scan(struct ieee80211_hw* hw,
 
     cancel_delayed_work_sync(&ar->scan.timeout);
 }
+#endif
 
 static void ath10k_set_key_h_def_keyidx(struct ath10k* ar,
-                                        struct ath10k_vif* arvif,
-                                        enum set_key_cmd cmd,
-                                        struct ieee80211_key_conf* key) {
+                                        wlan_key_config_t* key_config) {
+    struct ath10k_vif* arvif = &ar->arvif;
     uint32_t vdev_param = arvif->ar->wmi.vdev_param->def_keyid;
-    int ret;
+    zx_status_t status;
 
     /* 10.1 firmware branch requires default key index to be set to group
      * key index after installing it. Otherwise FW/HW Txes corrupted
@@ -6297,75 +6285,46 @@ static void ath10k_set_key_h_def_keyidx(struct ath10k* ar,
         return;
     }
 
-    if (key->cipher == WLAN_CIPHER_SUITE_WEP40) {
+    if (key_config->cipher_type == IEEE80211_CIPHER_SUITE_WEP_40) {
         return;
     }
 
-    if (key->cipher == WLAN_CIPHER_SUITE_WEP104) {
+    if (key_config->cipher_type == IEEE80211_CIPHER_SUITE_WEP_104) {
         return;
     }
 
-    if (key->flags & IEEE80211_KEY_FLAG_PAIRWISE) {
+    if (key_config->key_type == WLAN_KEY_TYPE_PAIRWISE) {
         return;
     }
 
-    if (cmd != SET_KEY) {
-        return;
-    }
-
-    ret = ath10k_wmi_vdev_set_param(ar, arvif->vdev_id, vdev_param,
-                                    key->keyidx);
-    if (ret)
-        ath10k_warn("failed to set vdev %i group key as default key: %d\n",
-                    arvif->vdev_id, ret);
+    status = ath10k_wmi_vdev_set_param(ar, arvif->vdev_id, vdev_param, key_config->key_idx);
+    if (status != ZX_OK)
+        ath10k_warn("failed to set vdev %i group key as default key: %s\n",
+                    arvif->vdev_id, zx_status_get_string(status));
 }
 
-static int ath10k_set_key(struct ieee80211_hw* hw, enum set_key_cmd cmd,
-                          struct ieee80211_vif* vif, struct ieee80211_sta* sta,
-                          struct ieee80211_key_conf* key) {
-    struct ath10k* ar = hw->priv;
-    struct ath10k_vif* arvif = (void*)vif->drv_priv;
-    struct ath10k_peer* peer;
+zx_status_t ath10k_mac_set_key(struct ath10k* ar, wlan_key_config_t* key_config) {
+    struct ath10k_vif* arvif = &ar->arvif;
     const uint8_t* peer_addr;
-    bool is_wep = key->cipher == WLAN_CIPHER_SUITE_WEP40 ||
-                  key->cipher == WLAN_CIPHER_SUITE_WEP104;
-    int ret = 0;
-    int ret2;
+    zx_status_t ret = ZX_OK;
     uint32_t flags = 0;
-    uint32_t flags2;
-
-    /* this one needs to be done in software */
-    if (key->cipher == WLAN_CIPHER_SUITE_AES_CMAC) {
-        return 1;
-    }
 
     if (arvif->nohwcrypt) {
-        return 1;
+        return ZX_ERR_NOT_SUPPORTED;
     }
 
-    if (key->keyidx > WMI_MAX_KEY_INDEX) {
-        return -ENOSPC;
+    if (key_config->key_idx > WMI_MAX_KEY_INDEX) {
+        return ZX_ERR_INVALID_ARGS;
     }
+
+    // FIXME: Should be key_config->bssid, but it is incorrectly defined as uint8_t instead of
+    //        uint8_t* or uint8_t[6]
+    peer_addr = arvif->bssid;
 
     mtx_lock(&ar->conf_mutex);
 
-    if (sta) {
-        peer_addr = sta->addr;
-    } else if (arvif->vdev_type == WMI_VDEV_TYPE_STA) {
-        peer_addr = vif->bss_conf.bssid;
-    } else {
-        peer_addr = vif->addr;
-    }
-
-    key->hw_key_idx = key->keyidx;
-
-    if (is_wep) {
-        if (cmd == SET_KEY) {
-            arvif->wep_keys[key->keyidx] = key;
-        } else {
-            arvif->wep_keys[key->keyidx] = NULL;
-        }
-    }
+#if 0 // NEEDS PORTING
+    struct ath10k_peer* peer;
 
     /* the peer should not disappear in mid-way (unless FW goes awry) since
      * we already hold conf_mutex. we just make sure its there now.
@@ -6375,99 +6334,52 @@ static int ath10k_set_key(struct ieee80211_hw* hw, enum set_key_cmd cmd,
     mtx_unlock(&ar->data_lock);
 
     if (!peer) {
-        if (cmd == SET_KEY) {
-            ath10k_warn("failed to install key for non-existent peer %pM\n",
-                        peer_addr);
-            ret = -EOPNOTSUPP;
-            goto exit;
-        } else {
-            /* if the peer doesn't exist there is no key to disable anymore */
-            goto exit;
-        }
+        ath10k_warn("failed to install key for non-existent peer %pM\n", peer_addr);
+        ret = ZX_ERR_NOT_FOUND;
+        goto exit;
     }
+#endif // NEEDS PORTING
 
-    if (key->flags & IEEE80211_KEY_FLAG_PAIRWISE) {
+    switch(key_config->key_type) {
+    case WLAN_KEY_TYPE_PAIRWISE:
         flags |= WMI_KEY_PAIRWISE;
-    } else {
+        break;
+    case WLAN_KEY_TYPE_GROUP:
         flags |= WMI_KEY_GROUP;
+        break;
+    case WLAN_KEY_TYPE_IGTK:
+    case WLAN_KEY_TYPE_PEER:
+    default:
+        ZX_ASSERT(0);
     }
 
-    if (is_wep) {
-        if (cmd == DISABLE_KEY) {
-            ath10k_clear_vdev_key(arvif, key);
-        }
-
-        /* When WEP keys are uploaded it's possible that there are
-         * stations associated already (e.g. when merging) without any
-         * keys. Static WEP needs an explicit per-peer key upload.
-         */
-        if (vif->type == NL80211_IFTYPE_ADHOC &&
-                cmd == SET_KEY) {
-            ath10k_mac_vif_update_wep_key(arvif, key);
-        }
-
-        /* 802.1x never sets the def_wep_key_idx so each set_key()
-         * call changes default tx key.
-         *
-         * Static WEP sets def_wep_key_idx via .set_default_unicast_key
-         * after first set_key().
-         */
-        if (cmd == SET_KEY && arvif->def_wep_key_idx == -1) {
-            flags |= WMI_KEY_TX_USAGE;
-        }
-    }
-
-    ret = ath10k_install_key(arvif, key, cmd, peer_addr, flags);
-    if (ret) {
-        WARN_ON(ret > 0);
+    ret = ath10k_install_key(arvif, key_config, peer_addr, flags);
+    if (ret != ZX_OK) {
         ath10k_warn("failed to install key for vdev %i peer %pM: %d\n",
                     arvif->vdev_id, peer_addr, ret);
         goto exit;
     }
 
-    /* mac80211 sets static WEP keys as groupwise while firmware requires
-     * them to be installed twice as both pairwise and groupwise.
-     */
-    if (is_wep && !sta && vif->type == NL80211_IFTYPE_STATION) {
-        flags2 = flags;
-        flags2 &= ~WMI_KEY_GROUP;
-        flags2 |= WMI_KEY_PAIRWISE;
+    ath10k_set_key_h_def_keyidx(ar, key_config);
 
-        ret = ath10k_install_key(arvif, key, cmd, peer_addr, flags2);
-        if (ret) {
-            WARN_ON(ret > 0);
-            ath10k_warn("failed to install (ucast) key for vdev %i peer %pM: %d\n",
-                        arvif->vdev_id, peer_addr, ret);
-            ret2 = ath10k_install_key(arvif, key, DISABLE_KEY,
-                                      peer_addr, flags);
-            if (ret2) {
-                WARN_ON(ret2 > 0);
-                ath10k_warn("failed to disable (mcast) key for vdev %i peer %pM: %d\n",
-                            arvif->vdev_id, peer_addr, ret2);
-            }
-            goto exit;
-        }
-    }
-
-    ath10k_set_key_h_def_keyidx(ar, arvif, cmd, key);
-
+#if 0 // NEEDS PORTING
     mtx_lock(&ar->data_lock);
     peer = ath10k_peer_find(ar, arvif->vdev_id, peer_addr);
-    if (peer && cmd == SET_KEY) {
+    if (peer) {
         peer->keys[key->keyidx] = key;
-    } else if (peer && cmd == DISABLE_KEY) {
-        peer->keys[key->keyidx] = NULL;
-    } else if (peer == NULL) {
+    } else  {
         /* impossible unless FW goes crazy */
         ath10k_warn("Peer %pM disappeared!\n", peer_addr);
     }
     mtx_unlock(&ar->data_lock);
+#endif // NEEDS PORTING
 
 exit:
     mtx_unlock(&ar->conf_mutex);
     return ret;
 }
 
+#if 0 // NEEDS PORTING
 static void ath10k_set_default_unicast_key(struct ieee80211_hw* hw,
         struct ieee80211_vif* vif,
         int keyidx) {

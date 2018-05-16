@@ -4500,12 +4500,14 @@ void ath10k_wmi_event_delba_complete(struct ath10k* ar, struct sk_buff* skb) {
 void ath10k_wmi_event_addba_complete(struct ath10k* ar, struct sk_buff* skb) {
     ath10k_dbg(ar, ATH10K_DBG_WMI, "WMI_TX_ADDBA_COMPLETE_EVENTID\n");
 }
+#endif // NEEDS PORTING
 
 void ath10k_wmi_event_vdev_install_key_complete(struct ath10k* ar,
-        struct sk_buff* skb) {
+                                                struct ath10k_msg_buf* msg_buf) {
     ath10k_dbg(ar, ATH10K_DBG_WMI, "WMI_VDEV_INSTALL_KEY_COMPLETE_EVENTID\n");
 }
 
+#if 0 // NEEDS PORTING
 void ath10k_wmi_event_inst_rssi_stats(struct ath10k* ar, struct sk_buff* skb) {
     ath10k_dbg(ar, ATH10K_DBG_WMI, "WMI_INST_RSSI_STATS_EVENTID\n");
 }

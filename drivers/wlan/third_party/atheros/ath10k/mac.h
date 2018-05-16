@@ -82,6 +82,7 @@ void __ath10k_scan_finish(struct ath10k* ar);
 void ath10k_scan_finish(struct ath10k* ar);
 zx_status_t ath10k_mac_op_tx(struct ath10k* ar, wlan_tx_packet_t* pkt);
 int ath10k_mac_bss_assoc(void* thrd_data);
+zx_status_t ath10k_mac_set_key(struct ath10k* ar, wlan_key_config_t* key_config);
 #if 0
 void ath10k_scan_timeout_work(struct work_struct* work);
 void ath10k_offchan_tx_purge(struct ath10k* ar);
