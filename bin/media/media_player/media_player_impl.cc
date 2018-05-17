@@ -7,8 +7,8 @@
 #include <sstream>
 
 #include <fs/pseudo-file.h>
-#include <fuchsia/cpp/media.h>
-#include <fuchsia/cpp/media_player.h>
+#include <media/cpp/fidl.h>
+#include <media_player/cpp/fidl.h>
 #include <lib/async/default.h>
 
 #include "garnet/bin/media/media_player/demux/fidl_reader.h"
@@ -87,12 +87,6 @@ MediaPlayerImpl::MediaPlayerImpl(
     SendStatusUpdates();
     Update();
   });
-
-  status_publisher_.SetCallbackRunner(
-      [this](GetStatusCallback callback, uint64_t version) {
-        UpdateStatus();
-        callback(version, fidl::Clone(status_));
-      });
 
   state_ = State::kInactive;
 }
@@ -394,11 +388,6 @@ void MediaPlayerImpl::Seek(int64_t position) {
   Update();
 }
 
-void MediaPlayerImpl::GetStatus(uint64_t version_last_seen,
-                                GetStatusCallback callback) {
-  status_publisher_.Get(version_last_seen, callback);
-}
-
 void MediaPlayerImpl::SetGain(float gain) {
   if (audio_renderer_) {
     audio_renderer_->SetGain(gain);
@@ -443,8 +432,6 @@ void MediaPlayerImpl::AddBinding(fidl::InterfaceRequest<MediaPlayer> request) {
 }
 
 void MediaPlayerImpl::SendStatusUpdates() {
-  status_publisher_.SendUpdates();
-
   UpdateStatus();
 
   for (auto& binding : bindings_.bindings()) {

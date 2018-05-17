@@ -16,10 +16,11 @@
 
 #include <fbl/ref_ptr.h>
 #include <fbl/unique_ptr.h>
+#include <wlan_mlme/c/fidl.h>
 #include <gtest/gtest.h>
 #include <cstring>
 
-#include <fuchsia/cpp/wlan_mlme.h>
+#include <wlan_mlme/cpp/fidl.h>
 
 namespace wlan {
 namespace {
@@ -50,7 +51,7 @@ class ScannerTest : public ::testing::Test {
     }
 
     zx_status_t DeserializeScanResponse() {
-        return mock_dev_.GetQueuedServiceMsg(wlan_mlme::Method::SCAN_confirm, &resp_);
+        return mock_dev_.GetQueuedServiceMsg(wlan_mlme_MLMEScanConfOrdinal, &resp_);
     }
 
     wlan_mlme::ScanRequestPtr req_;

@@ -125,7 +125,6 @@ impl HostDispatcher {
         Item = (fidl_bluetooth::Status, Option<Arc<DiscoveryRequestToken>>),
         Error = fidl::Error,
     > {
-        println!("Starting discovery");
         let strong_current_token = match hd.read().discovery {
             Some(ref token) => token.upgrade(),
             None => None,
@@ -133,8 +132,8 @@ impl HostDispatcher {
         if let Some(token) = strong_current_token {
             return Left(fok((bt_fidl_status!(), Some(Arc::clone(&token)))));
         }
-
-        match hd.write().get_active_id() {
+        let id = hd.write().get_active_id();
+        match id {
             Some(ref id) => {
                 let hdr = hd.read();
                 let adap = hdr.host_devices.get(id).unwrap();
@@ -176,7 +175,8 @@ impl HostDispatcher {
             return Left(fok((bt_fidl_status!(), Some(Arc::clone(&token)))));
         }
 
-        match hd.write().get_active_id() {
+        let id = hd.write().get_active_id();
+        match id {
             Some(ref id) => {
                 let hdr = hd.read();
                 let adap = hdr.host_devices.get(id).unwrap();
@@ -266,7 +266,7 @@ fn add_adapter(
             let host_adapter =
                 AdapterProxy::from_channel(async::Channel::from_channel(host_local).unwrap());
             let mut host_req = HostAdapterPtr::new(host_remote);
-            host.request_adapter(&mut host_req);
+            host.request_adapter(host_req);
 
             let (del_local, del_remote) = zx::Channel::create().unwrap();
             let del_local = async::Channel::from_channel(del_local).unwrap();
@@ -277,7 +277,7 @@ fn add_adapter(
                     None
                 })
             });
-            host_adapter.set_delegate(&mut adap_delegate);
+            host_adapter.set_delegate(adap_delegate);
 
             // Add to the adapters
             let id = adapter_info.identifier.clone();

@@ -5,7 +5,7 @@
 package eapol
 
 import (
-	mlme "fuchsia/go/wlan_mlme"
+	mlme "fidl/wlan_mlme"
 	"wlan/wlan/sme"
 
 	"bytes"
@@ -215,12 +215,12 @@ func (s *SMETransport) SendEAPOLRequest(srcAddr [6]uint8, dstAddr [6]uint8, f *K
 		DstAddr: dstAddr,
 		Data:    f.Bytes(),
 	}
-	s.SME.SendMessage(req, uint32(mlme.MethodEapolRequest))
+	s.SME.SendMessage(req, mlme.MlmeEapolReqOrdinal)
 	return nil
 }
 
 func (s *SMETransport) SendSetKeysRequest(keyList []mlme.SetKeyDescriptor) error {
 	req := &mlme.SetKeysRequest{Keylist: keyList}
-	s.SME.SendMessage(req, uint32(mlme.MethodSetkeysRequest))
+	s.SME.SendMessage(req, mlme.MlmeSetKeysReqOrdinal)
 	return nil
 }

@@ -5,8 +5,8 @@
 #ifndef GARNET_BIN_GUEST_MGR_GUEST_ENVIRONMENT_IMPL_H_
 #define GARNET_BIN_GUEST_MGR_GUEST_ENVIRONMENT_IMPL_H_
 
-#include <fuchsia/cpp/component.h>
-#include <fuchsia/cpp/guest.h>
+#include <component/cpp/fidl.h>
+#include <guest/cpp/fidl.h>
 #include <unordered_map>
 
 #include "garnet/bin/guest/mgr/guest_holder.h"
@@ -37,6 +37,10 @@ class GuestEnvironmentImpl : public guest::GuestEnvironment {
   uint32_t id() const { return id_; }
   const std::string& label() const { return label_; }
 
+  // Invoked once all bindings have been removed and this environment has been
+  // orphaned.
+  void set_unbound_handler(std::function<void()> handler);
+
  private:
   // |guest::GuestEnvironment|
   void LaunchGuest(guest::GuestLaunchInfo launch_info,
@@ -62,11 +66,10 @@ class GuestEnvironmentImpl : public guest::GuestEnvironment {
   component::ApplicationLauncherPtr app_launcher_;
   component::ServiceProviderBridge service_provider_bridge_;
 
-  uint32_t next_guest_cid_ = kFirstGuestCid;
-  std::unordered_map<uint32_t, std::unique_ptr<GuestHolder>> guests_;
-
   VsockServer socket_server_;
   HostVsockEndpoint host_socket_endpoint_;
+  uint32_t next_guest_cid_ = kFirstGuestCid;
+  std::unordered_map<uint32_t, std::unique_ptr<GuestHolder>> guests_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(GuestEnvironmentImpl);
 };

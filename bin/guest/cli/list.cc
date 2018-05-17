@@ -4,11 +4,10 @@
 
 #include "garnet/bin/guest/cli/list.h"
 
-#include <fuchsia/cpp/guest.h>
+#include <guest/cpp/fidl.h>
 #include <iostream>
 
 #include "lib/app/cpp/environment_services.h"
-#include "lib/fsl/tasks/message_loop.h"
 
 void handle_list() {
   guest::GuestManagerSyncPtr guestmgr;
@@ -23,5 +22,4 @@ void handle_list() {
              guest_info.label->c_str());
     }
   }
-  fsl::MessageLoop::GetCurrent()->PostQuitTask();
 }

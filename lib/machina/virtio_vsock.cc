@@ -4,6 +4,8 @@
 
 #include "garnet/lib/machina/virtio_vsock.h"
 
+#include <fbl/auto_call.h>
+
 namespace machina {
 
 VirtioVsock::Connection::~Connection() {
@@ -310,8 +312,7 @@ void VirtioVsock::Mux(zx_status_t status, uint16_t index) {
     return;
   }
 
-  uint32_t remote_cid = guest_cid();
-  virtio_desc_t desc;
+  bool index_valid = true;
   fbl::AutoLock lock(&mutex_);
   for (auto i = readable_.begin(), end = readable_.end(); i != end;
        i = readable_.erase(i)) {
@@ -319,94 +320,103 @@ void VirtioVsock::Mux(zx_status_t status, uint16_t index) {
     if (conn == nullptr) {
       continue;
     }
-    auto header = GetHeaderLocked(rx_queue(), index, &desc, true);
-    if (header == nullptr) {
-      FXL_LOG(ERROR) << "Failed to get header from read queue";
-      return;
-    }
-    *header = {
-        .src_cid = i->local_cid,
-        .src_port = i->local_port,
-        .dst_cid = remote_cid,
-        .dst_port = i->remote_port,
-        .type = VIRTIO_VSOCK_TYPE_STREAM,
-        .op = conn->op,
-    };
-    uint32_t used = sizeof(*header);
-
-    // If reading was shutdown, but we're still receiving a read request, send
-    // a connection reset.
-    if (conn->op == VIRTIO_VSOCK_OP_RW &&
-        conn->flags & VIRTIO_VSOCK_FLAG_SHUTDOWN_RECV) {
-      conn->op = VIRTIO_VSOCK_OP_RST;
-      FXL_LOG(ERROR) << "Receive was shutdown";
-    }
-
-    switch (conn->op) {
-      case VIRTIO_VSOCK_OP_REQUEST:
-        // We are sending a connection request, therefore we move to waiting
-        // for response.
-        status = WaitOnQueueLocked(*i, &writable_, &tx_stream_);
-        if (status == ZX_OK) {
-          status = set_credit(header, conn->socket);
-        }
-        conn->op = VIRTIO_VSOCK_OP_RESPONSE;
-        break;
-      case VIRTIO_VSOCK_OP_RESPONSE:
-        // We are sending a connection response, therefore we move to ready to
-        // read/write.
-        WaitOnSocketLocked(status, *i, &conn->tx_wait);
-        // fallthrough
-      case VIRTIO_VSOCK_OP_CREDIT_UPDATE: {
-        // We are sending a credit update, therefore we move to ready to
-        // read/write.
-        status = set_credit(header, conn->socket);
-        conn->op = VIRTIO_VSOCK_OP_RW;
-        break;
+    if (!index_valid) {
+      status = rx_queue()->NextAvail(&index);
+      if (status != ZX_OK) {
+        return;
       }
-      case VIRTIO_VSOCK_OP_RW:
-        // We are reading from the socket.
-        desc.addr = header + 1;
-        desc.len -= used;
-        do {
-          size_t actual;
-          status = conn->socket.read(0, desc.addr, desc.len, &actual);
-          used += actual;
-          if (!desc.has_next || actual < desc.len) {
-            break;
-          }
-          status = rx_queue()->ReadDesc(desc.next, &desc);
-        } while (status == ZX_OK);
-        header->len = used - sizeof(*header);
-        break;
-      case VIRTIO_VSOCK_OP_SHUTDOWN:
-        header->flags = conn->flags;
-        if (header->flags == VIRTIO_VSOCK_FLAG_SHUTDOWN_BOTH) {
-          // We are sending a full connection shutdown, therefore we move to
-          // waiting for a connection reset.
-          conn->op = VIRTIO_VSOCK_OP_RST;
-        } else {
-          // One side of the connection is still active, therefore we move to
-          // ready to read/write.
-          conn->op = VIRTIO_VSOCK_OP_RW;
-        }
-        status = WaitOnQueueLocked(*i, &writable_, &tx_stream_);
-        break;
-      default:
-      case VIRTIO_VSOCK_OP_RST:
-        // We are sending a connection reset, therefore remove the connection.
-        header->op = VIRTIO_VSOCK_OP_RST;
-        status = ZX_ERR_STOP;
-        break;
     }
-
-    WaitOnSocketLocked(status, *i, &conn->rx_wait);
+    uint32_t used = 0;
+    zx_status_t status = SendMessageForConnectionLocked(*i, conn, index, &used);
     rx_queue()->Return(index, used);
-    status = rx_queue()->NextAvail(&index);
-    if (status != ZX_OK) {
-      readable_.erase(i);
-      break;
+    index_valid = false;
+    WaitOnSocketLocked(status, *i, &conn->rx_wait);
+  }
+}
+
+zx_status_t VirtioVsock::SendMessageForConnectionLocked(
+    const ConnectionKey& key, Connection* conn, uint16_t index,
+    uint32_t* used) {
+  virtio_desc_t desc;
+  auto header = GetHeaderLocked(rx_queue(), index, &desc, true);
+  if (header == nullptr) {
+    FXL_LOG(ERROR) << "Failed to get header from read queue";
+    return ZX_ERR_STOP;
+  }
+  *header = {
+      .src_cid = key.local_cid,
+      .src_port = key.local_port,
+      .dst_cid = guest_cid(),
+      .dst_port = key.remote_port,
+      .type = VIRTIO_VSOCK_TYPE_STREAM,
+      .op = conn->op,
+  };
+  *used = sizeof(*header);
+
+  // If reading was shutdown, but we're still receiving a read request, send
+  // a connection reset.
+  if (conn->op == VIRTIO_VSOCK_OP_RW &&
+      conn->flags & VIRTIO_VSOCK_FLAG_SHUTDOWN_RECV) {
+    conn->op = VIRTIO_VSOCK_OP_RST;
+    FXL_LOG(ERROR) << "Receive was shutdown";
+  }
+
+  switch (conn->op) {
+    case VIRTIO_VSOCK_OP_REQUEST: {
+      // We are sending a connection request, therefore we move to waiting
+      // for response.
+      zx_status_t status = WaitOnQueueLocked(key, &writable_, &tx_stream_);
+      if (status == ZX_OK) {
+        status = set_credit(header, conn->socket);
+      }
+      conn->op = VIRTIO_VSOCK_OP_RESPONSE;
+      return status;
     }
+    case VIRTIO_VSOCK_OP_RESPONSE:
+      // We are sending a connection response, therefore we move to ready to
+      // read/write.
+      WaitOnSocketLocked(ZX_OK, key, &conn->tx_wait);
+      // fallthrough
+    case VIRTIO_VSOCK_OP_CREDIT_UPDATE: {
+      // We are sending a credit update, therefore we move to ready to
+      // read/write.
+      conn->op = VIRTIO_VSOCK_OP_RW;
+      return set_credit(header, conn->socket);
+    }
+    case VIRTIO_VSOCK_OP_RW: {
+      // We are reading from the socket.
+      desc.addr = header + 1;
+      desc.len -= *used;
+      zx_status_t status;
+      do {
+        size_t actual;
+        status = conn->socket.read(0, desc.addr, desc.len, &actual);
+        *used += actual;
+        if (status != ZX_OK || !desc.has_next || actual < desc.len) {
+          break;
+        }
+        status = rx_queue()->ReadDesc(desc.next, &desc);
+      } while (status == ZX_OK);
+      header->len = *used - sizeof(*header);
+      return status;
+    }
+    case VIRTIO_VSOCK_OP_SHUTDOWN:
+      header->flags = conn->flags;
+      if (header->flags == VIRTIO_VSOCK_FLAG_SHUTDOWN_BOTH) {
+        // We are sending a full connection shutdown, therefore we move to
+        // waiting for a connection reset.
+        conn->op = VIRTIO_VSOCK_OP_RST;
+      } else {
+        // One side of the connection is still active, therefore we move to
+        // ready to read/write.
+        conn->op = VIRTIO_VSOCK_OP_RW;
+      }
+      return WaitOnQueueLocked(key, &writable_, &tx_stream_);
+    default:
+    case VIRTIO_VSOCK_OP_RST:
+      // We are sending a connection reset, therefore remove the connection.
+      header->op = VIRTIO_VSOCK_OP_RST;
+      return ZX_ERR_STOP;
   }
 }
 
@@ -428,6 +438,8 @@ void VirtioVsock::Demux(zx_status_t status, uint16_t index) {
   virtio_desc_t desc;
   fbl::AutoLock lock(&mutex_);
   do {
+    auto free_desc =
+        fbl::MakeAutoCall([this, index]() { tx_queue()->Return(index, 0); });
     auto header = GetHeaderLocked(tx_queue(), index, &desc, false);
     if (header == nullptr) {
       FXL_LOG(ERROR) << "Failed to get header from write queue";
@@ -436,7 +448,6 @@ void VirtioVsock::Demux(zx_status_t status, uint16_t index) {
       set_shutdown(header);
       FXL_LOG(ERROR) << "Only stream sockets are supported";
     }
-    uint32_t used = sizeof(*header);
     ConnectionKey key{
         static_cast<uint32_t>(header->dst_cid),
         header->dst_port,
@@ -454,7 +465,10 @@ void VirtioVsock::Demux(zx_status_t status, uint16_t index) {
         set_shutdown(header);
         FXL_LOG(ERROR) << "Connection does not exist";
       } else if (writable_.find(key) == writable_.end()) {
-        // There was a write, but the socket is not ready.
+        // There was a write, but the socket is not ready. If the guest is
+        // respecting the credit update messages this should not happen.
+        FXL_LOG(ERROR) << "Received write to a socket that is not wriable!"
+                       << "Data will be lost.";
         continue;
       } else if (conn->op == VIRTIO_VSOCK_OP_RW &&
                  conn->flags & VIRTIO_VSOCK_FLAG_SHUTDOWN_SEND) {
@@ -505,13 +519,30 @@ void VirtioVsock::Demux(zx_status_t status, uint16_t index) {
       case VIRTIO_VSOCK_OP_RW:
         // We are writing to the socket.
         desc.addr = header + 1;
-        desc.len -= used;
+        desc.len -= sizeof(*header);
         do {
           uint32_t len = std::min(desc.len, header->len);
           size_t actual;
           status = conn->socket.write(0, desc.addr, len, &actual);
-          used += actual;
           header->len -= actual;
+          if (status != ZX_OK) {
+            // NOTE: this drops some bytes in this data payload. Since we send
+            // credit update messages that inform that guest about available
+            // buffer space in the socket we don't expect this to happen in
+            // practice.
+            //
+            // It's possible we've hit other error conditions here (ex:
+            // PEER_CLOSED) so we'll just remove the connection and update
+            // status accordingly.
+            FXL_LOG(ERROR) << "Failed to write to connection socket " << status
+                           << ". Attempted to write  " << len
+                           << "b but only wrote " << actual << "b.";
+            writable_.erase(key);
+            if (status == ZX_ERR_SHOULD_WAIT) {
+              status = ZX_OK;
+            }
+            break;
+          }
           if (!desc.has_next || header->len == 0) {
             break;
           }
@@ -546,11 +577,9 @@ void VirtioVsock::Demux(zx_status_t status, uint16_t index) {
         break;
     }
 
-    writable_.erase(key);
     if (conn != nullptr && conn->socket.is_valid()) {
       WaitOnSocketLocked(status, key, &conn->tx_wait);
     }
-    tx_queue()->Return(index, used);
   } while (tx_queue()->NextAvail(&index) == ZX_OK);
 
   status = tx_stream_.WaitOnQueue();

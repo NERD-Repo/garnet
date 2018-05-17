@@ -67,8 +67,7 @@ std::string GetLabelFromURL(const std::string& url) {
   return url.substr(last_slash + 1);
 }
 
-void PushFileDescriptor(component::FileDescriptorPtr fd,
-                        int new_fd,
+void PushFileDescriptor(component::FileDescriptorPtr fd, int new_fd,
                         std::vector<uint32_t>* ids,
                         std::vector<zx_handle_t>* handles) {
   if (!fd)
@@ -87,8 +86,7 @@ void PushFileDescriptor(component::FileDescriptorPtr fd,
   }
 }
 
-zx::process CreateProcess(const zx::job& job,
-                          fsl::SizedVmo data,
+zx::process CreateProcess(const zx::job& job, fsl::SizedVmo data,
                           const std::string& argv0,
                           ApplicationLaunchInfo launch_info,
                           zx::channel loader_service,
@@ -185,6 +183,19 @@ ExportedDirChannels BindDirectory(ApplicationLaunchInfo* launch_info) {
   return {std::move(exported_dir_client), std::move(client_request)};
 }
 
+std::string GetArgsString(
+    const ::fidl::VectorPtr<::fidl::StringPtr>& arguments) {
+  std::string args = "";
+  if (!arguments->empty()) {
+    std::ostringstream buf;
+    std::copy(arguments->begin(), arguments->end() - 1,
+              std::ostream_iterator<std::string>(buf, " "));
+    buf << *arguments->rbegin();
+    args = buf.str();
+  }
+  return args;
+}
+
 }  // namespace
 
 uint32_t Realm::next_numbered_label_ = 1u;
@@ -215,17 +226,17 @@ Realm::Realm(Realm* parent, zx::channel host_directory, fidl::StringPtr label)
     label_ = label.get().substr(0, component::kLabelMaxLength);
 
   fsl::SetObjectName(job_.get(), label_);
+  hub_.SetName(label_);
+  hub_.SetJobId(koid_);
 
   default_namespace_->services().set_backing_dir(std::move(host_directory));
 
   ServiceProviderPtr service_provider;
   default_namespace_->services().AddBinding(service_provider.NewRequest());
-  loader_ = ConnectToService<ApplicationLoader>(service_provider.get());
+  loader_ = ConnectToService<Loader>(service_provider.get());
 }
 
-Realm::~Realm() {
-  job_.kill();
-}
+Realm::~Realm() { job_.kill(); }
 
 zx::channel Realm::OpenRootInfoDir() {
   // TODO: define /hub access policy: CP-26
@@ -284,9 +295,9 @@ void Realm::CreateApplication(
   }
   launch_info.url = canon_url;
 
-  // launch_info is moved before LoadApplication() gets at its first argument.
+  // launch_info is moved before LoadComponent() gets at its first argument.
   fidl::StringPtr url = launch_info.url;
-  loader_->LoadApplication(
+  loader_->LoadComponent(
       url, fxl::MakeCopyable([this, launch_info = std::move(launch_info),
                               controller = std::move(controller)](
                                  ApplicationPackagePtr package) mutable {
@@ -358,8 +369,7 @@ void Realm::AddBinding(
 }
 
 void Realm::CreateApplicationWithProcess(
-    ApplicationPackagePtr package,
-    ApplicationLaunchInfo launch_info,
+    ApplicationPackagePtr package, ApplicationLaunchInfo launch_info,
     fidl::InterfaceRequest<ApplicationController> controller,
     fxl::RefPtr<Namespace> ns) {
   zx::channel svc = ns->services().OpenAsDirectory();
@@ -383,6 +393,7 @@ void Realm::CreateApplicationWithProcess(
   if (!fsl::SizedVmo::FromTransport(std::move(*package->data), &executable))
     return;
 
+  const std::string args = GetArgsString(launch_info.arguments);
   const std::string url = launch_info.url;  // Keep a copy before moving it.
   auto channels = BindDirectory(&launch_info);
   zx::process process =
@@ -392,7 +403,7 @@ void Realm::CreateApplicationWithProcess(
   if (process) {
     auto application = std::make_unique<ApplicationControllerImpl>(
         std::move(controller), this, nullptr, std::move(process), url,
-        GetLabelFromURL(url), std::move(ns),
+        std::move(args), GetLabelFromURL(url), std::move(ns),
         ExportedDirType::kPublicDebugCtrlLayout,
         std::move(channels.exported_dir), std::move(channels.client_request));
     // update hub
@@ -403,8 +414,7 @@ void Realm::CreateApplicationWithProcess(
 }
 
 void Realm::CreateApplicationFromPackage(
-    ApplicationPackagePtr package,
-    ApplicationLaunchInfo launch_info,
+    ApplicationPackagePtr package, ApplicationLaunchInfo launch_info,
     fidl::InterfaceRequest<ApplicationController> controller,
     fxl::RefPtr<Namespace> ns) {
   zx::channel svc = ns->services().OpenAsDirectory();
@@ -478,6 +488,7 @@ void Realm::CreateApplicationFromPackage(
   builder.AddFlatNamespace(std::move(launch_info.flat_namespace));
 
   if (app_data) {
+    const std::string args = GetArgsString(launch_info.arguments);
     const std::string url = launch_info.url;  // Keep a copy before moving it.
     auto channels = BindDirectory(&launch_info);
     zx::process process = CreateProcess(
@@ -487,8 +498,9 @@ void Realm::CreateApplicationFromPackage(
     if (process) {
       auto application = std::make_unique<ApplicationControllerImpl>(
           std::move(controller), this, std::move(pkg_fs), std::move(process),
-          url, GetLabelFromURL(url), std::move(ns), exported_dir_layout,
-          std::move(channels.exported_dir), std::move(channels.client_request));
+          url, std::move(args), GetLabelFromURL(url), std::move(ns),
+          exported_dir_layout, std::move(channels.exported_dir),
+          std::move(channels.client_request));
       // update hub
       hub_.AddComponent(application.get());
       ApplicationControllerImpl* key = application.get();

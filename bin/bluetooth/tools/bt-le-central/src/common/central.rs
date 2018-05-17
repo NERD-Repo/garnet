@@ -7,11 +7,10 @@
 
 use async;
 
-use ble::{CentralDelegate, CentralDelegateImpl, CentralProxy, RemoteDevice};
-
-use common::error::{BluetoothError, BluetoothFidlError};
+use bt::error::Error as BTError;
 use common::gatt::{create_client_pair, start_gatt_loop};
 use failure::Error;
+use fidl_ble::{CentralDelegate, CentralDelegateImpl, CentralProxy, RemoteDevice};
 use futures::future;
 use futures::future::Either::{Left, Right};
 use futures::prelude::*;
@@ -104,10 +103,11 @@ pub fn make_central_delegate(state: CentralStatePtr, channel: async::Channel)
 // GATT REPL if this succeeds.
 fn connect_peripheral(state: CentralStatePtr, mut id: String)
     -> impl Future<Item = (), Error = Error> {
-    let (proxy, mut server) = match create_client_pair() {
+    let (proxy, server) = match create_client_pair() {
         Err(_) => {
-            println!("Failed to create Client pair");
-            return Left(future::err(BluetoothError::new().into()));
+            return Left(future::err(
+                BTError::new("Failed to create Client pair").into(),
+            ));
         }
         Ok(res) => res,
     };
@@ -116,10 +116,9 @@ fn connect_peripheral(state: CentralStatePtr, mut id: String)
         state
             .read()
             .svc
-            .connect_peripheral(&mut id, &mut server)
+            .connect_peripheral(&mut id, server)
             .map_err(|e| {
-                println!("failed to initiate connect request: {}", e);
-                BluetoothError::new().into()
+                BTError::new(&format!("failed to initiaate connect request: {}", e)).into()
             })
             .and_then(move |status| match status.error {
                 Some(e) => {
@@ -130,7 +129,7 @@ fn connect_peripheral(state: CentralStatePtr, mut id: String)
                             Some(ref msg) => &msg,
                         }
                     );
-                    Err(BluetoothFidlError::new(*e).into())
+                    Err(BTError::from(*e).into())
                 }
                 None => {
                     println!("  device connected: {}", id);
