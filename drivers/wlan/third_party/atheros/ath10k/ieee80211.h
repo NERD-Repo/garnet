@@ -146,4 +146,38 @@ enum ieee80211_cipher_suite {
     IEEE80211_CIPHER_SUITE_CMAC_256 = 13
 };
 
+static inline const char* ieee80211_cipher_str(uint8_t* oui, uint8_t cipher_type) {
+    if (oui[0] != 0 || oui[1] != 0x0f || oui[2] != 0xac) {
+        return "vendor-specific OUI\n";
+    }
+    switch (cipher_type) {
+    case IEEE80211_CIPHER_SUITE_GROUP:
+        return "group";
+    case IEEE80211_CIPHER_SUITE_WEP_40:
+        return "WEP40";
+    case IEEE80211_CIPHER_SUITE_TKIP:
+        return "TKIP";
+    case IEEE80211_CIPHER_SUITE_CCMP_128:
+        return "CCMP128";
+    case IEEE80211_CIPHER_SUITE_WEP_104:
+        return "WEP104";
+    case IEEE80211_CIPHER_SUITE_CMAC_128:
+        return "CMAC_128";
+    case IEEE80211_CIPHER_SUITE_GCMP_128:
+        return "GCMP128";
+    case IEEE80211_CIPHER_SUITE_GCMP_256:
+        return "GCMP256";
+    case IEEE80211_CIPHER_SUITE_CCMP_256:
+        return "CCMP256";
+    case IEEE80211_CIPHER_SUITE_GMAC_128:
+        return "GMAC128";
+    case IEEE80211_CIPHER_SUITE_GMAC_256:
+        return "GMAC256";
+    case IEEE80211_CIPHER_SUITE_CMAC_256:
+        return "CMAC256";
+    default:
+        return "vendor-speicifc CID\n";
+    }
+}
+
 #endif /* _IEEE80211_H_ */
