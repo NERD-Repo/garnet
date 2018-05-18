@@ -55,11 +55,8 @@ enum ath10k_msg_type {
 #undef MSG
 
 enum ath10k_tx_flags {
-    ATH10K_TX_BUF_NO_HWCRYPT = BIT(0),
-    ATH10K_TX_BUF_DTIM_ZERO = BIT(1),
-    ATH10K_TX_BUF_DELIVER_CAB = BIT(2),
-    ATH10K_TX_BUF_MGMT = BIT(3),
-    ATH10K_TX_BUF_QOS = BIT(4),
+    ATH10K_TX_BUF_PROTECTED = BIT(0),
+    ATH10K_TX_BUF_QOS = BIT(1),
 };
 
 struct ath10k_msg_buf {
@@ -77,8 +74,7 @@ struct ath10k_msg_buf {
             size_t frame_size;
         } rx;
         struct {
-            uint32_t flags;
-            wlan_tx_info_t tx_info;
+            uint32_t flags;  // ATH10K_TX_BUF_*
         } tx;
     };
 

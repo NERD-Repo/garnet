@@ -3156,6 +3156,21 @@ static zx_status_t ath10k_pci_configure_bss(void* ctx, uint32_t options,
 
 static zx_status_t ath10k_pci_set_key(void* ctx, uint32_t options, wlan_key_config_t* key_config) {
     struct ath10k* ar = ctx;
+    ath10k_info("attempting to set key (prot: %s, cipher: %s, type: %s, len: %d\n"
+                "                       addr: %02x:%02x:%02x:%02x:%02x:%02x key_idx: %d)\n",
+                key_config->protection == WLAN_PROTECTION_NONE ? "none" :
+                    key_config->protection == WLAN_PROTECTION_RX ? "rx" :
+                    key_config->protection == WLAN_PROTECTION_TX ? "rx" :
+                    key_config->protection == WLAN_PROTECTION_RX_TX ? "rx/tx" : "unknown",
+                ieee80211_cipher_str(key_config->cipher_oui, key_config->cipher_type),
+                key_config->key_type == WLAN_KEY_TYPE_PAIRWISE ? "pairwise" :
+                    key_config->key_type == WLAN_KEY_TYPE_GROUP ? "group" :
+                    key_config->key_type == WLAN_KEY_TYPE_IGTK ? "IGTK" :
+                    key_config->key_type == WLAN_KEY_TYPE_PEER ? "peer" : "unknown",
+                key_config->key_len,
+                key_config->peer_addr[0], key_config->peer_addr[1], key_config->peer_addr[2],
+                key_config->peer_addr[3], key_config->peer_addr[4], key_config->peer_addr[5],
+                key_config->key_idx);
     return ath10k_mac_set_key(ar, key_config);
 }
 

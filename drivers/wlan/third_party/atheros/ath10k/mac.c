@@ -402,11 +402,12 @@ static zx_status_t ath10k_install_key(struct ath10k_vif* arvif,
     }
 
     ret = ath10k_send_key(arvif, key_config, macaddr, flags);
-    if (ret) {
+    if (ret != ZX_OK) {
         return ret;
     }
 
     if (completion_wait(&ar->install_key_done, ZX_SEC(3)) == ZX_ERR_TIMED_OUT) {
+        ath10k_err("Timed out waiting for key install complete message\n");
         return ZX_ERR_TIMED_OUT;
     }
 
@@ -3849,18 +3850,13 @@ ath10k_mac_tx_h_get_txmode(struct ath10k* ar, void* packet_head) {
 }
 
 static bool ath10k_tx_h_use_hwcrypto(struct ath10k* ar,
-                                     struct ath10k_msg_buf* tx_buf) {
-    const struct ieee80211_frame_header* hdr = ath10k_msg_buf_get_payload(tx_buf);
-
-    if (!ieee80211_pkt_is_protected(hdr)) {
+                                     struct ath10k_msg_buf* tx_buf,
+                                     wlan_tx_info_t* tx_info) {
+    if (!(tx_info->tx_flags & WLAN_TX_INFO_FLAGS_PROTECTED)) {
         return false;
     }
 
-    if (!(tx_buf->tx.flags & WLAN_TX_INFO_FLAGS_PROTECTED)) {
-        return false;
-    }
-
-    if (!ar->arvif.nohwcrypt) {
+    if (ar->arvif.nohwcrypt) {
         return false;
     }
 
@@ -3950,17 +3946,14 @@ static void ath10k_tx_h_add_p2p_noa_ie(struct ath10k* ar,
 #endif
 
 static void ath10k_mac_tx_h_tx_flags(struct ath10k* ar,
-                                     struct ath10k_msg_buf* tx_buf) {
+                                     struct ath10k_msg_buf* tx_buf,
+                                     wlan_tx_info_t* tx_info) {
 
     struct ieee80211_frame_header* hdr = ath10k_msg_buf_get_payload(tx_buf);
 
     tx_buf->tx.flags = 0;
-    if (!ath10k_tx_h_use_hwcrypto(ar, tx_buf)) {
-        tx_buf->tx.flags |= ATH10K_TX_BUF_NO_HWCRYPT;
-    }
-
-    if (ieee80211_get_frame_type(hdr) == IEEE80211_FRAME_TYPE_MGMT) {
-        tx_buf->tx.flags |= ATH10K_TX_BUF_MGMT;
+    if (!ath10k_tx_h_use_hwcrypto(ar, tx_buf, tx_info)) {
+        tx_buf->tx.flags |= ATH10K_TX_BUF_PROTECTED;
     }
 
     if ((ieee80211_get_frame_type(hdr) == IEEE80211_FRAME_TYPE_DATA)
@@ -4067,8 +4060,7 @@ static zx_status_t ath10k_mac_tx_submit(struct ath10k* ar,
 static zx_status_t ath10k_mac_tx(struct ath10k* ar,
                                  enum ath10k_hw_txrx_mode txmode,
                                  enum ath10k_mac_tx_path txpath,
-                                 struct ath10k_msg_buf* tx_buf,
-                                 wlan_tx_packet_t* pkt) {
+                                 struct ath10k_msg_buf* tx_buf) {
 #if 0
     /* We should disable CCK RATE due to P2P */
     if (info->flags & IEEE80211_TX_CTL_NO_CCK_RATE) {
@@ -4677,8 +4669,6 @@ static zx_status_t ath10k_mac_build_tx_pkt(struct ath10k* ar,
     }
     tx_buf->used -= 64;
 
-    memcpy(&tx_buf->tx.tx_info, &pkt->info, sizeof(wlan_tx_info_t));
-
     uint8_t* next_data = ath10k_msg_buf_get_payload(tx_buf);
     memcpy(next_data, pkt->packet_head->data, head_size);
     next_data += head_size;
@@ -4711,7 +4701,7 @@ zx_status_t ath10k_mac_op_tx(struct ath10k* ar,
     bool is_htt = (txpath == ATH10K_MAC_TX_HTT || txpath == ATH10K_MAC_TX_HTT_MGMT);
     bool is_mgmt = (txpath == ATH10K_MAC_TX_HTT_MGMT);
 
-    ath10k_mac_tx_h_tx_flags(ar, tx_buf);
+    ath10k_mac_tx_h_tx_flags(ar, tx_buf, &pkt->info);
 
     struct ieee80211_frame_header* hdr = pkt->packet_head->data;
 
@@ -4741,7 +4731,7 @@ zx_status_t ath10k_mac_op_tx(struct ath10k* ar,
         mtx_unlock(&ar->htt.tx_lock);
     }
 
-    ret = ath10k_mac_tx(ar, txmode, txpath, tx_buf, pkt);
+    ret = ath10k_mac_tx(ar, txmode, txpath, tx_buf);
     if (ret != ZX_OK) {
         ath10k_warn("failed to transmit frame: %d\n", ret);
         if (is_htt) {
@@ -6298,9 +6288,12 @@ static void ath10k_set_key_h_def_keyidx(struct ath10k* ar,
     }
 
     status = ath10k_wmi_vdev_set_param(ar, arvif->vdev_id, vdev_param, key_config->key_idx);
-    if (status != ZX_OK)
+    if (status != ZX_OK) {
         ath10k_warn("failed to set vdev %i group key as default key: %s\n",
                     arvif->vdev_id, zx_status_get_string(status));
+    } else {
+        ath10k_info("set vdev %i group key as default key\n", arvif->vdev_id);
+    }
 }
 
 zx_status_t ath10k_mac_set_key(struct ath10k* ar, wlan_key_config_t* key_config) {
