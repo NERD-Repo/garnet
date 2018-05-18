@@ -1281,7 +1281,7 @@ static void ath10k_sdio_write_async_work(struct work_struct* work) {
 
 static int ath10k_sdio_prep_async_req(struct ath10k* ar, uint32_t addr,
                                       struct sk_buff* skb,
-                                      struct completion* comp,
+                                      completion_t* comp,
                                       bool htc_msg, enum ath10k_htc_ep_id eid) {
     struct ath10k_sdio* ar_sdio = ath10k_sdio_priv(ar);
     struct ath10k_sdio_bus_request* bus_req;
@@ -1671,7 +1671,7 @@ static void ath10k_sdio_irq_disable(struct ath10k* ar) {
     struct ath10k_sdio_irq_data* irq_data = &ar_sdio->irq_data;
     struct ath10k_sdio_irq_enable_regs* regs = irq_data->irq_en_reg;
     struct sk_buff* skb;
-    struct completion irqs_disabled_comp;
+    completion_t irqs_disabled_comp;
     int ret;
 
     skb = dev_alloc_skb(sizeof(*regs));
