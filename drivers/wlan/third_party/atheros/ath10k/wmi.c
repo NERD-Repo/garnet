@@ -2363,31 +2363,6 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
 
     void* data = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
 
-#if 0
-{
-  static int packets_dumped = 0;
-  if (packets_dumped < 1000) {
-    printf("len: %d\n", arg.buf_len);
-    uint8_t* next = data;
-    unsigned ndx;
-    for (ndx = 0; ndx < arg.buf_len; ndx++) {
-      printf("%02x", *next++);
-      if ((ndx % 16) == 7) {
-        printf("   ");
-      } else if ((ndx % 16) == 15) {
-        printf("\n");
-      } else {
-        printf(" ");
-      }
-    }
-    if ((ndx % 16) != 0) {
-        printf("\n");
-    }
-    packets_dumped++;
-  }
-}
-#endif
-
     ar->wlanmac.ifc->recv(ar->wlanmac.cookie, 0, data, arg.buf_len, &rx_info);
 
     // There's no wlan event for assocation, so we have to look for the association
