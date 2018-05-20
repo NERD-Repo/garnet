@@ -1554,7 +1554,7 @@ ath10k_wmi_tlv_op_gen_start_scan(struct ath10k* ar,
      */
     cmd->common.scan_ctrl_flags ^= WMI_SCAN_FILTER_PROBE_REQ;
 
-    void* ptr = ath10k_msg_buf_get_payload(msg_buf); 
+    void* ptr = ath10k_msg_buf_get_payload(msg_buf);
 
     tlv = ptr;
     tlv->tag = WMI_TLV_TAG_ARRAY_UINT32;
@@ -1933,7 +1933,7 @@ ath10k_wmi_tlv_op_gen_vdev_install_key(struct ath10k* ar,
 
     ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi tlv vdev install key\n");
     *msg_buf_ptr = msg_buf;
-    return ZX_OK; 
+    return ZX_OK;
 }
 
 #if 0 // NEEDS PORTING
