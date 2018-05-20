@@ -16,6 +16,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <zircon/syscalls.h>
 #include <linux/module.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/mmc.h>
