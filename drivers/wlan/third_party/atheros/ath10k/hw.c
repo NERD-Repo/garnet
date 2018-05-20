@@ -18,6 +18,8 @@
 
 #include "core.h"
 #include "hw.h"
+#include "hif.h"
+#include "wmi-ops.h"
 #include "linuxisms.h"
 #include "bmi.h"
 
@@ -442,7 +444,7 @@ void ath10k_hw_fill_survey_time(struct ath10k* ar, struct survey_info* survey,
 static void ath10k_hw_qca988x_set_coverage_class(struct ath10k* ar,
         int16_t value) {
     ZX_ASSERT(0);
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     uint32_t slottime_reg;
     uint32_t slottime;
     uint32_t timeout_reg;
@@ -574,7 +576,7 @@ store_regs:
 
 unlock:
     mtx_unlock(&ar->conf_mutex);
-#endif // TODO
+#endif // NEEDS PORTING
 }
 
 /**
@@ -799,10 +801,10 @@ const struct ath10k_hw_ops qca988x_ops = {
 static int ath10k_qca99x0_rx_desc_get_l3_pad_bytes(struct htt_rx_desc* rxd) {
     ZX_ASSERT(0);
     return 0;
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     return MS(rxd->msdu_end.qca99x0.info1,
               RX_MSDU_END_INFO1_L3_HDR_PAD);
-#endif // TODO
+#endif // NEEDS PORTING
 }
 
 const struct ath10k_hw_ops qca99x0_ops = {
