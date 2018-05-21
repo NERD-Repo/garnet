@@ -80,6 +80,8 @@ static inline bool ieee80211_pkt_is_protected(const struct ieee80211_frame_heade
     return fh->frame_ctrl & IEEE80211_FRAME_PROTECTED_MASK;
 }
 
+// Caveat: for now the get_*_addr functions below only support management frames.
+// We can expand this if we need additional frame parsing ability at the driver level.
 static inline uint8_t* ieee80211_get_dst_addr(struct ieee80211_frame_header* fh) {
     ZX_ASSERT(ieee80211_get_frame_type(fh) == IEEE80211_FRAME_TYPE_MGMT);
     return fh->addr1;
@@ -176,7 +178,7 @@ static inline const char* ieee80211_cipher_str(uint8_t* oui, uint8_t cipher_type
     case IEEE80211_CIPHER_SUITE_CMAC_256:
         return "CMAC256";
     default:
-        return "vendor-speicifc CID\n";
+        return "reserved CID value\n";
     }
 }
 
