@@ -184,9 +184,6 @@ struct ath10k_pci {
 
     /* Map CE id to ce_state */
     struct ath10k_ce_pipe ce_states[CE_COUNT_MAX];
-#if 0 // NEEDS PORTING
-    struct timer_list rx_post_retry;
-#endif // NEEDS PORTING
 
     /* Due to HW quirks it is recommended to disable ASPM during device
      * bootup. To do that the original PCI-E Link Control is stored before
@@ -288,7 +285,6 @@ uint16_t ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, uint8_t pipe);
 void ath10k_pci_hif_power_down(struct ath10k* ar);
 zx_status_t ath10k_pci_alloc_pipes(struct ath10k* ar);
 void ath10k_pci_free_pipes(struct ath10k* ar);
-void ath10k_pci_rx_replenish_retry(unsigned long ptr);
 void ath10k_pci_ce_deinit(struct ath10k* ar);
 void ath10k_pci_init_napi(struct ath10k* ar);
 zx_status_t ath10k_pci_init_pipes(struct ath10k* ar);

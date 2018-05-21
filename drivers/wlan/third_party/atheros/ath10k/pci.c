@@ -815,14 +815,6 @@ void ath10k_pci_rx_post(struct ath10k* ar) {
     }
 }
 
-#if 0 // TODO
-void ath10k_pci_rx_replenish_retry(unsigned long ptr) {
-    struct ath10k* ar = (void*)ptr;
-
-    ath10k_pci_rx_post(ar);
-}
-#endif // TODO
-
 static zx_status_t ath10k_pci_qca988x_targ_cpu_to_ce_addr(struct ath10k* ar, uint32_t addr,
                                                           uint32_t* ce_addr) {
     uint32_t val = 0, region = addr & 0xfffff;
@@ -1486,14 +1478,6 @@ void ath10k_pci_hif_send_complete_check(struct ath10k* ar, uint8_t pipe,
     ath10k_ce_per_engine_service(ar, pipe);
 }
 
-static void ath10k_pci_rx_retry_sync(struct ath10k* ar) {
-#if 0 // NEEDS PORTING
-    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-
-    del_timer_sync(&ar_pci->rx_post_retry);
-#endif // NEEDS PORTING
-}
-
 zx_status_t ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t service_id,
                                                uint8_t* ul_pipe, uint8_t* dl_pipe) {
     const struct service_to_pipe* entry;
@@ -1725,7 +1709,6 @@ void ath10k_pci_ce_deinit(struct ath10k* ar) {
 }
 
 void ath10k_pci_flush(struct ath10k* ar) {
-    ath10k_pci_rx_retry_sync(ar);
     ath10k_pci_buffer_cleanup(ar);
 }
 
@@ -2995,11 +2978,6 @@ zx_status_t ath10k_pci_setup_resource(struct ath10k* ar) {
 
     mtx_init(&ar_pci->ce_lock, mtx_plain);
 
-#if 0 // TODO
-    setup_timer(&ar_pci->rx_post_retry, ath10k_pci_rx_replenish_retry,
-                (unsigned long)ar);
-#endif // TODO
-
     if (QCA_REV_6174(ar) || QCA_REV_9377(ar)) {
         ath10k_pci_override_ce_config(ar);
     }
@@ -3015,7 +2993,6 @@ zx_status_t ath10k_pci_setup_resource(struct ath10k* ar) {
 }
 
 void ath10k_pci_release_resource(struct ath10k* ar) {
-    ath10k_pci_rx_retry_sync(ar);
     ath10k_pci_ce_deinit(ar);
     ath10k_pci_free_pipes(ar);
 }
@@ -3403,7 +3380,6 @@ err_free_device:
 
 err_free_irq:
     ath10k_pci_free_irq(ar);
-    ath10k_pci_rx_retry_sync(ar);
 
 err_deinit_irq:
     ath10k_pci_deinit_irq(ar);
