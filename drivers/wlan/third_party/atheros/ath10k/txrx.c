@@ -55,13 +55,6 @@ out:
 
 zx_status_t ath10k_txrx_tx_unref(struct ath10k_htt* htt, const struct htt_tx_done* tx_done) {
     struct ath10k* ar = htt->ar;
-#if 0 // NEEDS PORTING
-    struct device* dev = ar->dev;
-    struct ieee80211_tx_info* info;
-    struct ieee80211_txq* txq;
-    struct ath10k_skb_cb* skb_cb;
-    struct ath10k_txq* artxq;
-#endif
     struct ath10k_msg_buf* msdu;
 
     ath10k_dbg(ar, ATH10K_DBG_HTT,
@@ -82,27 +75,12 @@ zx_status_t ath10k_txrx_tx_unref(struct ath10k_htt* htt, const struct htt_tx_don
         mtx_unlock(&htt->tx_lock);
         return ZX_ERR_IO;
     }
-#if 0
-
-    skb_cb = ATH10K_SKB_CB(msdu);
-    txq = skb_cb->txq;
-
-    if (txq) {
-        artxq = (void*)txq->drv_priv;
-        artxq->num_fw_queued--;
-    }
-#endif
 
     ath10k_htt_tx_free_msdu_id(htt, tx_done->msdu_id);
     ath10k_htt_tx_dec_pending(htt);
-#if 0
-    if (htt->num_pending_tx == 0) {
-        wake_up(&htt->empty_tx_wq);
-    }
-#endif
     mtx_unlock(&htt->tx_lock);
 
-#if 0
+#if 0 // NEEDS PORTING
     dma_unmap_single(dev, skb_cb->paddr, msdu->len, DMA_TO_DEVICE);
 
     ath10k_report_offchan_tx(htt->ar, msdu);
@@ -127,11 +105,8 @@ zx_status_t ath10k_txrx_tx_unref(struct ath10k_htt* htt, const struct htt_tx_don
             (info->flags & IEEE80211_TX_CTL_NO_ACK)) {
         info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
     }
-
-    ieee80211_tx_status(htt->ar->hw, msdu);
-    /* we do not own the msdu anymore */
-
 #endif // NEEDS PORTING
+
     ath10k_msg_buf_free(msdu);
     return ZX_OK;
 }
