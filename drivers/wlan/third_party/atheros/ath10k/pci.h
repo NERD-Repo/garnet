@@ -22,6 +22,7 @@
 
 #include "hw.h"
 #include "ce.h"
+#include "ahb.h"
 
 /*
  * maximum number of bytes that can be
@@ -164,14 +165,20 @@ enum ath10k_pci_irq_mode {
 struct ath10k_pci {
     pci_protocol_t pdev;
     zx_device_t* dev;
+
+    /* Bus transaction initiator (for DMA) */
     zx_handle_t btih;
+
     struct ath10k* ar;
+
+    /* PCI BAR mapping */
     void* mem;
     uint64_t mem_len;
     zx_handle_t mem_handle;
 
     /* Operating interrupt mode */
     enum ath10k_pci_irq_mode oper_irq_mode;
+
     zx_handle_t irq_handle;
 
     struct ath10k_pci_pipe pipe_info[CE_COUNT_MAX];
