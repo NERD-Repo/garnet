@@ -499,9 +499,7 @@ ath10k_wmi_get_txbf_conf_scheme(struct ath10k* ar) {
 
 static inline zx_status_t
 ath10k_wmi_mgmt_tx(struct ath10k* ar, struct ath10k_msg_buf* msdu) {
-#if 0 // TODO
-    struct ieee80211_tx_info* info = IEEE80211_SKB_CB(msdu);
-#endif
+
     struct ath10k_msg_buf* buf;
     zx_status_t ret;
 
@@ -518,14 +516,6 @@ ath10k_wmi_mgmt_tx(struct ath10k* ar, struct ath10k_msg_buf* msdu) {
     if (ret != ZX_OK) {
         return ret;
     }
-
-#if 0
-    /* FIXME There's no ACK event for Management Tx. This probably
-     * shouldn't be called here either.
-     */
-    info->flags |= IEEE80211_TX_STAT_ACK;
-    ieee80211_tx_status_irqsafe(ar->hw, msdu);
-#endif
 
     return ZX_OK;
 }
