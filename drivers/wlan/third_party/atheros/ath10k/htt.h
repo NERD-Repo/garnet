@@ -1611,7 +1611,7 @@ struct ath10k_htt {
         list_node_t buf_hash[HTT_RX_BUF_HTABLE_SZ];
 
         /* Ring of buffer addresses */
-        io_buffer_t io_buf; 
+        io_buffer_t io_buf;
         uint32_t* paddrs_ring; // Ring of paddrs of rx buffers for MAC HW to fill
         zx_paddr_t base_paddr; // Physical address of ring
 
@@ -1644,14 +1644,6 @@ struct ath10k_htt {
             unsigned int msdu_payld;
         } sw_rd_idx;
 
-#if 0 // NEEDS PORTING
-        /*
-         * refill_retry_timer - timer triggered when the ring is
-         * not refilled to the level expected
-         */
-        struct timer_list refill_retry_timer;
-#endif // NEEDS PORTING
-
         /* Protects access to all rx ring buffer state variables */
         mtx_t lock;
     } rx_ring;
@@ -1670,12 +1662,6 @@ struct ath10k_htt {
      */
     bool rx_confused;
     atomic_int num_mpdus_ready;
-
-    /* This is used to group tx/rx completions separately and process them
-     * in batches to reduce cache stalls
-     */
-    list_node_t rx_compl_q;
-    list_node_t tx_fetch_ind_q;
 
     struct {
         io_buffer_t handle;

@@ -263,7 +263,7 @@ static zx_status_t ath10k_htt_tx_alloc_cont_txbuf(struct ath10k_htt* htt) {
     if (ret != ZX_OK) {
         return ret;
     }
-    
+
     size = htt->max_num_pending_tx * sizeof(struct ath10k_htt_txbuf);
     ret = io_buffer_init(&htt->txbuf.handle, bti_handle, size, IO_BUFFER_RW | IO_BUFFER_CONTIG);
     if (ret != ZX_OK) {
@@ -299,7 +299,7 @@ static zx_status_t ath10k_htt_tx_alloc_cont_frag_desc(struct ath10k_htt* htt) {
     if (ret != ZX_OK) {
         return ret;
     }
-    
+
     size = htt->max_num_pending_tx * sizeof(struct htt_msdu_ext_desc);
     ret = io_buffer_init(&htt->frag_desc.handle, bti_handle, size, IO_BUFFER_RW | IO_BUFFER_CONTIG);
     if (ret != ZX_OK) {
@@ -339,7 +339,7 @@ static zx_status_t ath10k_htt_tx_alloc_txq(struct ath10k_htt* htt) {
     if (ret != ZX_OK) {
         return ret;
     }
-    
+
     size = sizeof(*htt->tx_q_state.vaddr);
     ret = io_buffer_init(&htt->tx_q_state.handle, bti_handle, size,
                          IO_BUFFER_RW | IO_BUFFER_CONTIG);
@@ -937,7 +937,7 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
             || (ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_DISASSOC))
         && (hdr->frame_ctrl & IEEE80211_FRAME_PROTECTED_MASK)) {
         msdu->used += IEEE80211_CCMP_MIC_LEN;
-    } else if (!(msdu->tx.flags & ATH10K_TX_BUF_PROTECTED) &&
+    } else if ((msdu->tx.flags & ATH10K_TX_BUF_PROTECTED) &&
                txmode == ATH10K_HW_TXRX_RAW &&
                (hdr->frame_ctrl & IEEE80211_FRAME_PROTECTED_MASK)) {
         msdu->used += IEEE80211_CCMP_MIC_LEN;
@@ -1010,7 +1010,7 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
     txbuf->htc_hdr.len = sizeof(txbuf->cmd_hdr) + sizeof(txbuf->cmd_tx) + prefetch_len;
     txbuf->htc_hdr.flags = 0;
 
-    if (msdu->tx.flags & ATH10K_TX_BUF_PROTECTED) {
+    if (!(msdu->tx.flags & ATH10K_TX_BUF_PROTECTED)) {
         flags0 |= HTT_DATA_TX_DESC_FLAGS0_NO_ENCRYPT;
     }
 

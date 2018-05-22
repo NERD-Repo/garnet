@@ -189,13 +189,6 @@ zx_status_t ath10k_htt_rx_ring_refill(struct ath10k* ar) {
 }
 
 void ath10k_htt_rx_free(struct ath10k_htt* htt) {
-#if 0 // NEEDS PORTING
-    del_timer_sync(&htt->rx_ring.refill_retry_timer);
-
-    skb_queue_purge(&htt->rx_compl_q);
-    skb_queue_purge(&htt->tx_fetch_ind_q);
-#endif // NEEDS PORTING
-
     ath10k_htt_rx_ring_free(htt);
     io_buffer_release(&htt->rx_ring.io_buf);
     io_buffer_release(&htt->rx_ring.alloc_idx.io_buf);
@@ -419,9 +412,6 @@ zx_status_t ath10k_htt_rx_alloc(struct ath10k_htt* htt) {
     struct ath10k* ar = htt->ar;
     size_t size;
     zx_status_t ret;
-#if 0 // NEEDS PORTING
-    struct timer_list* timer = &htt->rx_ring.refill_retry_timer;
-#endif // NEEDS PORTING
 
     htt->rx_confused = false;
 
@@ -478,8 +468,6 @@ zx_status_t ath10k_htt_rx_alloc(struct ath10k_htt* htt) {
         list_initialize(&htt->rx_ring.buf_hash[ndx]);
     }
 
-    list_initialize(&htt->rx_compl_q);
-    list_initialize(&htt->tx_fetch_ind_q);
     atomic_store(&htt->num_mpdus_ready, 0);
 
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "htt rx ring size %d fill_level %d\n",
@@ -2190,7 +2178,9 @@ static void ath10k_htt_rx_tx_mode_switch_ind(struct ath10k* ar,
 #endif // NEEDS PORTING
 
 void ath10k_htt_htc_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_buf) {
-    bool release = ath10k_htt_t2h_msg_handler(ar, msg_buf);
+    bool release;
+
+    release = ath10k_htt_t2h_msg_handler(ar, msg_buf);
 
     /* Free the indication buffer */
     if (release) {
@@ -2503,15 +2493,6 @@ bool ath10k_htt_t2h_msg_handler(struct ath10k* ar, struct ath10k_msg_buf* msg_bu
         break;
     case HTT_T2H_MSG_TYPE_TX_FETCH_IND: {
         ath10k_err("HTT_T2H_MSG_TYPE_TX_FETCH_IND unimplemented\n");
-#if 0 // NEEDS PORTING
-        struct sk_buff* tx_fetch_ind = skb_copy(skb, GFP_ATOMIC);
-
-        if (!tx_fetch_ind) {
-            ath10k_warn("failed to copy htt tx fetch ind\n");
-            break;
-        }
-        skb_queue_tail(&htt->tx_fetch_ind_q, tx_fetch_ind);
-#endif // NEEDS PORTING
         break;
     }
     case HTT_T2H_MSG_TYPE_TX_FETCH_CONFIRM:
