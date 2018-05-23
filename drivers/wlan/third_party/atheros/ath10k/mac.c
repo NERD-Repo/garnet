@@ -141,13 +141,11 @@ static const struct ath10k_band ath10k_supported_bands[] = {
 };
 
 enum ath10k_vif_type {
-    NL80211_IFTYPE_P2P_DEVICE,
-    NL80211_IFTYPE_UNSPECIFIED,
-    NL80211_IFTYPE_STATION,
-    NL80211_IFTYPE_ADHOC,
-    NL80211_IFTYPE_MESH_POINT,
-    NL80211_IFTYPE_AP,
-    NL80211_IFTYPE_MONITOR,
+    ATH10K_VIF_TYPE_STA,
+    ATH10K_VIF_TYPE_AP,
+    ATH10K_VIF_TYPE_MONITOR,
+    ATH10K_VIF_TYPE_P2P,
+    ATH10K_VIF_TYPE_MESH,
 };
 
 static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type vif_type);
@@ -4859,7 +4857,7 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
 
     ar->num_started_vdevs = 0;
     ath10k_regd_update(ar);
-    ath10k_add_interface(ar, NL80211_IFTYPE_STATION);
+    ath10k_add_interface(ar, ATH10K_VIF_TYPE_STA);
 
     struct wmi_wmm_params_arg wmm_params;
 
@@ -5132,13 +5130,11 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
     arvif->vdev_id = bit;
 
     switch (vif_type) {
-    case NL80211_IFTYPE_P2P_DEVICE:
+    case ATH10K_VIF_TYPE_P2P:
         arvif->vdev_type = WMI_VDEV_TYPE_STA;
-        arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype
-                              (ar, WMI_VDEV_SUBTYPE_P2P_DEVICE);
+        arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype(ar, WMI_VDEV_SUBTYPE_P2P_DEVICE);
         break;
-    case NL80211_IFTYPE_UNSPECIFIED:
-    case NL80211_IFTYPE_STATION:
+    case ATH10K_VIF_TYPE_STA:
         arvif->vdev_type = WMI_VDEV_TYPE_STA;
 #if 0 // NEEDS PORTING
         if (vif->p2p)
@@ -5146,10 +5142,12 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
                                   (ar, WMI_VDEV_SUBTYPE_P2P_CLIENT);
 #endif // NEEDS PORTING
         break;
+#if 0 // NEEDS PORTING
     case NL80211_IFTYPE_ADHOC:
         arvif->vdev_type = WMI_VDEV_TYPE_IBSS;
         break;
-    case NL80211_IFTYPE_MESH_POINT:
+#endif // NEEDS PORTING
+    case ATH10K_VIF_TYPE_MESH:
         if (test_bit(WMI_SERVICE_MESH_11S, ar->wmi.svc_map)) {
             arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype
                                   (ar, WMI_VDEV_SUBTYPE_MESH_11S);
@@ -5160,7 +5158,7 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
         }
         arvif->vdev_type = WMI_VDEV_TYPE_AP;
         break;
-    case NL80211_IFTYPE_AP:
+    case ATH10K_VIF_TYPE_AP:
         arvif->vdev_type = WMI_VDEV_TYPE_AP;
 
 #if 0 // NEEDS PORTING
@@ -5169,12 +5167,12 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
                                   (ar, WMI_VDEV_SUBTYPE_P2P_GO);
 #endif // NEEDS PORTING
         break;
-    case NL80211_IFTYPE_MONITOR:
+    case ATH10K_VIF_TYPE_MONITOR:
         arvif->vdev_type = WMI_VDEV_TYPE_MONITOR;
         break;
     default:
-        WARN_ON(1);
-        break;
+        ath10k_warn("invalid network type specified when adding interface\n");
+        return ZX_ERR_INVALID_ARGS;
     }
 
 #if 0 // NEEDS PORTING
