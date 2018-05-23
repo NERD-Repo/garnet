@@ -3698,7 +3698,9 @@ static bool ath10k_tx_h_use_hwcrypto(struct ath10k* ar,
 }
 
 /* HTT Tx uses Native Wifi tx mode which expects 802.11 frames without QoS
- * Control in the header.
+ * Control in the header. We would prefer that wlanmac allow us to specify
+ * that we don't want this information in the header so that we don't have
+ * to change frames on-the-fly (see NET-903).
  */
 static void ath10k_tx_h_nwifi(struct ath10k_msg_buf* tx_buf) {
     void* pkt = ath10k_msg_buf_get_payload(tx_buf);
