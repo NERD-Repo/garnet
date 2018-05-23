@@ -48,6 +48,7 @@
 #define ATH10K_FLUSH_TIMEOUT_HZ (5 * HZ)
 #define ATH10K_CONNECTION_LOSS_HZ (3 * HZ)
 #define ATH10K_NUM_CHANS 40
+#define ATH10K_FW_VER_LEN 32
 
 /* Antenna noise floor */
 #define ATH10K_DEFAULT_NOISE_FLOOR -95
@@ -615,7 +616,7 @@ enum ath10k_tx_pause_reason {
 struct ath10k_fw_file {
     struct ath10k_firmware firmware;
 
-    char fw_version[ETHTOOL_FWVERS_LEN];
+    char fw_version[ATH10K_FW_VER_LEN];
 
     BITARR(fw_features, ATH10K_FW_FEATURE_COUNT);
 

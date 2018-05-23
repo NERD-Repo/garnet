@@ -70,7 +70,7 @@ zx_status_t ath10k_htc_send(struct ath10k_htc* htc,
     }
 
     if (ep->tx_credit_flow_enabled) {
-        credits = DIV_ROUND_UP(msg_buf->used, htc->target_credit_size);
+        credits = DIV_ROUNDUP(msg_buf->used, htc->target_credit_size);
         mtx_lock(&htc->tx_lock);
         if (ep->tx_credits < credits) {
             ath10k_dbg(ar, ATH10K_DBG_HTC,

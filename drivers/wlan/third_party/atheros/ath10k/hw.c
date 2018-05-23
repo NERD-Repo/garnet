@@ -196,19 +196,19 @@ const struct ath10k_hw_values qca4019_values = {
 static struct ath10k_hw_ce_regs_addr_map qcax_src_ring = {
     .msb    = 0x00000010,
     .lsb    = 0x00000010,
-    .mask   = GENMASK(16, 16),
+    .mask   = BITMASK(16, 16),
 };
 
 static struct ath10k_hw_ce_regs_addr_map qcax_dst_ring = {
     .msb    = 0x00000011,
     .lsb    = 0x00000011,
-    .mask   = GENMASK(17, 17),
+    .mask   = BITMASK(17, 17),
 };
 
 static struct ath10k_hw_ce_regs_addr_map qcax_dmax = {
     .msb    = 0x0000000f,
     .lsb    = 0x00000000,
-    .mask   = GENMASK(15, 0),
+    .mask   = BITMASK(0, 15),
 };
 
 static struct ath10k_hw_ce_ctrl1 qcax_ctrl1 = {
@@ -227,12 +227,12 @@ static struct ath10k_hw_ce_ctrl1 qcax_ctrl1 = {
 static struct ath10k_hw_ce_regs_addr_map qcax_cmd_halt_status = {
     .msb    = 0x00000003,
     .lsb    = 0x00000003,
-    .mask   = GENMASK(3, 3),
+    .mask   = BITMASK(3, 3),
 };
 
 static struct ath10k_hw_ce_cmd_halt qcax_cmd_halt = {
     .msb            = 0x00000000,
-    .mask           = GENMASK(0, 0),
+    .mask           = BITMASK(0, 0),
     .status_reset   = 0x00000000,
     .status         = &qcax_cmd_halt_status,
 };
@@ -240,7 +240,7 @@ static struct ath10k_hw_ce_cmd_halt qcax_cmd_halt = {
 static struct ath10k_hw_ce_regs_addr_map qcax_host_ie_cc = {
     .msb    = 0x00000000,
     .lsb    = 0x00000000,
-    .mask   = GENMASK(0, 0),
+    .mask   = BITMASK(0, 0),
 };
 
 static struct ath10k_hw_ce_host_ie qcax_host_ie = {
@@ -272,13 +272,13 @@ static struct ath10k_hw_ce_misc_regs qcax_misc_reg = {
 static struct ath10k_hw_ce_regs_addr_map qcax_src_wm_low = {
     .msb    = 0x0000001f,
     .lsb    = 0x00000010,
-    .mask   = GENMASK(31, 16),
+    .mask   = BITMASK(16, 31),
 };
 
 static struct ath10k_hw_ce_regs_addr_map qcax_src_wm_high = {
     .msb    = 0x0000000f,
     .lsb    = 0x00000000,
-    .mask   = GENMASK(15, 0),
+    .mask   = BITMASK(0, 15),
 };
 
 static struct ath10k_hw_ce_dst_src_wm_regs qcax_wm_src_ring = {
@@ -291,13 +291,13 @@ static struct ath10k_hw_ce_dst_src_wm_regs qcax_wm_src_ring = {
 
 static struct ath10k_hw_ce_regs_addr_map qcax_dst_wm_low = {
     .lsb    = 0x00000010,
-    .mask   = GENMASK(31, 16),
+    .mask   = BITMASK(16, 31),
 };
 
 static struct ath10k_hw_ce_regs_addr_map qcax_dst_wm_high = {
     .msb    = 0x0000000f,
     .lsb    = 0x00000000,
-    .mask   = GENMASK(15, 0),
+    .mask   = BITMASK(0, 15),
 };
 
 static struct ath10k_hw_ce_dst_src_wm_regs qcax_wm_dst_ring = {

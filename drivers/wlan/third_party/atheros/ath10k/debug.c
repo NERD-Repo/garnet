@@ -90,7 +90,7 @@ struct ath10k_dump_file_data {
     uint32_t num_rf_chains;
 
     /* firmware version string */
-    char fw_ver[ETHTOOL_FWVERS_LEN];
+    char fw_ver[ATH10K_FW_VER_LEN];
 
     /* Kernel related information */
 

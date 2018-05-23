@@ -21,7 +21,7 @@
 
 #define ATH10K_HIF_MBOX_BLOCK_SIZE              256
 
-#define QCA_MANUFACTURER_ID_BASE                GENMASK(11, 8)
+#define QCA_MANUFACTURER_ID_BASE                BITMASK(8, 11)
 #define QCA_MANUFACTURER_ID_AR6005_BASE         0x5
 #define QCA_MANUFACTURER_ID_QCA9377_BASE        0x7
 #define QCA_SDIO_ID_AR6005_BASE                 0x500

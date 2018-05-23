@@ -93,9 +93,9 @@ static inline void ath10k_sdio_set_cmd52_arg(uint32_t* arg, uint8_t write, uint8
     *arg = FIELD_PREP((1 << 31), write) |
            FIELD_PREP((1 << 27), raw) |
            FIELD_PREP((1 << 26), 1) |
-           FIELD_PREP(GENMASK(25, 9), address) |
+           FIELD_PREP(BITMASK(9, 25), address) |
            FIELD_PREP((1 << 8), 1) |
-           FIELD_PREP(GENMASK(7, 0), val);
+           FIELD_PREP(BITMASK(0, 7), val);
 }
 
 static int ath10k_sdio_func0_cmd52_wr_byte(struct mmc_card* card,

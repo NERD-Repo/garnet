@@ -239,7 +239,7 @@ static bool ath10k_mac_bitrate_is_cck(int bitrate) {
 }
 
 static uint8_t ath10k_mac_bitrate_to_rate(int bitrate) {
-    return DIV_ROUND_UP(bitrate, 5) |
+    return DIV_ROUNDUP(bitrate, 5) |
            (ath10k_mac_bitrate_is_cck(bitrate) ? (1 << 7) : 0);
 }
 
