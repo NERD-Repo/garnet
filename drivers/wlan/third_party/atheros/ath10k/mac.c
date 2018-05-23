@@ -140,15 +140,7 @@ static const struct ath10k_band ath10k_supported_bands[] = {
     },
 };
 
-enum ath10k_vif_type {
-    ATH10K_VIF_TYPE_STA,
-    ATH10K_VIF_TYPE_AP,
-    ATH10K_VIF_TYPE_MONITOR,
-    ATH10K_VIF_TYPE_P2P,
-    ATH10K_VIF_TYPE_MESH,
-};
-
-static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type vif_type);
+static zx_status_t ath10k_add_interface(struct ath10k* ar, uint32_t vif_role);
 
 /*********/
 /* Rates */
@@ -4857,7 +4849,7 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
 
     ar->num_started_vdevs = 0;
     ath10k_regd_update(ar);
-    ath10k_add_interface(ar, ATH10K_VIF_TYPE_STA);
+    ath10k_add_interface(ar, WLAN_MAC_ROLE_CLIENT);
 
     struct wmi_wmm_params_arg wmm_params;
 
@@ -5084,7 +5076,8 @@ static int ath10k_mac_set_txbf_conf(struct ath10k_vif* arvif) {
 }
 #endif // NEEDS PORTING
 
-static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type vif_type) {
+// Role is one of the supported roles in WLAN_MAC_ROLE_* values
+static zx_status_t ath10k_add_interface(struct ath10k* ar, uint32_t vif_role) {
     struct ath10k_vif* arvif = &ar->arvif;
     zx_status_t ret = ZX_OK;
 
@@ -5129,12 +5122,14 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
 
     arvif->vdev_id = bit;
 
-    switch (vif_type) {
+    switch (vif_role) {
+#if 0 // NEEDS PORTING
     case ATH10K_VIF_TYPE_P2P:
         arvif->vdev_type = WMI_VDEV_TYPE_STA;
         arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype(ar, WMI_VDEV_SUBTYPE_P2P_DEVICE);
         break;
-    case ATH10K_VIF_TYPE_STA:
+#endif // NEEDS PORTING
+    case WLAN_MAC_ROLE_CLIENT:
         arvif->vdev_type = WMI_VDEV_TYPE_STA;
 #if 0 // NEEDS PORTING
         if (vif->p2p)
@@ -5146,7 +5141,6 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
     case NL80211_IFTYPE_ADHOC:
         arvif->vdev_type = WMI_VDEV_TYPE_IBSS;
         break;
-#endif // NEEDS PORTING
     case ATH10K_VIF_TYPE_MESH:
         if (test_bit(WMI_SERVICE_MESH_11S, ar->wmi.svc_map)) {
             arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype
@@ -5158,18 +5152,19 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, enum ath10k_vif_type 
         }
         arvif->vdev_type = WMI_VDEV_TYPE_AP;
         break;
-    case ATH10K_VIF_TYPE_AP:
+#endif // NEEDS PORTING
+    case WLAN_MAC_ROLE_AP:
         arvif->vdev_type = WMI_VDEV_TYPE_AP;
 
 #if 0 // NEEDS PORTING
         if (vif->p2p)
             arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype
                                   (ar, WMI_VDEV_SUBTYPE_P2P_GO);
-#endif // NEEDS PORTING
         break;
     case ATH10K_VIF_TYPE_MONITOR:
         arvif->vdev_type = WMI_VDEV_TYPE_MONITOR;
         break;
+#endif // NEEDS PORTING
     default:
         ath10k_warn("invalid network type specified when adding interface\n");
         return ZX_ERR_INVALID_ARGS;
