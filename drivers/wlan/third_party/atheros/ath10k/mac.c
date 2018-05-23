@@ -27,7 +27,7 @@
 #include "wmi.h"
 #include "htt.h"
 #include "ieee80211.h"
-#include "linuxisms.h"
+#include "macros.h"
 #include "txrx.h"
 #include "testmode.h"
 #include "wmi.h"
@@ -240,7 +240,7 @@ static bool ath10k_mac_bitrate_is_cck(int bitrate) {
 
 static uint8_t ath10k_mac_bitrate_to_rate(int bitrate) {
     return DIV_ROUND_UP(bitrate, 5) |
-           (ath10k_mac_bitrate_is_cck(bitrate) ? BIT(7) : 0);
+           (ath10k_mac_bitrate_is_cck(bitrate) ? (1 << 7) : 0);
 }
 
 uint8_t ath10k_mac_hw_rate_to_idx(const struct ieee80211_supported_band* sband,
@@ -281,11 +281,11 @@ uint8_t ath10k_mac_bitrate_to_idx(const struct ieee80211_supported_band* sband,
 static int ath10k_mac_get_max_vht_mcs_map(uint16_t mcs_map, int nss) {
     switch ((mcs_map >> (2 * nss)) & 0x3) {
     case IEEE80211_VHT_MCS_SUPPORT_0_7:
-        return BIT(8) - 1;
+        return (1 << 8) - 1;
     case IEEE80211_VHT_MCS_SUPPORT_0_8:
-        return BIT(9) - 1;
+        return (1 << 9) - 1;
     case IEEE80211_VHT_MCS_SUPPORT_0_9:
-        return BIT(10) - 1;
+        return (1 << 10) - 1;
     }
     return 0;
 }
@@ -7062,9 +7062,9 @@ ath10k_mac_can_set_bitrate_mask(struct ath10k* ar,
 
         switch (vht_mcs) {
         case 0:
-        case BIT(8) - 1:
-        case BIT(9) - 1:
-        case BIT(10) - 1:
+        case (1 << 8) - 1:
+        case (1 << 9) - 1:
+        case (1 << 10) - 1:
             break;
         default:
             ath10k_warn("refusing bitrate mask with missing 0-7 VHT MCS rates\n");

@@ -86,8 +86,8 @@
 #define CCCR_SDIO_ASYNC_INT_DELAY_MASK          0xC0
 
 /* mode to enable special 4-bit interrupt assertion without clock */
-#define SDIO_IRQ_MODE_ASYNC_4BIT_IRQ            BIT(0)
-#define SDIO_IRQ_MODE_ASYNC_4BIT_IRQ_SDIO3      BIT(1)
+#define SDIO_IRQ_MODE_ASYNC_4BIT_IRQ            (1 << 0)
+#define SDIO_IRQ_MODE_ASYNC_4BIT_IRQ_SDIO3      (1 << 1)
 
 #define ATH10K_SDIO_TARGET_DEBUG_INTR_MASK      0x01
 

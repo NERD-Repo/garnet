@@ -19,7 +19,7 @@
 #include "pci.h"
 #include "ce.h"
 #include "debug.h"
-#include "linuxisms.h"
+#include "macros.h"
 
 #include <assert.h>
 #include <limits.h>

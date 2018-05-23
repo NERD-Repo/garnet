@@ -33,7 +33,7 @@
 #include "htt.h"
 #include "testmode.h"
 #include "wmi-ops.h"
-#include "linuxisms.h"
+#include "macros.h"
 
 // MODULE PARAMETERS
 // Debugging mask

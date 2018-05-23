@@ -32,7 +32,7 @@
 #include <zircon/syscalls.h>
 #include <zircon/types.h>
 
-#include "linuxisms.h"
+#include "macros.h"
 #include "core.h"
 #include "debug.h"
 #include "mac.h"

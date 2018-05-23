@@ -25,7 +25,7 @@
 #include "hif.h"
 #include "htc.h"
 #include "htt.h"
-#include "linuxisms.h"
+#include "macros.h"
 #include "txrx.h"
 #include "debug.h"
 #include "mac.h"

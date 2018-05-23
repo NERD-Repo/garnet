@@ -27,7 +27,7 @@
 #include <ddk/device.h>
 #include <wlan/protocol/mac.h>
 
-#include "linuxisms.h"
+#include "macros.h"
 #include "htt.h"
 #include "htc.h"
 #include "hw.h"

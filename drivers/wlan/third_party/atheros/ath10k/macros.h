@@ -22,8 +22,7 @@
 
 #define ASSERT_MTX_HELD(mtx) ZX_ASSERT(mtx_trylock(mtx) != thrd_success)
 
-#define BIT(pos) (1UL << (pos))
-
+// JMC
 #define BITMAP_TYPE uint64_t
 
 #define BITMAP_TYPE_NUM_BITS (sizeof(BITMAP_TYPE) * 8)

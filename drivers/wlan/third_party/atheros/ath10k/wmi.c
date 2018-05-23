@@ -3343,7 +3343,7 @@ static int ath10k_wmi_op_pull_swba_ev(struct ath10k* ar, struct sk_buff* skb,
     arg->vdev_map = ev->vdev_map;
 
     for (i = 0, map = ev->vdev_map; map; map >>= 1) {
-        if (!(map & BIT(0))) {
+        if (!(map & 0x1)) {
             continue;
         }
 
@@ -3391,7 +3391,7 @@ static int ath10k_wmi_10_2_4_op_pull_swba_ev(struct ath10k* ar,
     arg->vdev_map = ev->vdev_map;
 
     for (i = 0, map = ev->vdev_map; map; map >>= 1) {
-        if (!(map & BIT(0))) {
+        if (!(map & 0x1)) {
             continue;
         }
 
@@ -3437,7 +3437,7 @@ static int ath10k_wmi_10_4_op_pull_swba_ev(struct ath10k* ar,
     arg->vdev_map = ev->vdev_map;
 
     for (i = 0, map = ev->vdev_map; map; map >>= 1) {
-        if (!(map & BIT(0))) {
+        if (!(map & 0x1)) {
             continue;
         }
 

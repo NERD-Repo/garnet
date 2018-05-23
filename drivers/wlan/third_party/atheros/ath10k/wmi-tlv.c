@@ -878,7 +878,7 @@ static int ath10k_wmi_tlv_op_pull_swba_ev(struct ath10k* ar,
     arg->vdev_map = swba.ev->vdev_map;
 
     for (map = arg->vdev_map, n_vdevs = 0; map; map >>= 1)
-        if (map & BIT(0)) {
+        if (map & 0x1) {
             n_vdevs++;
         }
 

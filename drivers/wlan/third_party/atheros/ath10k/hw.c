@@ -20,7 +20,7 @@
 #include "hw.h"
 #include "hif.h"
 #include "wmi-ops.h"
-#include "linuxisms.h"
+#include "macros.h"
 #include "bmi.h"
 
 const struct ath10k_hw_regs qca988x_regs = {

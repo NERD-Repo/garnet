@@ -17,7 +17,7 @@
 
 #include <string.h>
 
-#include "linuxisms.h"
+#include "macros.h"
 #include "htt.h"
 #include "core.h"
 #include "debug.h"

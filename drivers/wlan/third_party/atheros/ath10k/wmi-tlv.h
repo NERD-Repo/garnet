@@ -970,7 +970,7 @@ enum wmi_tlv_service {
 #define WMI_SERVICE_IS_ENABLED(wmi_svc_bmap, svc_id, len) \
     ((svc_id) < (len) && \
      (wmi_svc_bmap)[(svc_id) / (sizeof(uint32_t))] & \
-     BIT((svc_id) % (sizeof(uint32_t))))
+     (1 << ((svc_id) % (sizeof(uint32_t)))))
 
 #define SVCMAP(x, y, len) \
     do { \
@@ -1543,9 +1543,9 @@ struct wmi_tlv_wow_del_pattern_cmd {
 
 /* TDLS Options */
 enum wmi_tlv_tdls_options {
-    WMI_TLV_TDLS_OFFCHAN_EN = BIT(0),
-    WMI_TLV_TDLS_BUFFER_STA_EN = BIT(1),
-    WMI_TLV_TDLS_SLEEP_STA_EN = BIT(2),
+    WMI_TLV_TDLS_OFFCHAN_EN = (1 << 0),
+    WMI_TLV_TDLS_BUFFER_STA_EN = (1 << 1),
+    WMI_TLV_TDLS_SLEEP_STA_EN = (1 << 2),
 };
 
 struct wmi_tdls_set_state_cmd {
@@ -1571,10 +1571,10 @@ struct wmi_tdls_peer_update_cmd {
 } __PACKED;
 
 enum {
-    WMI_TLV_TDLS_PEER_QOS_AC_VO = BIT(0),
-    WMI_TLV_TDLS_PEER_QOS_AC_VI = BIT(1),
-    WMI_TLV_TDLS_PEER_QOS_AC_BK = BIT(2),
-    WMI_TLV_TDLS_PEER_QOS_AC_BE = BIT(3),
+    WMI_TLV_TDLS_PEER_QOS_AC_VO = (1 << 0),
+    WMI_TLV_TDLS_PEER_QOS_AC_VI = (1 << 1),
+    WMI_TLV_TDLS_PEER_QOS_AC_BK = (1 << 2),
+    WMI_TLV_TDLS_PEER_QOS_AC_BE = (1 << 3),
 };
 
 #define WMI_TLV_TDLS_PEER_SP_MASK   0x60
