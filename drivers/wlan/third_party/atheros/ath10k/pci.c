@@ -3034,7 +3034,7 @@ static zx_status_t ath10k_pci_query(void* ctx, uint32_t options, wlanmac_info_t*
     // TODO: ALL of the values below are hard-coded and faked for now.
     struct ath10k* ar = ctx;
 
-    ZX_DEBUG_ASSERT(test_bit(ATH10K_FLAG_CORE_REGISTERED, ar->dev_flags));
+    ZX_DEBUG_ASSERT(BITARR_TEST(ar->dev_flags, ATH10K_FLAG_CORE_REGISTERED));
 
     memset(info, 0, sizeof(*info));
 

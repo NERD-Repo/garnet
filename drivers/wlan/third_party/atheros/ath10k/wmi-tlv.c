@@ -1457,7 +1457,7 @@ static zx_status_t ath10k_wmi_tlv_op_gen_init(struct ath10k* ar,
     cfg->num_vdevs = TARGET_TLV_NUM_VDEVS;
     cfg->num_peers = TARGET_TLV_NUM_PEERS;
 
-    if (test_bit(WMI_SERVICE_RX_FULL_REORDER, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_RX_FULL_REORDER)) {
         cfg->num_offload_peers = TARGET_TLV_NUM_VDEVS;
         cfg->num_offload_reorder_bufs = TARGET_TLV_NUM_VDEVS;
     } else {

@@ -130,7 +130,7 @@ struct ath10k_wmi {
     completion_t unified_ready;
     completion_t barrier;
     zx_handle_t tx_credits_event;
-    DECLARE_BITMAP(svc_map, WMI_SERVICE_MAX);
+    BITARR(svc_map, WMI_SERVICE_MAX);
     struct wmi_cmd_map* cmd;
     struct wmi_vdev_param_map* vdev_param;
     struct wmi_pdev_param_map* pdev_param;
@@ -300,7 +300,7 @@ struct ath10k_peer {
     bool removed;
     int vdev_id;
     uint8_t addr[ETH_ALEN];
-    DECLARE_BITMAP(peer_ids, ATH10K_MAX_NUM_PEER_IDS);
+    BITARR(peer_ids, ATH10K_MAX_NUM_PEER_IDS);
 
     /* protected by ar->data_lock */
     struct ieee80211_key_conf* keys[WMI_MAX_KEY_INDEX + 1];
@@ -617,7 +617,7 @@ struct ath10k_fw_file {
 
     char fw_version[ETHTOOL_FWVERS_LEN];
 
-    DECLARE_BITMAP(fw_features, ATH10K_FW_FEATURE_COUNT);
+    BITARR(fw_features, ATH10K_FW_FEATURE_COUNT);
 
     enum ath10k_fw_wmi_op_version wmi_op_version;
     enum ath10k_fw_htt_op_version htt_op_version;
@@ -836,7 +836,7 @@ struct ath10k {
     bool monitor_started;
     unsigned int filter_flags;
 
-    DECLARE_BITMAP(dev_flags, ATH10K_FLAG_MAX);
+    BITARR(dev_flags, ATH10K_FLAG_MAX);
     bool dfs_block_radar_events;
 
     /* protected by conf_mutex */
@@ -985,8 +985,8 @@ struct ath10k {
 };
 
 static inline bool ath10k_peer_stats_enabled(struct ath10k* ar) {
-    if (test_bit(ATH10K_FLAG_PEER_STATS, ar->dev_flags)
-        && test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->dev_flags, ATH10K_FLAG_PEER_STATS)
+        && BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_PEER_STATS)) {
         return true;
     }
 

@@ -22,13 +22,19 @@
 
 #define ASSERT_MTX_HELD(mtx) ZX_ASSERT(mtx_trylock(mtx) != thrd_success)
 
-// JMC
-#define BITMAP_TYPE uint64_t
-
-#define BITMAP_TYPE_NUM_BITS (sizeof(BITMAP_TYPE) * 8)
-
-#define DECLARE_BITMAP(name, size) \
-    BITMAP_TYPE name[DIV_ROUND_UP(size, BITMAP_TYPE_NUM_BITS)]
+#define BITARR_TYPE uint64_t
+#define BITARR_TYPE_NUM_BITS (sizeof(BITARR_TYPE) * 8)
+#define BITARR(name, num_bits) \
+            BITARR_TYPE name[DIV_ROUND_UP(num_bits, BITARR_TYPE_NUM_BITS)]
+#define BITARR_SET(name, bit) \
+            name[(bit) / BITARR_TYPE_NUM_BITS] |= \
+                ((BITARR_TYPE)1 << ((bit) % BITARR_TYPE_NUM_BITS))
+#define BITARR_CLEAR(name, bit) \
+            name[(bit) / BITARR_TYPE_NUM_BITS] &= \
+                ~((BITARR_TYPE)1 << ((bit) % BITARR_TYPE_NUM_BITS))
+#define BITARR_TEST(name, bit) \
+            ((name[(bit) / BITARR_TYPE_NUM_BITS] & \
+                ((BITARR_TYPE)1 << ((bit) % BITARR_TYPE_NUM_BITS))) != 0)
 
 #define DIV_ROUND_UP(n, m) (((n) + ((m) - 1)) / (m))
 
@@ -62,8 +68,6 @@
         result;                                 \
     })
 
-#define clear_bit(pos, field) \
-    field[(pos) / BITMAP_TYPE_NUM_BITS] &= ~((BITMAP_TYPE)1 << ((pos) % BITMAP_TYPE_NUM_BITS))
 
 #define ether_addr_copy(e1, e2) memcpy(e1, e2, ETH_ALEN)
 
@@ -109,11 +113,4 @@
         int result = snprintf(buf, size, format, __VA_ARGS__);      \
         min_t(int, size, result);                                   \
     })
-
-#define set_bit(pos, field) \
-    field[(pos) / BITMAP_TYPE_NUM_BITS] |= ((BITMAP_TYPE)1 << ((pos) % BITMAP_TYPE_NUM_BITS))
-
-#define test_bit(pos, field) \
-    ((field[(pos) / BITMAP_TYPE_NUM_BITS] & \
-      ((BITMAP_TYPE)1 << ((pos) % BITMAP_TYPE_NUM_BITS))) != 0)
 

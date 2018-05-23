@@ -1793,7 +1793,7 @@ zx_status_t ath10k_wmi_cmd_send(struct ath10k* ar, struct ath10k_msg_buf* buf, u
             break;
         }
 
-        if (test_bit(ATH10K_FLAG_CRASH_FLUSH, ar->dev_flags)) {
+        if (BITARR_TEST(ar->dev_flags, ATH10K_FLAG_CRASH_FLUSH)) {
             ret = ZX_ERR_IO_NOT_PRESENT;
             break;
         }
@@ -2142,8 +2142,7 @@ static int ath10k_wmi_op_pull_mgmt_rx_ev(struct ath10k* ar, struct sk_buff* skb,
     uint32_t msdu_len;
     uint32_t len;
 
-    if (test_bit(ATH10K_FW_FEATURE_EXT_WMI_MGMT_RX,
-                 ar->running_fw->fw_file.fw_features)) {
+    if (BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_EXT_WMI_MGMT_RX)) {
         ev_v2 = (struct wmi_mgmt_rx_event_v2*)skb->data;
         ev_hdr = &ev_v2->hdr.v1;
         pull_len = sizeof(*ev_v2);
@@ -2279,7 +2278,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
 
     rx_status = arg.status;
 
-    if ((test_bit(ATH10K_CAC_RUNNING, ar->dev_flags)) ||
+    if ((BITARR_TEST(ar->dev_flags, ATH10K_CAC_RUNNING)) ||
             (rx_status & (WMI_RX_STATUS_ERR_DECRYPT |
                           WMI_RX_STATUS_ERR_KEY_CACHE_MISS | WMI_RX_STATUS_ERR_CRC))) {
         ath10k_msg_buf_free(buf);
@@ -2937,7 +2936,7 @@ static int ath10k_wmi_10_2_4_op_pull_fw_stats(struct ath10k* ar,
         struct ath10k_fw_stats_peer* dst;
         int stats_len;
 
-        if (test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map)) {
+        if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_PEER_STATS)) {
             stats_len = sizeof(struct wmi_10_2_4_ext_peer_stats);
         } else {
             stats_len = sizeof(struct wmi_10_2_4_peer_stats);
@@ -4741,8 +4740,8 @@ static int ath10k_wmi_event_service_ready_work(void* thrd_init_param) {
         return -1;
     }
 
-    if (test_bit(WMI_SERVICE_PEER_CACHING, ar->wmi.svc_map)) {
-        if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->running_fw->fw_file.fw_features)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_PEER_CACHING)) {
+        if (BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_PEER_FLOW_CONTROL)) {
             ar->num_active_peers = TARGET_10_4_QCACHE_ACTIVE_PEERS_PFC +
                                    ar->max_num_vdevs;
         } else {
@@ -5874,8 +5873,8 @@ static struct sk_buff* ath10k_wmi_10_2_op_gen_init(struct ath10k* ar) {
 
     features = WMI_10_2_RX_BATCH_MODE;
 
-    if (test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags) &&
-        test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map)) {
+    if (BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_BTCOEX) &&
+        BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_COEX_GPIO)) {
         features |= WMI_10_2_COEX_GPIO;
     }
 
@@ -5883,7 +5882,7 @@ static struct sk_buff* ath10k_wmi_10_2_op_gen_init(struct ath10k* ar) {
         features |= WMI_10_2_PEER_STATS;
     }
 
-    if (test_bit(WMI_SERVICE_BSS_CHANNEL_INFO_64, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BSS_CHANNEL_INFO_64)) {
         features |= WMI_10_2_BSS_CHAN_INFO;
     }
 

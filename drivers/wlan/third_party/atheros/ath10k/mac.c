@@ -319,7 +319,7 @@ zx_status_t ath10k_mac_ext_resource_config(struct ath10k* ar, uint32_t val) {
     enum wmi_host_platform_type platform_type;
     int ret;
 
-    if (test_bit(WMI_SERVICE_TX_MODE_DYNAMIC, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_TX_MODE_DYNAMIC)) {
         platform_type = WMI_HOST_PLATFORM_LOW_PERF;
     } else {
         platform_type = WMI_HOST_PLATFORM_HIGH_PERF;
@@ -899,7 +899,7 @@ static inline zx_status_t ath10k_vdev_setup_sync(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
-    if (test_bit(ATH10K_FLAG_CRASH_FLUSH, ar->dev_flags)) {
+    if (BITARR_TEST(ar->dev_flags, ATH10K_FLAG_CRASH_FLUSH)) {
         return ZX_ERR_BAD_STATE;
     }
 
@@ -1125,10 +1125,10 @@ static bool ath10k_mac_monitor_vdev_is_needed(struct ath10k* ar) {
     }
 
     return ar->monitor ||
-           (!test_bit(ATH10K_FW_FEATURE_ALLOWS_MESH_BCAST,
-                      ar->running_fw->fw_file.fw_features) &&
+           (!BITARR_TEST(ar->running_fw->fw_file.fw_features,
+                         ATH10K_FW_FEATURE_ALLOWS_MESH_BCAST) &&
             (ar->filter_flags & FIF_OTHER_BSS)) ||
-           test_bit(ATH10K_CAC_RUNNING, &ar->dev_flags);
+           BITARR_TEST(&ar->dev_flags, ATH10K_CAC_RUNNING);
 }
 
 static bool ath10k_mac_monitor_vdev_is_allowed(struct ath10k* ar) {
@@ -1140,7 +1140,7 @@ static bool ath10k_mac_monitor_vdev_is_allowed(struct ath10k* ar) {
      * shouldn't allow this but make sure to prevent handling the following
      * case anyway since multi-channel DFS hasn't been tested at all.
      */
-    if (test_bit(ATH10K_CAC_RUNNING, &ar->dev_flags) && num_ctx > 1) {
+    if (BITARR_TEST(&ar->dev_flags, ATH10K_CAC_RUNNING) && num_ctx > 1) {
         return false;
     }
 
@@ -1243,12 +1243,12 @@ static int ath10k_start_cac(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
-    set_bit(ATH10K_CAC_RUNNING, &ar->dev_flags);
+    BITARR_SET(&ar->dev_flags, ATH10K_CAC_RUNNING);
 
     ret = ath10k_monitor_recalc(ar);
     if (ret) {
         ath10k_warn("failed to start monitor (cac): %d\n", ret);
-        clear_bit(ATH10K_CAC_RUNNING, &ar->dev_flags);
+        BITARR_CLEAR(&ar->dev_flags, ATH10K_CAC_RUNNING);
         return ret;
     }
 
@@ -1262,11 +1262,11 @@ static int ath10k_stop_cac(struct ath10k* ar) {
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
     /* CAC is not running - do nothing */
-    if (!test_bit(ATH10K_CAC_RUNNING, &ar->dev_flags)) {
+    if (!BITARR_TEST(&ar->dev_flags, ATH10K_CAC_RUNNING)) {
         return 0;
     }
 
-    clear_bit(ATH10K_CAC_RUNNING, &ar->dev_flags);
+    BITARR_CLEAR(&ar->dev_flags, ATH10K_CAC_RUNNING);
     ath10k_monitor_stop(ar);
 
     ath10k_dbg(ar, ATH10K_DBG_MAC, "mac cac finished\n");
@@ -1563,7 +1563,7 @@ static int ath10k_mac_setup_bcn_tmpl(struct ath10k_vif* arvif) {
     struct sk_buff* bcn;
     int ret;
 
-    if (!test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map)) {
+    if (!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BEACON_OFFLOAD)) {
         return 0;
     }
 
@@ -1613,7 +1613,7 @@ static int ath10k_mac_setup_prb_tmpl(struct ath10k_vif* arvif) {
     struct sk_buff* prb;
     int ret;
 
-    if (!test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map)) {
+    if (!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BEACON_OFFLOAD)) {
         return 0;
     }
 
@@ -1659,7 +1659,7 @@ static int ath10k_mac_vif_fix_hidden_ssid(struct ath10k_vif* arvif) {
      * wmi-tlv doesn't seem to misbehave like 10.2 wrt vdev restart
      * response delivery. It's probably more robust to keep it as is.
      */
-    if (!test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map)) {
+    if (!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BEACON_OFFLOAD)) {
         return 0;
     }
 
@@ -1874,8 +1874,8 @@ static int ath10k_mac_vif_setup_ps(struct ath10k_vif* arvif) {
     enable_ps = arvif->ps;
 
     if (enable_ps && ath10k_mac_num_vifs_started(ar) > 1 &&
-            !test_bit(ATH10K_FW_FEATURE_MULTI_VIF_PS_SUPPORT,
-                      ar->running_fw->fw_file.fw_features)) {
+            !BITARR_TEST(ar->running_fw->fw_file.fw_features,
+                         ATH10K_FW_FEATURE_MULTI_VIF_PS_SUPPORT)) {
         ath10k_warn("refusing to enable ps on vdev %i: not supported by fw\n",
                     arvif->vdev_id);
         enable_ps = false;
@@ -1934,7 +1934,7 @@ static int ath10k_mac_vif_disable_keepalive(struct ath10k_vif* arvif) {
         return 0;
     }
 
-    if (!test_bit(WMI_SERVICE_STA_KEEP_ALIVE, ar->wmi.svc_map)) {
+    if (!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_STA_KEEP_ALIVE)) {
         return 0;
     }
 
@@ -1963,7 +1963,7 @@ static void ath10k_mac_vif_ap_csa_count_down(struct ath10k_vif* arvif) {
 
     ASSERT_MTX_HELD(&arvif->ar->conf_mutex);
 
-    if (WARN_ON(!test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map))) {
+    if (WARN_ON(!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BEACON_OFFLOAD))) {
         return;
     }
 
@@ -2166,8 +2166,7 @@ static void ath10k_peer_assoc_h_crypto(struct ath10k* ar,
     }
 
     if (sta->mfp &&
-            test_bit(ATH10K_FW_FEATURE_MFP_SUPPORT,
-                     ar->running_fw->fw_file.fw_features)) {
+            BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_MFP_SUPPORT)) {
         arg->peer_flags |= ar->wmi.peer_flags->pmf;
     }
 }
@@ -3658,8 +3657,7 @@ ath10k_mac_tx_h_get_txmode(struct ath10k* ar, void* packet_head) {
      */
     if (ar->htt.target_version_major < 3 &&
             (ieee80211_is_nullfunc(fc) || ieee80211_is_qos_nullfunc(fc)) &&
-            !test_bit(ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX,
-                      ar->running_fw->fw_file.fw_features)) {
+            !BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX)) {
         return ATH10K_HW_TXRX_MGMT;
     }
 
@@ -3676,7 +3674,7 @@ ath10k_mac_tx_h_get_txmode(struct ath10k* ar, void* packet_head) {
     }
 #endif // NEEDS PORTING
 
-    if (test_bit(ATH10K_FLAG_RAW_MODE, ar->dev_flags)) {
+    if (BITARR_TEST(ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
         return ATH10K_HW_TXRX_RAW;
     }
 
@@ -3844,8 +3842,7 @@ ath10k_mac_tx_h_get_txpath(struct ath10k* ar,
     case ATH10K_HW_TXRX_ETHERNET:
                         return ATH10K_MAC_TX_HTT;
     case ATH10K_HW_TXRX_MGMT:
-        if (test_bit(ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX,
-                     ar->running_fw->fw_file.fw_features)) {
+        if (BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX)) {
             return ATH10K_MAC_TX_WMI_MGMT;
         } else if (ar->htt.target_version_major >= 3) {
             return ATH10K_MAC_TX_HTT;
@@ -3920,7 +3917,7 @@ static zx_status_t ath10k_mac_tx(struct ath10k* ar,
 #endif // NEEDS PORTING
         break;
     case ATH10K_HW_TXRX_RAW:
-        if (!test_bit(ATH10K_FLAG_RAW_MODE, ar->dev_flags)) {
+        if (!BITARR_TEST(ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
             WARN_ON_ONCE(1);
             ath10k_msg_buf_free(tx_buf);
             return ZX_ERR_NOT_SUPPORTED;
@@ -4412,7 +4409,7 @@ void ath10k_halt(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
-    clear_bit(ATH10K_CAC_RUNNING, &ar->dev_flags);
+    BITARR_CLEAR(&ar->dev_flags, ATH10K_CAC_RUNNING);
     ar->filter_flags = 0;
     ar->monitor = false;
     ar->monitor_arvif = NULL;
@@ -4716,7 +4713,7 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
     }
 
     mtx_lock(&ar->conf_mutex);
-    if (!test_bit(ATH10K_FLAG_CORE_REGISTERED, ar->dev_flags)) {
+    if (!BITARR_TEST(ar->dev_flags, ATH10K_FLAG_CORE_REGISTERED)) {
         ret = ZX_ERR_BAD_STATE;
         goto err;
     }
@@ -4764,7 +4761,7 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
         goto err_core_stop;
     }
 
-    if (test_bit(WMI_SERVICE_ADAPTIVE_OCS, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_ADAPTIVE_OCS)) {
         ret = ath10k_wmi_adaptive_qcs(ar, true);
         if (ret) {
             ath10k_warn("failed to enable adaptive qcs: %d\n",
@@ -4773,7 +4770,7 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
         }
     }
 
-    if (test_bit(WMI_SERVICE_BURST, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BURST)) {
         param = ar->wmi.pdev_param->burst_enable;
         ret = ath10k_wmi_pdev_set_param(ar, param, 0);
         if (ret) {
@@ -4803,8 +4800,8 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
         goto err_core_stop;
     }
 
-    if (test_bit(ATH10K_FW_FEATURE_SUPPORTS_ADAPTIVE_CCA,
-                 ar->running_fw->fw_file.fw_features)) {
+    if (BITARR_TEST(ar->running_fw->fw_file.fw_features,
+                    ATH10K_FW_FEATURE_SUPPORTS_ADAPTIVE_CCA)) {
         ret = ath10k_wmi_pdev_enable_adaptive_cca(ar, 1,
                 WMI_CCA_DETECT_LEVEL_AUTO,
                 WMI_CCA_DETECT_MARGIN_AUTO);
@@ -4837,15 +4834,14 @@ zx_status_t ath10k_start(struct ath10k* ar, wlanmac_ifc_t* ifc, void* cookie) {
     }
 
     param = ar->wmi.pdev_param->enable_btcoex;
-    if (test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map) &&
-            test_bit(ATH10K_FW_FEATURE_BTCOEX_PARAM,
-                     ar->running_fw->fw_file.fw_features)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_COEX_GPIO) &&
+            BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_BTCOEX_PARAM)) {
         ret = ath10k_wmi_pdev_set_param(ar, param, 0);
         if (ret) {
             ath10k_warn("failed to set btcoex param: %d\n", ret);
             goto err_core_stop;
         }
-        clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
+        BITARR_CLEAR(&ar->dev_flags, ATH10K_FLAG_BTCOEX);
     }
 #endif // NEEDS PORTING
 
@@ -5144,10 +5140,10 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, uint32_t vif_role) {
         arvif->vdev_type = WMI_VDEV_TYPE_IBSS;
         break;
     case ATH10K_VIF_TYPE_MESH:
-        if (test_bit(WMI_SERVICE_MESH_11S, ar->wmi.svc_map)) {
+        if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_MESH_11S)) {
             arvif->vdev_subtype = ath10k_wmi_get_vdev_subtype
                                   (ar, WMI_VDEV_SUBTYPE_MESH_11S);
-        } else if (!test_bit(ATH10K_FLAG_RAW_MODE, ar->dev_flags)) {
+        } else if (!BITARR_TEST(ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
             ret = ZX_ERR_INVALID_ARGS;
             ath10k_warn("must load driver with rawmode=1 to add mesh interfaces\n");
             goto err;
@@ -5214,11 +5210,11 @@ static zx_status_t ath10k_add_interface(struct ath10k* ar, uint32_t vif_role) {
         }
     }
 #endif // NEEDS PORTING
-    if (test_bit(ATH10K_FLAG_HW_CRYPTO_DISABLED, ar->dev_flags)) {
+    if (BITARR_TEST(ar->dev_flags, ATH10K_FLAG_HW_CRYPTO_DISABLED)) {
         arvif->nohwcrypt = true;
     }
 
-    if (arvif->nohwcrypt && !test_bit(ATH10K_FLAG_RAW_MODE, ar->dev_flags)) {
+    if (arvif->nohwcrypt && !BITARR_TEST(ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
         ath10k_warn("cryptmode module param needed for sw crypto\n");
         goto err;
     }
@@ -6498,8 +6494,8 @@ static int ath10k_conf_tx_uapsd(struct ath10k* ar, struct ieee80211_vif* vif,
         return ret;
     }
 
-    if (test_bit(WMI_SERVICE_STA_UAPSD_BASIC_AUTO_TRIG, ar->wmi.svc_map) ||
-            test_bit(WMI_SERVICE_STA_UAPSD_VAR_AUTO_TRIG, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_STA_UAPSD_BASIC_AUTO_TRIG) ||
+            BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_STA_UAPSD_VAR_AUTO_TRIG)) {
         /* Only userspace can make an educated decision when to send
          * trigger frame. The following effectively disables u-UAPSD
          * autotrigger in firmware (which is enabled by default
@@ -6756,7 +6752,7 @@ static void ath10k_flush(struct ieee80211_hw* hw, struct ieee80211_vif* vif,
         mtx_unlock(&ar->htt.tx_lock);
 
         skip = (ar->state == ATH10K_STATE_WEDGED) ||
-        test_bit(ATH10K_FLAG_CRASH_FLUSH, &ar->dev_flags);
+        BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_CRASH_FLUSH);
 
         (empty || skip);
     }), ATH10K_FLUSH_TIMEOUT_HZ);
@@ -6807,7 +6803,7 @@ ath10k_mac_update_bss_chan_survey(struct ath10k* ar,
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
-    if (!test_bit(WMI_SERVICE_BSS_CHANNEL_INFO_64, ar->wmi.svc_map) ||
+    if (!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BSS_CHANNEL_INFO_64) ||
             (ar->rx_channel != channel)) {
         return;
     }
@@ -8207,7 +8203,7 @@ int ath10k_mac_register(struct ath10k* ar) {
     ar->hw->wiphy->available_antennas_rx = ar->cfg_rx_chainmask;
     ar->hw->wiphy->available_antennas_tx = ar->cfg_tx_chainmask;
 
-    if (!test_bit(ATH10K_FW_FEATURE_NO_P2P, ar->normal_mode_fw.fw_file.fw_features))
+    if (!BITARR_TEST(ar->normal_mode_fw.fw_file.fw_features, ATH10K_FW_FEATURE_NO_P2P))
         ar->hw->wiphy->interface_modes |=
             BIT(NL80211_IFTYPE_P2P_DEVICE) |
             BIT(NL80211_IFTYPE_P2P_CLIENT) |
@@ -8230,7 +8226,7 @@ int ath10k_mac_register(struct ath10k* ar) {
     ieee80211_hw_set(ar->hw, SUPPORTS_TX_FRAG);
     ieee80211_hw_set(ar->hw, REPORTS_LOW_ACK);
 
-    if (!test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags)) {
+    if (!BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
         ieee80211_hw_set(ar->hw, SW_CRYPTO_CONTROL);
     }
 
@@ -8255,7 +8251,7 @@ int ath10k_mac_register(struct ath10k* ar) {
 
     ar->hw->max_listen_interval = ATH10K_MAX_HW_LISTEN_INTERVAL;
 
-    if (test_bit(WMI_SERVICE_BEACON_OFFLOAD, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_BEACON_OFFLOAD)) {
         ar->hw->wiphy->flags |= WIPHY_FLAG_AP_PROBE_RESP_OFFLOAD;
 
         /* Firmware delivers WPS/P2P Probe Requests frames to driver so
@@ -8268,7 +8264,7 @@ int ath10k_mac_register(struct ath10k* ar) {
             NL80211_PROBE_RESP_OFFLOAD_SUPPORT_P2P;
     }
 
-    if (test_bit(WMI_SERVICE_TDLS, ar->wmi.svc_map)) {
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_TDLS)) {
         ar->hw->wiphy->flags |= WIPHY_FLAG_SUPPORTS_TDLS;
     }
 
@@ -8310,7 +8306,7 @@ int ath10k_mac_register(struct ath10k* ar) {
         ar->hw->wiphy->interface_modes |= BIT(NL80211_IFTYPE_ADHOC);
         break;
     case ATH10K_FW_WMI_OP_VERSION_TLV:
-        if (test_bit(WMI_SERVICE_ADAPTIVE_OCS, ar->wmi.svc_map)) {
+        if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_ADAPTIVE_OCS)) {
             ar->hw->wiphy->iface_combinations =
                 ath10k_tlv_qcs_if_comb;
             ar->hw->wiphy->n_iface_combinations =
@@ -8341,7 +8337,7 @@ int ath10k_mac_register(struct ath10k* ar) {
         goto err_free;
     }
 
-    if (!test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags)) {
+    if (!BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
         ar->hw->netdev_features = NETIF_F_HW_CSUM;
     }
 
@@ -8361,8 +8357,7 @@ int ath10k_mac_register(struct ath10k* ar) {
      * more work anyway so disable the wake_tx_queue unless firmware
      * supports the pull-push mechanism.
      */
-    if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-                  ar->running_fw->fw_file.fw_features)) {
+    if (!BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_PEER_FLOW_CONTROL)) {
         ar->ops->wake_tx_queue = NULL;
     }
 

@@ -404,7 +404,7 @@ static inline char* wmi_service_name(int service_id) {
 #define SVCMAP(x, y, len) \
     do { \
         if (WMI_SERVICE_IS_ENABLED((in), (x), (len))) \
-            __set_bit(y, out); \
+            BITARR_SET(out, y); \
     } while (0)
 
 static inline void wmi_10x_svc_map(const uint32_t* in, unsigned long* out,

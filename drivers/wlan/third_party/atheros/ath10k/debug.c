@@ -170,8 +170,8 @@ void ath10k_debug_print_boot_info(struct ath10k* ar) {
                  ar->normal_mode_fw.fw_file.htt_op_version,
                  ath10k_cal_mode_str(ar->cal_mode),
                  ar->max_num_stations,
-                 test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags),
-                 !test_bit(ATH10K_FLAG_HW_CRYPTO_DISABLED, &ar->dev_flags));
+                 BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_RAW_MODE),
+                 !BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_HW_CRYPTO_DISABLED));
 }
 
 void ath10k_print_driver_info(struct ath10k* ar) {
@@ -202,7 +202,7 @@ static ssize_t ath10k_read_wmi_services(struct file* file,
 
     mtx_lock(&ar->data_lock);
     for (i = 0; i < WMI_SERVICE_MAX; i++) {
-        enabled = test_bit(i, ar->wmi.svc_map);
+        enabled = BITARR_TEST(ar->wmi.svc_map, i);
         name = wmi_service_name(i);
 
         if (!name) {
@@ -2155,14 +2155,13 @@ static ssize_t ath10k_write_btcoex(struct file* file,
         goto exit;
     }
 
-    if (!(test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags) ^ val)) {
+    if (!(BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_BTCOEX) ^ val)) {
         ret = count;
         goto exit;
     }
 
     pdev_param = ar->wmi.pdev_param->enable_btcoex;
-    if (test_bit(ATH10K_FW_FEATURE_BTCOEX_PARAM,
-                 ar->running_fw->fw_file.fw_features)) {
+    if (BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_BTCOEX_PARAM)) {
         ret = ath10k_wmi_pdev_set_param(ar, pdev_param, val);
         if (ret) {
             ath10k_warn("failed to enable btcoex: %d\n", ret);
@@ -2175,9 +2174,9 @@ static ssize_t ath10k_write_btcoex(struct file* file,
     }
 
     if (val) {
-        set_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
+        BITARR_SET(&ar->dev_flags, ATH10K_FLAG_BTCOEX);
     } else {
-        clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
+        BITARR_CLEAR(&ar->dev_flags, ATH10K_FLAG_BTCOEX);
     }
 
     ret = count;
@@ -2196,7 +2195,7 @@ static ssize_t ath10k_read_btcoex(struct file* file, char __user* ubuf,
 
     mtx_lock(&ar->conf_mutex);
     len = scnprintf(buf, sizeof(buf) - len, "%d\n",
-                    test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags));
+                    BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_BTCOEX));
     mtx_unlock(&ar->conf_mutex);
 
     return simple_read_from_buffer(ubuf, count, ppos, buf, len);
@@ -2236,15 +2235,15 @@ static ssize_t ath10k_write_peer_stats(struct file* file,
         goto exit;
     }
 
-    if (!(test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) ^ val)) {
+    if (!(BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_PEER_STATS) ^ val)) {
         ret = count;
         goto exit;
     }
 
     if (val) {
-        set_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags);
+        BITARR_SET(&ar->dev_flags, ATH10K_FLAG_PEER_STATS);
     } else {
-        clear_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags);
+        BITARR_CLEAR(&ar->dev_flags, ATH10K_FLAG_PEER_STATS);
     }
 
     ath10k_trace("restarting firmware due to Peer stats change");
@@ -2267,7 +2266,7 @@ static ssize_t ath10k_read_peer_stats(struct file* file, char __user* ubuf,
 
     mtx_lock(&ar->conf_mutex);
     len = scnprintf(buf, sizeof(buf) - len, "%d\n",
-                    test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags));
+                    BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_PEER_STATS));
     mtx_unlock(&ar->conf_mutex);
 
     return simple_read_from_buffer(ubuf, count, ppos, buf, len);
@@ -2448,11 +2447,11 @@ int ath10k_debug_register(struct ath10k* ar) {
     debugfs_create_file("tpc_stats", 0400, ar->debug.debugfs_phy, ar,
                         &fops_tpc_stats);
 
-    if (test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map))
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_COEX_GPIO))
         debugfs_create_file("btcoex", 0644, ar->debug.debugfs_phy, ar,
                             &fops_btcoex);
 
-    if (test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map))
+    if (BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_PEER_STATS))
         debugfs_create_file("peer_stats", 0644, ar->debug.debugfs_phy, ar,
                             &fops_peer_stats);
 

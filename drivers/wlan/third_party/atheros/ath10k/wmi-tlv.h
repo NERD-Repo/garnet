@@ -975,11 +975,11 @@ enum wmi_tlv_service {
 #define SVCMAP(x, y, len) \
     do { \
         if (WMI_SERVICE_IS_ENABLED((in), (x), (len))) \
-            set_bit(y, out); \
+            BITARR_SET(out, y); \
     } while (0)
 
 static inline void
-wmi_tlv_svc_map(const uint32_t* in, BITMAP_TYPE* out, size_t len) {
+wmi_tlv_svc_map(const uint32_t* in, BITARR_TYPE* out, size_t len) {
     SVCMAP(WMI_TLV_SERVICE_BEACON_OFFLOAD,
            WMI_SERVICE_BEACON_OFFLOAD, len);
     SVCMAP(WMI_TLV_SERVICE_SCAN_OFFLOAD,

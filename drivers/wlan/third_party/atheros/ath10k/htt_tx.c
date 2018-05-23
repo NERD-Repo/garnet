@@ -314,7 +314,7 @@ static zx_status_t ath10k_htt_tx_alloc_cont_frag_desc(struct ath10k_htt* htt) {
 static void ath10k_htt_tx_free_txq(struct ath10k_htt* htt) {
     struct ath10k* ar = htt->ar;
 
-    if (!test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->running_fw->fw_file.fw_features)) {
+    if (!BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_PEER_FLOW_CONTROL)) {
         return;
     }
 
@@ -327,7 +327,7 @@ static zx_status_t ath10k_htt_tx_alloc_txq(struct ath10k_htt* htt) {
     size_t size;
     zx_status_t ret;
 
-    if (!(test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->running_fw->fw_file.fw_features))) {
+    if (!(BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_PEER_FLOW_CONTROL))) {
         return ZX_OK;
     }
 
@@ -584,8 +584,7 @@ zx_status_t ath10k_htt_send_frag_desc_bank_cfg(struct ath10k_htt* htt) {
     info |= SM(htt->tx_q_state.type,
                HTT_FRAG_DESC_BANK_CFG_INFO_Q_STATE_DEPTH_TYPE);
 
-    if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
-                 ar->running_fw->fw_file.fw_features)) {
+    if (BITARR_TEST(ar->running_fw->fw_file.fw_features, ATH10K_FW_FEATURE_PEER_FLOW_CONTROL)) {
         info |= HTT_FRAG_DESC_BANK_CFG_INFO_Q_STATE_VALID;
     }
 
@@ -1018,7 +1017,7 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
     flags1 |= SM((uint16_t)tid, HTT_DATA_TX_DESC_FLAGS1_EXT_TID);
 #if 0 // NEEDS PORTING
     if (msdu->ip_summed == CHECKSUM_PARTIAL &&
-            !test_bit(ATH10K_FLAG_RAW_MODE, &ar->dev_flags)) {
+            !BITARR_TEST(&ar->dev_flags, ATH10K_FLAG_RAW_MODE)) {
         flags1 |= HTT_DATA_TX_DESC_FLAGS1_CKSUM_L3_OFFLOAD;
         flags1 |= HTT_DATA_TX_DESC_FLAGS1_CKSUM_L4_OFFLOAD;
         if (ar->hw_params.continuous_frag_desc) {

@@ -1477,7 +1477,7 @@ static bool ath10k_htt_rx_amsdu_allowed(struct ath10k* ar,
         return false;
     }
 
-    if (test_bit(ATH10K_CAC_RUNNING, &ar->dev_flags)) {
+    if (BITARR_TEST(&ar->dev_flags, ATH10K_CAC_RUNNING)) {
         ath10k_dbg(ar, ATH10K_DBG_HTT, "htt rx cac running\n");
         return false;
     }
