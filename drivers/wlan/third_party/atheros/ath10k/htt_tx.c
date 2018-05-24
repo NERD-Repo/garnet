@@ -354,7 +354,7 @@ static zx_status_t ath10k_htt_tx_alloc_txq(struct ath10k_htt* htt) {
 
 #if 0 // NEEDS PORTING
 static void ath10k_htt_tx_free_txdone_fifo(struct ath10k_htt* htt) {
-    WARN_ON(!kfifo_is_empty(&htt->txdone_fifo));
+    COND_WARN(!kfifo_is_empty(&htt->txdone_fifo));
     kfifo_free(&htt->txdone_fifo);
 }
 

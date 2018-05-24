@@ -371,7 +371,7 @@ zx_status_t ath10k_bmi_lz_data(struct ath10k* ar, const void* buffer, uint32_t l
     while (length) {
         txlen = min(length, BMI_MAX_DATA_SIZE - hdrlen);
 
-        WARN_ON_ONCE(txlen & 3);
+        COND_WARN_ONCE(txlen & 3);
 
         cmd.id          = BMI_LZ_DATA;
         cmd.lz_data.len = txlen;

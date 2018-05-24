@@ -63,10 +63,10 @@ DECLARE_EVENT_CLASS(ath10k_log_event,
                     TP_fast_assign(
                         __assign_str(device, dev_name(ar->dev));
                         __assign_str(driver, dev_driver_string(ar->dev));
-                        WARN_ON_ONCE(vsnprintf(__get_dynamic_array(msg),
-                                     ATH10K_MSG_MAX,
-                                     vaf->fmt,
-                                     *vaf->va) >= ATH10K_MSG_MAX);
+                        COND_WARN_ONCE(vsnprintf(__get_dynamic_array(msg),
+                                       ATH10K_MSG_MAX,
+                                       vaf->fmt,
+                                       *vaf->va) >= ATH10K_MSG_MAX);
                     ),
                     TP_printk(
                         "%s %s %s",
@@ -104,10 +104,10 @@ TRACE_EVENT(ath10k_log_dbg,
                 __assign_str(device, dev_name(ar->dev));
                 __assign_str(driver, dev_driver_string(ar->dev));
                 __entry->level = level;
-                WARN_ON_ONCE(vsnprintf(__get_dynamic_array(msg),
-                                       ATH10K_MSG_MAX,
-                                       vaf->fmt,
-                                       *vaf->va) >= ATH10K_MSG_MAX);
+                COND_WARN_ONCE(vsnprintf(__get_dynamic_array(msg),
+                                         ATH10K_MSG_MAX,
+                                         vaf->fmt,
+                                         *vaf->va) >= ATH10K_MSG_MAX);
             ),
             TP_printk(
                 "%s %s %s",

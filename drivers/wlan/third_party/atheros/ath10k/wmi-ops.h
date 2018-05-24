@@ -331,7 +331,7 @@ zx_status_t ath10k_wmi_cmd_send(struct ath10k* ar, struct ath10k_msg_buf* buf, u
 
 static inline zx_status_t
 ath10k_wmi_rx(struct ath10k* ar, struct ath10k_msg_buf* buf) {
-    if (WARN_ON_ONCE(!ar->wmi.ops->rx)) {
+    if (COND_WARN_ONCE(!ar->wmi.ops->rx)) {
         return ZX_ERR_NOT_SUPPORTED;
     }
 

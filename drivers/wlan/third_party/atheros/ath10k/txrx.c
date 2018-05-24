@@ -195,7 +195,7 @@ void ath10k_peer_map_event(struct ath10k_htt* htt,
         }
 
         peer->vdev_id = ev->vdev_id;
-        ether_addr_copy(peer->addr, ev->addr);
+        memcpy(peer->addr, ev->addr, ETH_ALEN);
         list_add(&peer->list, &ar->peers);
         wake_up(&ar->peer_mapping_wq);
     }
@@ -203,7 +203,7 @@ void ath10k_peer_map_event(struct ath10k_htt* htt,
     ath10k_dbg(ar, ATH10K_DBG_HTT, "htt peer map vdev %d peer %pM id %d\n",
                ev->vdev_id, ev->addr, ev->peer_id);
 
-    WARN_ON(ar->peer_map[ev->peer_id] && (ar->peer_map[ev->peer_id] != peer));
+    COND_WARN(ar->peer_map[ev->peer_id] && (ar->peer_map[ev->peer_id] != peer));
     ar->peer_map[ev->peer_id] = peer;
     BITARR_SET(peer->peer_ids, ev->peer_id);
 exit:

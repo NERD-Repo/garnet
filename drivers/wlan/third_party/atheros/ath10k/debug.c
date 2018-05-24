@@ -1438,7 +1438,7 @@ void ath10k_debug_get_et_stats(struct ieee80211_hw* hw,
 
     mtx_unlock(&ar->conf_mutex);
 
-    WARN_ON(i != ATH10K_SSTATS_LEN);
+    COND_WARN(i != ATH10K_SSTATS_LEN);
 }
 
 static const struct file_operations fops_fw_dbglog = {
@@ -1456,7 +1456,7 @@ static int ath10k_debug_cal_data_fetch(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
-    if (WARN_ON(ar->hw_params.cal_data_len > ATH10K_DEBUG_CAL_DATA_LEN)) {
+    if (COND_WARN(ar->hw_params.cal_data_len > ATH10K_DEBUG_CAL_DATA_LEN)) {
         return -EINVAL;
     }
 

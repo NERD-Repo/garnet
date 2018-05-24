@@ -227,8 +227,8 @@ int ath10k_wow_op_suspend(struct ieee80211_hw* hw,
 
     mtx_lock(&ar->conf_mutex);
 
-    if (WARN_ON(!BITARR_TEST(ar->running_fw->fw_file.fw_features,
-                             ATH10K_FW_FEATURE_WOWLAN_SUPPORT))) {
+    if (COND_WARN(!BITARR_TEST(ar->running_fw->fw_file.fw_features,
+                               ATH10K_FW_FEATURE_WOWLAN_SUPPORT))) {
         ret = 1;
         goto exit;
     }
@@ -278,8 +278,8 @@ int ath10k_wow_op_resume(struct ieee80211_hw* hw) {
 
     mtx_lock(&ar->conf_mutex);
 
-    if (WARN_ON(!BITARR_TEST(ar->running_fw->fw_file.fw_features,
-                             ATH10K_FW_FEATURE_WOWLAN_SUPPORT))) {
+    if (COND_WARN(!BITARR_TEST(ar->running_fw->fw_file.fw_features,
+                               ATH10K_FW_FEATURE_WOWLAN_SUPPORT))) {
         ret = 1;
         goto exit;
     }
@@ -323,7 +323,7 @@ int ath10k_wow_init(struct ath10k* ar) {
         return 0;
     }
 
-    if (WARN_ON(!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_WOW))) {
+    if (COND_WARN(!BITARR_TEST(ar->wmi.svc_map, WMI_SERVICE_WOW))) {
         return -EINVAL;
     }
 

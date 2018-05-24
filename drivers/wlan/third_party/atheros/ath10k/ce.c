@@ -360,11 +360,11 @@ void __ath10k_ce_send_revert(struct ath10k_ce_pipe* pipe) {
      * scatter-gather transfer (before index register is updated)
      * that needs to be cleaned up.
      */
-    if (WARN_ON_ONCE(src_ring->write_index == src_ring->sw_index)) {
+    if (COND_WARN_ONCE(src_ring->write_index == src_ring->sw_index)) {
         return;
     }
 
-    if (WARN_ON_ONCE(src_ring->write_index ==
+    if (COND_WARN_ONCE(src_ring->write_index ==
                      ath10k_ce_src_ring_write_index_get(ar, ctrl_addr))) {
         return;
     }

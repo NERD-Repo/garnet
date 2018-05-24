@@ -383,7 +383,7 @@ static unsigned int ath10k_core_get_fw_feature_str(char* buf, size_t buf_len,
                  ATH10K_FW_FEATURE_COUNT);
 
     if (feat >= countof(ath10k_core_fw_feature_str) ||
-            WARN_ON(!ath10k_core_fw_feature_str[feat])) {
+            COND_WARN(!ath10k_core_fw_feature_str[feat])) {
         return scnprintf(buf, buf_len, "bit%d", feat);
     }
 
@@ -1848,7 +1848,7 @@ static zx_status_t ath10k_core_init_firmware_features(struct ath10k* ar) {
         break;
     case ATH10K_FW_WMI_OP_VERSION_UNSET:
     case ATH10K_FW_WMI_OP_VERSION_MAX:
-        WARN_ON(1);
+        WARN_ONCE();
         return ZX_ERR_INVALID_ARGS;
     }
 

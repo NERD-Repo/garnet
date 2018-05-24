@@ -39,35 +39,36 @@
 #define BITMASK1(val) ((1UL << (val)) - 1)
 #define BITMASK(lo, hi) ((BITMASK1((hi) + 1) & ~BITMASK1(lo)))
 
+#define COND_WARN1(cond, filename, lineno) \
+    ath10k_warn("unexpected condition %s at %s:%d\n", cond, filename, lineno)
+
+#define COND_WARN(cond)                               \
+    ({                                                \
+        bool result = cond;                           \
+        if (result) {                                 \
+            COND_WARN1(#cond, __FILE__, __LINE__);    \
+        }                                             \
+        result;                                       \
+    })
+
+#define WARN_ONCE() \
+    ath10k_warn("code at %s:%d not expected to execute\n", __FILE__, __LINE__)
+
+#define COND_WARN_ONCE(cond)                          \
+    ({                                                \
+        static bool warn_next = true;                 \
+        bool result = cond;                           \
+        if (result && warn_next) {                    \
+            COND_WARN1(#cond, __FILE__, __LINE__);    \
+            warn_next = false;                        \
+        }                                             \
+        result;                                       \
+    })
+
 #define DIV_ROUNDUP(n, m) (((n) + ((m) - 1)) / (m))
 
 #define IS_ALIGNED(a, b) (!(((uintptr_t)(a)) & (((uintptr_t)(b))-1)))
 
-#define WARN(cond, filename, lineno) \
-    printf("ath10k: unexpected condition %s at %s:%d\n", cond, filename, lineno)
-
-#define WARN_ON(cond)                           \
-    ({                                          \
-        bool result = cond;                     \
-        if (result) {                           \
-            WARN(#cond, __FILE__, __LINE__);    \
-        }                                       \
-        result;                                 \
-    })
-
-#define WARN_ON_ONCE(cond)                      \
-    ({                                          \
-        static bool warn_next = true;           \
-        bool result = cond;                     \
-        if (result && warn_next) {              \
-            WARN(#cond, __FILE__, __LINE__);    \
-            warn_next = false;                  \
-        }                                       \
-        result;                                 \
-    })
-
-
-#define ether_addr_copy(e1, e2) memcpy(e1, e2, ETH_ALEN)
 
 #define ilog2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))

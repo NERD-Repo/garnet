@@ -1837,7 +1837,7 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k* ar, struct sk_buff* msdu) {
         vdev_id = 0;
     }
 
-    if (WARN_ON_ONCE(!ieee80211_is_mgmt(hdr->frame_control))) {
+    if (COND_WARN_ONCE(!ieee80211_is_mgmt(hdr->frame_control))) {
         return ERR_PTR(-EINVAL);
     }
 
@@ -1865,7 +1865,7 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k* ar, struct sk_buff* msdu) {
     cmd->hdr.tx_power = 0;
     cmd->hdr.buf_len = buf_len;
 
-    ether_addr_copy(cmd->hdr.peer_macaddr.addr, ieee80211_get_DA(hdr));
+    memcpy(cmd->hdr.peer_macaddr.addr, ieee80211_get_DA(hdr), ETH_ALEN);
     memcpy(cmd->buf, msdu->data, msdu->len);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi mgmt tx skb %pK len %d ftype %02x stype %02x\n",
@@ -2307,7 +2307,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
         /* Shouldn't happen unless list of advertised channels to
          * mac80211 has been changed.
          */
-        WARN_ON_ONCE(1);
+        WARN_ONCE();
         dev_kfree_skb(skb);
         return 0;
     }
@@ -2652,7 +2652,7 @@ void ath10k_wmi_pull_pdev_stats_extra(const struct wmi_pdev_stats_extra* src,
 
 void ath10k_wmi_pull_peer_stats(const struct wmi_peer_stats* src,
                                 struct ath10k_fw_stats_peer* dst) {
-    ether_addr_copy(dst->peer_macaddr, src->peer_macaddr.addr);
+    memcpy(dst->peer_macaddr, src->peer_macaddr.addr, ETH_ALEN);
     dst->peer_rssi = src->peer_rssi;
     dst->peer_tx_rate = src->peer_tx_rate;
 }
@@ -2660,7 +2660,7 @@ void ath10k_wmi_pull_peer_stats(const struct wmi_peer_stats* src,
 static void
 ath10k_wmi_10_4_pull_peer_stats(const struct wmi_10_4_peer_stats* src,
                                 struct ath10k_fw_stats_peer* dst) {
-    ether_addr_copy(dst->peer_macaddr, src->peer_macaddr.addr);
+    memcpy(dst->peer_macaddr, src->peer_macaddr.addr, ETH_ALEN);
     dst->peer_rssi = src->peer_rssi;
     dst->peer_tx_rate = src->peer_tx_rate;
     dst->peer_rx_rate = src->peer_rx_rate;
@@ -3083,7 +3083,7 @@ static int ath10k_wmi_10_4_op_pull_fw_stats(struct ath10k* ar,
             continue;
         }
 
-        ether_addr_copy(dst->peer_macaddr, src->peer_macaddr.addr);
+        memcpy(dst->peer_macaddr, src->peer_macaddr.addr, ETH_ALEN);
         dst->rx_duration = src->rx_duration;
         list_add_tail(&dst->list, &stats->peers_extd);
     }
@@ -3127,7 +3127,7 @@ void ath10k_wmi_event_vdev_start_resp(struct ath10k* ar, struct ath10k_msg_buf* 
         return;
     }
 
-    if (WARN_ON(arg.status)) {
+    if (COND_WARN(arg.status)) {
         return;
     }
 
@@ -3349,7 +3349,7 @@ static int ath10k_wmi_op_pull_swba_ev(struct ath10k* ar, struct sk_buff* skb,
         /* If this happens there were some changes in firmware and
          * ath10k should update the max size of tim_info array.
          */
-        if (WARN_ON_ONCE(i == countof(arg->tim_info))) {
+        if (COND_WARN_ONCE(i == countof(arg->tim_info))) {
             break;
         }
 
@@ -3397,7 +3397,7 @@ static int ath10k_wmi_10_2_4_op_pull_swba_ev(struct ath10k* ar,
         /* If this happens there were some changes in firmware and
          * ath10k should update the max size of tim_info array.
          */
-        if (WARN_ON_ONCE(i == countof(arg->tim_info))) {
+        if (COND_WARN_ONCE(i == countof(arg->tim_info))) {
             break;
         }
 
@@ -3443,7 +3443,7 @@ static int ath10k_wmi_10_4_op_pull_swba_ev(struct ath10k* ar,
         /* If this happens there were some changes in firmware and
          * ath10k should update the max size of tim_info array.
          */
-        if (WARN_ON_ONCE(i == countof(arg->tim_info))) {
+        if (COND_WARN_ONCE(i == countof(arg->tim_info))) {
             break;
         }
 
@@ -4901,7 +4901,7 @@ zx_status_t ath10k_wmi_event_ready(struct ath10k* ar, struct ath10k_msg_buf* msg
                arg.mac_addr,
                arg.status);
 
-    ether_addr_copy(ar->mac_addr, arg.mac_addr);
+    memcpy(ar->mac_addr, arg.mac_addr, ETH_ALEN);
     completion_signal(&ar->wmi.unified_ready);
     return 0;
 }
@@ -4911,7 +4911,7 @@ static int ath10k_wmi_event_temperature(struct ath10k* ar, struct sk_buff* skb) 
     const struct wmi_pdev_temperature_event* ev;
 
     ev = (struct wmi_pdev_temperature_event*)skb->data;
-    if (WARN_ON(skb->len < sizeof(*ev))) {
+    if (COND_WARN(skb->len < sizeof(*ev))) {
         return -EPROTO;
     }
 
@@ -4929,7 +4929,7 @@ static int ath10k_wmi_event_pdev_bss_chan_info(struct ath10k* ar,
     int idx;
 
     ev = (struct wmi_pdev_bss_chan_info_event*)skb->data;
-    if (WARN_ON(skb->len < sizeof(*ev))) {
+    if (COND_WARN(skb->len < sizeof(*ev))) {
         return -EPROTO;
     }
 
@@ -6099,8 +6099,7 @@ ath10k_wmi_put_start_scan_tlvs(struct wmi_start_scan_tlvs* tlvs,
         bssids->num_bssid = arg->n_bssids;
 
         for (i = 0; i < arg->n_bssids; i++)
-            ether_addr_copy(bssids->bssid_list[i].addr,
-                            arg->bssids[i].bssid);
+            memcpy(bssids->bssid_list[i].addr, arg->bssids[i].bssid, ETH_ALEN);
 
         ptr += sizeof(*bssids);
         ptr += sizeof(struct wmi_mac_addr) * arg->n_bssids;
@@ -6258,7 +6257,7 @@ ath10k_wmi_op_gen_vdev_create(struct ath10k* ar, uint32_t vdev_id,
     cmd->vdev_id      = vdev_id;
     cmd->vdev_type    = type;
     cmd->vdev_subtype = subtype;
-    ether_addr_copy(cmd->vdev_macaddr.addr, macaddr);
+    memcpy(cmd->vdev_macaddr.addr, macaddr, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "WMI vdev create: id %d type %d subtype %d macaddr %pM\n",
@@ -6293,10 +6292,10 @@ ath10k_wmi_op_gen_vdev_start(struct ath10k* ar,
     const char* cmdname;
     uint32_t flags = 0;
 
-    if (WARN_ON(arg->hidden_ssid && !arg->ssid)) {
+    if (COND_WARN(arg->hidden_ssid && !arg->ssid)) {
         return ERR_PTR(-EINVAL);
     }
-    if (WARN_ON(arg->ssid_len > sizeof(cmd->ssid.ssid))) {
+    if (COND_WARN(arg->ssid_len > sizeof(cmd->ssid.ssid))) {
         return ERR_PTR(-EINVAL);
     }
 
@@ -6374,7 +6373,7 @@ ath10k_wmi_op_gen_vdev_up(struct ath10k* ar, uint32_t vdev_id, uint32_t aid,
     cmd = (struct wmi_vdev_up_cmd*)skb->data;
     cmd->vdev_id       = vdev_id;
     cmd->vdev_assoc_id = aid;
-    ether_addr_copy(cmd->vdev_bssid.addr, bssid);
+    memcpy(cmd->vdev_bssid.addr, bssid, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi mgmt vdev up id 0x%x assoc id %d bssid %pM\n",
@@ -6457,7 +6456,7 @@ ath10k_wmi_op_gen_vdev_install_key(struct ath10k* ar,
     cmd->key_rxmic_len = arg->key_rxmic_len;
 
     if (arg->macaddr) {
-        ether_addr_copy(cmd->peer_macaddr.addr, arg->macaddr);
+        memcpy(cmd->peer_macaddr.addr, arg->macaddr, ETH_ALEN);
     }
     if (arg->key_data) {
         memcpy(cmd->key_data, arg->key_data, arg->key_len);
@@ -6537,7 +6536,7 @@ ath10k_wmi_op_gen_peer_create(struct ath10k* ar, uint32_t vdev_id,
 
     cmd = (struct wmi_peer_create_cmd*)skb->data;
     cmd->vdev_id = vdev_id;
-    ether_addr_copy(cmd->peer_macaddr.addr, peer_addr);
+    memcpy(cmd->peer_macaddr.addr, peer_addr, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi peer create vdev_id %d peer_addr %pM\n",
@@ -6558,7 +6557,7 @@ ath10k_wmi_op_gen_peer_delete(struct ath10k* ar, uint32_t vdev_id,
 
     cmd = (struct wmi_peer_delete_cmd*)skb->data;
     cmd->vdev_id = vdev_id;
-    ether_addr_copy(cmd->peer_macaddr.addr, peer_addr);
+    memcpy(cmd->peer_macaddr.addr, peer_addr, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi peer delete vdev_id %d peer_addr %pM\n",
@@ -6580,7 +6579,7 @@ ath10k_wmi_op_gen_peer_flush(struct ath10k* ar, uint32_t vdev_id,
     cmd = (struct wmi_peer_flush_tids_cmd*)skb->data;
     cmd->vdev_id         = vdev_id;
     cmd->peer_tid_bitmap = tid_bitmap;
-    ether_addr_copy(cmd->peer_macaddr.addr, peer_addr);
+    memcpy(cmd->peer_macaddr.addr, peer_addr, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi peer flush vdev_id %d peer_addr %pM tids %08x\n",
@@ -6605,7 +6604,7 @@ ath10k_wmi_op_gen_peer_set_param(struct ath10k* ar, uint32_t vdev_id,
     cmd->vdev_id     = vdev_id;
     cmd->param_id    = param_id;
     cmd->param_value = param_value;
-    ether_addr_copy(cmd->peer_macaddr.addr, peer_addr);
+    memcpy(cmd->peer_macaddr.addr, peer_addr, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi vdev %d peer 0x%pM set param %d value %d\n",
@@ -6676,7 +6675,7 @@ ath10k_wmi_op_gen_set_ap_ps(struct ath10k* ar, uint32_t vdev_id, const uint8_t* 
     cmd->vdev_id = vdev_id;
     cmd->param_id = param_id;
     cmd->param_value = value;
-    ether_addr_copy(cmd->peer_macaddr.addr, mac);
+    memcpy(cmd->peer_macaddr.addr, mac, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi ap ps param vdev_id 0x%X param %d value %d mac_addr %pM\n",
@@ -6733,7 +6732,7 @@ ath10k_wmi_peer_assoc_fill(struct ath10k* ar, void* buf,
     cmd->peer_vht_caps      = arg->peer_vht_caps;
     cmd->peer_phymode       = arg->peer_phymode;
 
-    ether_addr_copy(cmd->peer_macaddr.addr, arg->addr);
+    memcpy(cmd->peer_macaddr.addr, arg->addr, ETH_ALEN);
 
     cmd->peer_legacy_rates.num_rates =
         arg->peer_legacy_rates.num_rates;
@@ -7214,7 +7213,7 @@ ath10k_wmi_op_gen_addba_clear_resp(struct ath10k* ar, uint32_t vdev_id,
 
     cmd = (struct wmi_addba_clear_resp_cmd*)skb->data;
     cmd->vdev_id = vdev_id;
-    ether_addr_copy(cmd->peer_macaddr.addr, mac);
+    memcpy(cmd->peer_macaddr.addr, mac, ETH_ALEN);
 
     ath10k_dbg(ar, ATH10K_DBG_WMI,
                "wmi addba clear resp vdev_id 0x%X mac_addr %pM\n",
@@ -7239,7 +7238,7 @@ ath10k_wmi_op_gen_addba_send(struct ath10k* ar, uint32_t vdev_id, const uint8_t*
 
     cmd = (struct wmi_addba_send_cmd*)skb->data;
     cmd->vdev_id = vdev_id;
-    ether_addr_copy(cmd->peer_macaddr.addr, mac);
+    memcpy(cmd->peer_macaddr.addr, mac, ETH_ALEN);
     cmd->tid = tid;
     cmd->buffersize = buf_size;
 
@@ -7266,7 +7265,7 @@ ath10k_wmi_op_gen_addba_set_resp(struct ath10k* ar, uint32_t vdev_id, const uint
 
     cmd = (struct wmi_addba_setresponse_cmd*)skb->data;
     cmd->vdev_id = vdev_id;
-    ether_addr_copy(cmd->peer_macaddr.addr, mac);
+    memcpy(cmd->peer_macaddr.addr, mac, ETH_ALEN);
     cmd->tid = tid;
     cmd->statuscode = status;
 
@@ -7293,7 +7292,7 @@ ath10k_wmi_op_gen_delba_send(struct ath10k* ar, uint32_t vdev_id, const uint8_t*
 
     cmd = (struct wmi_delba_send_cmd*)skb->data;
     cmd->vdev_id = vdev_id;
-    ether_addr_copy(cmd->peer_macaddr.addr, mac);
+    memcpy(cmd->peer_macaddr.addr, mac, ETH_ALEN);
     cmd->tid = tid;
     cmd->initiator = initiator;
     cmd->reasoncode = reason;

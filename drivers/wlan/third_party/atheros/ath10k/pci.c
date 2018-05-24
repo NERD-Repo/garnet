@@ -549,7 +549,7 @@ static zx_status_t ath10k_pci_wake(struct ath10k* ar) {
 
     if (ret == ZX_OK) {
         ar_pci->ps_wake_refcount++;
-        WARN_ON(ar_pci->ps_wake_refcount == 0);
+        COND_WARN(ar_pci->ps_wake_refcount == 0);
     }
 
     mtx_unlock(&ar_pci->ps_lock);
@@ -569,7 +569,7 @@ static void ath10k_pci_sleep(struct ath10k* ar) {
     ath10k_dbg(ar, ATH10K_DBG_PCI_PS, "pci ps sleep refcount %lu awake %d\n",
                ar_pci->ps_wake_refcount, ar_pci->ps_awake);
 
-    if (WARN_ON(ar_pci->ps_wake_refcount == 0)) {
+    if (COND_WARN(ar_pci->ps_wake_refcount == 0)) {
         goto skip;
     }
 
@@ -615,7 +615,7 @@ static void ath10k_pci_sleep_sync(struct ath10k* ar) {
     del_timer_sync(&ar_pci->ps_timer);
 
     mtx_lock(&ar_pci->ps_lock);
-    WARN_ON(ar_pci->ps_wake_refcount > 0);
+    COND_WARN(ar_pci->ps_wake_refcount > 0);
     __ath10k_pci_sleep(ar);
     mtx_unlock(&ar_pci->ps_lock);
 }
@@ -840,7 +840,7 @@ static zx_status_t ath10k_pci_targ_cpu_to_ce_addr(struct ath10k* ar, uint32_t ad
                                                   uint32_t* ce_addr) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
-    if (WARN_ON_ONCE(!ar_pci->targ_cpu_to_ce_addr)) {
+    if (COND_WARN_ONCE(!ar_pci->targ_cpu_to_ce_addr)) {
         return ZX_ERR_NOT_SUPPORTED;
     }
 
@@ -1497,18 +1497,18 @@ zx_status_t ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t servi
         case PIPEDIR_NONE:
             break;
         case PIPEDIR_IN:
-            WARN_ON(dl_set);
+            COND_WARN(dl_set);
             *dl_pipe = entry->pipenum;
             dl_set = true;
             break;
         case PIPEDIR_OUT:
-            WARN_ON(ul_set);
+            COND_WARN(ul_set);
             *ul_pipe = entry->pipenum;
             ul_set = true;
             break;
         case PIPEDIR_INOUT:
-            WARN_ON(dl_set);
-            WARN_ON(ul_set);
+            COND_WARN(dl_set);
+            COND_WARN(ul_set);
             *dl_pipe = entry->pipenum;
             *ul_pipe = entry->pipenum;
             dl_set = true;
@@ -1517,7 +1517,7 @@ zx_status_t ath10k_pci_hif_map_service_to_pipe(struct ath10k* ar, uint16_t servi
         }
     }
 
-    if (WARN_ON(!ul_set || !dl_set)) {
+    if (COND_WARN(!ul_set || !dl_set)) {
         return ZX_ERR_NOT_FOUND;
     }
 
@@ -1735,7 +1735,7 @@ static void ath10k_pci_hif_stop(struct ath10k* ar) {
     ath10k_pci_flush(ar);
 
     mtx_lock(&ar_pci->ps_lock);
-    WARN_ON(ar_pci->ps_wake_refcount > 0);
+    COND_WARN(ar_pci->ps_wake_refcount > 0);
     mtx_unlock(&ar_pci->ps_lock);
 }
 
@@ -1842,7 +1842,7 @@ static void ath10k_pci_bmi_recv_data(struct ath10k_ce_pipe* ce_state) {
         return;
     }
 
-    if (WARN_ON_ONCE(!xfer)) {
+    if (COND_WARN_ONCE(!xfer)) {
         return;
     }
 
@@ -2417,7 +2417,7 @@ static zx_status_t ath10k_pci_qca99x0_chip_reset(struct ath10k* ar) {
 static zx_status_t ath10k_pci_chip_reset(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
 
-    if (WARN_ON(!ar_pci->pci_hard_reset)) {
+    if (COND_WARN(!ar_pci->pci_hard_reset)) {
         return ZX_ERR_NOT_SUPPORTED;
     }
 

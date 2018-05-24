@@ -698,7 +698,7 @@ ath10k_htt_rx_h_peer_channel(struct ath10k* ar, struct htt_rx_desc* rxd) {
     }
 
     arvif = ath10k_get_arvif(ar, peer->vdev_id);
-    if (WARN_ON_ONCE(!arvif)) {
+    if (COND_WARN_ONCE(!arvif)) {
         return NULL;
     }
 
@@ -969,12 +969,12 @@ static void ath10k_htt_rx_h_undecap_raw(struct ath10k* ar,
      */
 
     /* This probably shouldn't happen but warn just in case */
-    if (unlikely(WARN_ON_ONCE(!is_first))) {
+    if (unlikely(COND_WARN_ONCE(!is_first))) {
         return;
     }
 
     /* This probably shouldn't happen but warn just in case */
-    if (unlikely(WARN_ON_ONCE(!(is_first && is_last)))) {
+    if (unlikely(COND_WARN_ONCE(!(is_first && is_last)))) {
         return;
     }
 
@@ -1051,8 +1051,8 @@ static void ath10k_htt_rx_h_undecap_nwifi(struct ath10k* ar,
     hdr = (struct ieee80211_hdr*)(msdu->data + l3_pad_bytes);
 
     hdr_len = ath10k_htt_rx_nwifi_hdrlen(ar, hdr);
-    ether_addr_copy(da, ieee80211_get_DA(hdr));
-    ether_addr_copy(sa, ieee80211_get_SA(hdr));
+    memcpy(da, ieee80211_get_DA(hdr), ETH_ALEN);
+    memcpy(sa, ieee80211_get_SA(hdr), ETH_ALEN);
     skb_pull(msdu, hdr_len);
 
     /* push original 802.11 header */
@@ -1064,8 +1064,8 @@ static void ath10k_htt_rx_h_undecap_nwifi(struct ath10k* ar,
      * case of 4addr it may also have different SA
      */
     hdr = (struct ieee80211_hdr*)msdu->data;
-    ether_addr_copy(ieee80211_get_DA(hdr), da);
-    ether_addr_copy(ieee80211_get_SA(hdr), sa);
+    memcpy(ieee80211_get_DA(hdr), da, ETH_ALEN);
+    memcpy(ieee80211_get_SA(hdr), sa, ETH_ALEN);
 }
 
 static void* ath10k_htt_rx_h_find_rfc1042(struct ath10k* ar,
@@ -1124,7 +1124,7 @@ static void ath10k_htt_rx_h_undecap_eth(struct ath10k* ar,
      */
 
     rfc1042 = ath10k_htt_rx_h_find_rfc1042(ar, msdu, enctype);
-    if (WARN_ON_ONCE(!rfc1042)) {
+    if (COND_WARN_ONCE(!rfc1042)) {
         return;
     }
 
@@ -1135,8 +1135,8 @@ static void ath10k_htt_rx_h_undecap_eth(struct ath10k* ar,
 
     /* pull decapped header and copy SA & DA */
     eth = (struct ethhdr*)msdu->data;
-    ether_addr_copy(da, eth->h_dest);
-    ether_addr_copy(sa, eth->h_source);
+    memcpy(da, eth->h_dest, ETH_ALEN);
+    memcpy(sa, eth->h_source, ETH_ALEN);
     skb_pull(msdu, sizeof(struct ethhdr));
 
     /* push rfc1042/llc/snap */
@@ -1152,8 +1152,8 @@ static void ath10k_htt_rx_h_undecap_eth(struct ath10k* ar,
      * case of 4addr it may also have different SA
      */
     hdr = (struct ieee80211_hdr*)msdu->data;
-    ether_addr_copy(ieee80211_get_DA(hdr), da);
-    ether_addr_copy(ieee80211_get_SA(hdr), sa);
+    memcpy(ieee80211_get_DA(hdr), da, ETH_ALEN);
+    memcpy(ieee80211_get_SA(hdr), sa, ETH_ALEN);
 }
 
 static void ath10k_htt_rx_h_undecap_snap(struct ath10k* ar,
@@ -1689,7 +1689,7 @@ static int ath10k_htt_rx_extract_amsdu(struct sk_buff_head* list,
         return -ENOBUFS;
     }
 
-    if (WARN_ON(!skb_queue_empty(amsdu))) {
+    if (COND_WARN(!skb_queue_empty(amsdu))) {
         return -EINVAL;
     }
 
