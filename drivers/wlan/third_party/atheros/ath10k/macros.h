@@ -88,8 +88,8 @@
     ((unsigned long) (val) == 0 ? (val) : \
              ((sizeof(unsigned long) * 8) - __builtin_clzl((val) - 1)))
 
-
-#define scnprintf(buf, size, format, ...)                           \
+// Similar to snprintf, but returns actual size used, not size needed
+#define SNPRINTF_USED(buf, size, format, ...)                       \
     ({                                                              \
         int result = snprintf(buf, size, format, __VA_ARGS__);      \
         MIN_T(int, size, result);                                   \

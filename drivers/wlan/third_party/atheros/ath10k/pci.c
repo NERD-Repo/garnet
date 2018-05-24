@@ -1431,9 +1431,9 @@ static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
     crash_data = ath10k_debug_get_new_fw_crash_data(ar);
 
     if (crash_data) {
-        scnprintf(uuid, sizeof(uuid), "%pUl", &crash_data->uuid);
+        snprintf(uuid, sizeof(uuid), "%pUl", &crash_data->uuid);
     } else {
-        scnprintf(uuid, sizeof(uuid), "n/a");
+        snprintf(uuid, sizeof(uuid), "n/a");
     }
 
     ath10k_err("firmware crashed! (uuid %s)\n", uuid);

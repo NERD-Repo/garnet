@@ -384,10 +384,10 @@ static unsigned int ath10k_core_get_fw_feature_str(char* buf, size_t buf_len,
 
     if (feat >= countof(ath10k_core_fw_feature_str) ||
             COND_WARN(!ath10k_core_fw_feature_str[feat])) {
-        return scnprintf(buf, buf_len, "bit%d", feat);
+        return SNPRINTF_USED(buf, buf_len, "bit%d", feat);
     }
 
-    return scnprintf(buf, buf_len, "%s", ath10k_core_fw_feature_str[feat]);
+    return SNPRINTF_USED(buf, buf_len, "%s", ath10k_core_fw_feature_str[feat]);
 }
 
 void ath10k_core_get_fw_features_str(struct ath10k* ar,
@@ -399,7 +399,7 @@ void ath10k_core_get_fw_features_str(struct ath10k* ar,
     for (i = 0; i < ATH10K_FW_FEATURE_COUNT; i++) {
         if (BITARR_TEST(ar->normal_mode_fw.fw_file.fw_features, i)) {
             if (len > 0) {
-                len += scnprintf(buf + len, buf_len - len, ",");
+                len += SNPRINTF_USED(buf + len, buf_len - len, ",");
             }
 
             len += ath10k_core_get_fw_feature_str(buf + len,
@@ -925,8 +925,8 @@ static zx_status_t ath10k_fetch_cal_file(struct ath10k* ar) {
     zx_status_t ret;
 
     /* pre-cal-<bus>-<id>.bin */
-    scnprintf(filename, sizeof(filename), "pre-cal-%s-%s.bin",
-              ath10k_bus_str(ar->hif.bus), device_get_name(ar->zxdev));
+    snprintf(filename, sizeof(filename), "pre-cal-%s-%s.bin",
+             ath10k_bus_str(ar->hif.bus), device_get_name(ar->zxdev));
 
     ret = ath10k_fetch_fw_file(ar, ATH10K_FW_DIR, filename, &ar->pre_cal_file);
     if (ret == ZX_OK) {
@@ -934,8 +934,8 @@ static zx_status_t ath10k_fetch_cal_file(struct ath10k* ar) {
     }
 
     /* cal-<bus>-<id>.bin */
-    scnprintf(filename, sizeof(filename), "cal-%s-%s.bin",
-              ath10k_bus_str(ar->hif.bus), device_get_name(ar->zxdev));
+    snprintf(filename, sizeof(filename), "cal-%s-%s.bin",
+             ath10k_bus_str(ar->hif.bus), device_get_name(ar->zxdev));
 
     ret = ath10k_fetch_fw_file(ar, ATH10K_FW_DIR, filename, &ar->cal_file);
     if (ret != ZX_OK) {
@@ -1172,23 +1172,23 @@ static zx_status_t ath10k_core_create_board_name(struct ath10k* ar, char* name,
     char variant[9 + ATH10K_SMBIOS_BDF_EXT_STR_LENGTH] = { 0 };
 
     if (ar->id.bmi_ids_valid) {
-        scnprintf(name, name_len,
-                  "bus=%s,bmi-chip-id=%d,bmi-board-id=%d",
-                  ath10k_bus_str(ar->hif.bus),
-                  ar->id.bmi_chip_id,
-                  ar->id.bmi_board_id);
+        snprintf(name, name_len,
+                 "bus=%s,bmi-chip-id=%d,bmi-board-id=%d",
+                 ath10k_bus_str(ar->hif.bus),
+                 ar->id.bmi_chip_id,
+                 ar->id.bmi_board_id);
         goto out;
     }
 
     if (ar->id.bdf_ext[0] != '\0')
-        scnprintf(variant, sizeof(variant), ",variant=%s",
-                  ar->id.bdf_ext);
+        snprintf(variant, sizeof(variant), ",variant=%s",
+                 ar->id.bdf_ext);
 
-    scnprintf(name, name_len,
-              "bus=%s,vendor=%04x,device=%04x,subsystem-vendor=%04x,subsystem-device=%04x%s",
-              ath10k_bus_str(ar->hif.bus),
-              ar->id.vendor, ar->id.device,
-              ar->id.subsystem_vendor, ar->id.subsystem_device, variant);
+    snprintf(name, name_len,
+             "bus=%s,vendor=%04x,device=%04x,subsystem-vendor=%04x,subsystem-device=%04x%s",
+             ath10k_bus_str(ar->hif.bus),
+             ar->id.vendor, ar->id.device,
+             ar->id.subsystem_vendor, ar->id.subsystem_device, variant);
 out:
     ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot using board name '%s'\n", name);
 
@@ -1410,14 +1410,14 @@ static void ath10k_core_get_fw_name(struct ath10k* ar, char* fw_name,
                                     size_t fw_name_len, int fw_api) {
     switch (ar->hif.bus) {
     case ATH10K_BUS_SDIO:
-        scnprintf(fw_name, fw_name_len, "%s-%s-%d.bin",
-                  ATH10K_FW_FILE_BASE, ath10k_bus_str(ar->hif.bus),
-                  fw_api);
+        snprintf(fw_name, fw_name_len, "%s-%s-%d.bin",
+                 ATH10K_FW_FILE_BASE, ath10k_bus_str(ar->hif.bus),
+                 fw_api);
         break;
     case ATH10K_BUS_PCI:
     case ATH10K_BUS_AHB:
-        scnprintf(fw_name, fw_name_len, "%s-%d.bin",
-                  ATH10K_FW_FILE_BASE, fw_api);
+        snprintf(fw_name, fw_name_len, "%s-%d.bin",
+                 ATH10K_FW_FILE_BASE, fw_api);
         break;
     }
 }
