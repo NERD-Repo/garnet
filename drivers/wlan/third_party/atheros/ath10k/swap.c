@@ -140,7 +140,7 @@ ath10k_swap_code_seg_alloc(struct ath10k* ar, size_t swap_bin_len) {
     seg_info->seg_hw_info.size = swap_bin_len;
     seg_info->seg_hw_info.swap_size = swap_bin_len;
     seg_info->seg_hw_info.num_segs = ATH10K_SWAP_CODE_SEG_NUM_SUPPORTED;
-    seg_info->seg_hw_info.size_log2 = ilog2(swap_bin_len);
+    seg_info->seg_hw_info.size_log2 = LOG2(swap_bin_len);
     seg_info->virt_address[0] = virt_addr;
     seg_info->paddr[0] = paddr;
 

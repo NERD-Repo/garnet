@@ -69,16 +69,16 @@
 
 #define IS_ALIGNED(a, b) (!(((uintptr_t)(a)) & (((uintptr_t)(b))-1)))
 
-
-#define ilog2(val)  \
+#define LOG2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
 
-#define iowrite32(value, addr)                                  \
-    do {                                                        \
-        (*(volatile uint32_t*)(uintptr_t)(addr)) = (value);     \
+#define READ32(addr) (*(volatile uint32_t*)(uintptr_t)(addr))
+
+#define WRITE32(addr, value)                                  \
+    do {                                                      \
+        (*(volatile uint32_t*)(uintptr_t)(addr)) = (value);   \
     } while (0)
 
-#define ioread32(addr) (*(volatile uint32_t*)(uintptr_t)(addr))
 
 #define is_power_of_2(x) (((x) & ((x) - 1)) == 0)
 

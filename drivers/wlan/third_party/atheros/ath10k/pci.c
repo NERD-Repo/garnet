@@ -422,8 +422,7 @@ static struct service_to_pipe target_service_to_ce_map_wlan[] = {
 
 static bool ath10k_pci_is_awake(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
-    uint32_t val = ioread32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
-                       RTC_STATE_ADDRESS);
+    uint32_t val = READ32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + RTC_STATE_ADDRESS);
 
     return RTC_STATE_V_GET(val) == RTC_STATE_V_ON;
 }
@@ -436,9 +435,8 @@ static zx_status_t __ath10k_pci_wake(struct ath10k* ar) {
     ath10k_dbg(ar, ATH10K_DBG_PCI_PS, "pci ps wake reg refcount %lu awake %d\n",
                ar_pci->ps_wake_refcount, ar_pci->ps_awake);
 
-    iowrite32(PCIE_SOC_WAKE_V_MASK,
-              ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
-              PCIE_SOC_WAKE_ADDRESS);
+    WRITE32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + PCIE_SOC_WAKE_ADDRESS,
+            PCIE_SOC_WAKE_V_MASK);
     return ZX_OK;
 }
 
@@ -451,9 +449,8 @@ static void __ath10k_pci_sleep(struct ath10k* ar) {
     ath10k_dbg(ar, ATH10K_DBG_PCI_PS, "pci ps sleep reg refcount %lu awake %d\n",
                ar_pci->ps_wake_refcount, ar_pci->ps_awake);
 
-    iowrite32(PCIE_SOC_WAKE_RESET,
-              ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
-              PCIE_SOC_WAKE_ADDRESS);
+    WRITE32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + PCIE_SOC_WAKE_ADDRESS,
+            PCIE_SOC_WAKE_RESET);
     ar_pci->ps_awake = false;
 }
 #endif
@@ -492,9 +489,8 @@ static zx_status_t ath10k_pci_force_wake(struct ath10k* ar) {
     mtx_lock(&ar_pci->ps_lock);
 
     if (!ar_pci->ps_awake) {
-        iowrite32(PCIE_SOC_WAKE_V_MASK,
-                  ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
-                  PCIE_SOC_WAKE_ADDRESS);
+        WRITE32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + PCIE_SOC_WAKE_ADDRESS,
+                PCIE_SOC_WAKE_V_MASK);
 
         ret = ath10k_pci_wake_wait(ar);
         if (ret == ZX_OK) {
@@ -513,9 +509,8 @@ static void ath10k_pci_force_sleep(struct ath10k* ar) {
 
     mtx_lock(&ar_pci->ps_lock);
 
-    iowrite32(PCIE_SOC_WAKE_RESET,
-              ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS +
-              PCIE_SOC_WAKE_ADDRESS);
+    WRITE32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + PCIE_SOC_WAKE_ADDRESS,
+            PCIE_SOC_WAKE_RESET);
     ar_pci->ps_awake = false;
 
     mtx_unlock(&ar_pci->ps_lock);
@@ -638,7 +633,7 @@ static void ath10k_bus_pci_write32(struct ath10k* ar, uint32_t offset, uint32_t 
         return;
     }
 
-    iowrite32(value, ar_pci->mem + offset);
+    WRITE32(ar_pci->mem + offset, value);
     ath10k_pci_sleep(ar);
 }
 
@@ -660,7 +655,7 @@ static uint32_t ath10k_bus_pci_read32(struct ath10k* ar, uint32_t offset) {
         return 0xffffffff;
     }
 
-    val = ioread32(ar_pci->mem + offset);
+    val = READ32(ar_pci->mem + offset);
     ath10k_pci_sleep(ar);
 
     return val;

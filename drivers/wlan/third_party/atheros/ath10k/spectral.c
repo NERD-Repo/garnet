@@ -481,7 +481,7 @@ static ssize_t write_file_spectral_bins(struct file* file,
     }
 
     mtx_lock(&ar->conf_mutex);
-    ar->spectral.config.fft_size = ilog2(val);
+    ar->spectral.config.fft_size = LOG2(val);
     ar->spectral.config.fft_size += WMI_SPECTRAL_BIN_SCALE_DEFAULT;
     mtx_unlock(&ar->conf_mutex);
 

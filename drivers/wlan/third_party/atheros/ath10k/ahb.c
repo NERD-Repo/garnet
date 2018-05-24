@@ -45,31 +45,31 @@ static inline struct ath10k_ahb* ath10k_ahb_priv(struct ath10k* ar) {
 static void ath10k_ahb_write32(struct ath10k* ar, uint32_t offset, uint32_t value) {
     struct ath10k_ahb* ar_ahb = ath10k_ahb_priv(ar);
 
-    iowrite32(value, ar_ahb->mem + offset);
+    WRITE32(ar_ahb->mem + offset, value);
 }
 
 static uint32_t ath10k_ahb_read32(struct ath10k* ar, uint32_t offset) {
     struct ath10k_ahb* ar_ahb = ath10k_ahb_priv(ar);
 
-    return ioread32(ar_ahb->mem + offset);
+    return READ32(ar_ahb->mem + offset);
 }
 
 static uint32_t ath10k_ahb_gcc_read32(struct ath10k* ar, uint32_t offset) {
     struct ath10k_ahb* ar_ahb = ath10k_ahb_priv(ar);
 
-    return ioread32(ar_ahb->gcc_mem + offset);
+    return READ32(ar_ahb->gcc_mem + offset);
 }
 
 static void ath10k_ahb_tcsr_write32(struct ath10k* ar, uint32_t offset, uint32_t value) {
     struct ath10k_ahb* ar_ahb = ath10k_ahb_priv(ar);
 
-    iowrite32(value, ar_ahb->tcsr_mem + offset);
+    WRITE32(ar_ahb->tcsr_mem + offset, value);
 }
 
 static uint32_t ath10k_ahb_tcsr_read32(struct ath10k* ar, uint32_t offset) {
     struct ath10k_ahb* ar_ahb = ath10k_ahb_priv(ar);
 
-    return ioread32(ar_ahb->tcsr_mem + offset);
+    return READ32(ar_ahb->tcsr_mem + offset);
 }
 
 static uint32_t ath10k_ahb_soc_read32(struct ath10k* ar, uint32_t addr) {
