@@ -15,6 +15,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <ddk/driver.h>
 #include <zircon/status.h>
 
 #include <string.h>

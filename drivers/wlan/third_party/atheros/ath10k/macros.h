@@ -28,13 +28,13 @@
 #define BITARR(name, num_bits) \
             BITARR_TYPE name[DIV_ROUNDUP(num_bits, BITARR_TYPE_NUM_BITS)]
 #define BITARR_SET(name, bit) \
-            name[(bit) / BITARR_TYPE_NUM_BITS] |= \
+            (name)[(bit) / BITARR_TYPE_NUM_BITS] |= \
                 ((BITARR_TYPE)1 << ((bit) % BITARR_TYPE_NUM_BITS))
 #define BITARR_CLEAR(name, bit) \
-            name[(bit) / BITARR_TYPE_NUM_BITS] &= \
+            (name)[(bit) / BITARR_TYPE_NUM_BITS] &= \
                 ~((BITARR_TYPE)1 << ((bit) % BITARR_TYPE_NUM_BITS))
 #define BITARR_TEST(name, bit) \
-            ((name[(bit) / BITARR_TYPE_NUM_BITS] & \
+            (((name)[(bit) / BITARR_TYPE_NUM_BITS] & \
                 ((BITARR_TYPE)1 << ((bit) % BITARR_TYPE_NUM_BITS))) != 0)
 
 #define BITMASK1(val) ((1UL << (val)) - 1)
@@ -50,8 +50,14 @@
         }                                             \
         result;                                       \
     })
-#define WARN_ONCE() \
-    ath10k_warn("code at %s:%d not expected to execute\n", __FILE__, __LINE__)
+#define WARN_ONCE()                                                                     \
+    do {                                                                                \
+        static bool warn_next = true;                                                   \
+        if (warn_next) {                                                                \
+            ath10k_warn("code at %s:%d not expected to execute\n", __FILE__, __LINE__); \
+            warn_next = false;                                                          \
+        }                                                                               \
+    } while (0)
 #define COND_WARN_ONCE(cond)                          \
     ({                                                \
         static bool warn_next = true;                 \
@@ -67,7 +73,7 @@
 
 #define IS_ALIGNED(a, b) (!(((uintptr_t)(a)) & (((uintptr_t)(b))-1)))
 
-#define IS_POW2(x) (((x) & ((x) - 1)) == 0)
+#define IS_POW2(x) (((x) == 0) || (((x) & ((x) - 1)) == 0))
 
 #define LOG2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
