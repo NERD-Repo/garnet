@@ -14,8 +14,8 @@
 namespace mozart {
 namespace {
 
-ui::ScenicPtr GetScenic(views_v1::ViewManager* view_manager) {
-  ui::ScenicPtr scenic;
+fuchsia::ui::scenic::ScenicPtr GetScenic(views_v1::ViewManager* view_manager) {
+  fuchsia::ui::scenic::ScenicPtr scenic;
   view_manager->GetScenic(scenic.NewRequest());
   return scenic;
 }
@@ -47,7 +47,7 @@ BaseView::BaseView(
 
   session_.set_event_handler(
       std::bind(&BaseView::HandleSessionEvents, this, std::placeholders::_1));
-  parent_node_.SetEventMask(gfx::kMetricsEventMask);
+  parent_node_.SetEventMask(fuchsia::ui::gfx::kMetricsEventMask);
 }
 
 BaseView::~BaseView() = default;
@@ -96,7 +96,7 @@ void BaseView::PresentScene(zx_time_t presentation_time) {
   // Session.Present(), for use in InvalidateScene().
   last_presentation_time_ = presentation_time;
 
-  session()->Present(presentation_time, [this](images::PresentationInfo info) {
+  session()->Present(presentation_time, [this](fuchsia::images::PresentationInfo info) {
     FXL_DCHECK(present_pending_);
 
     zx_time_t next_presentation_time =
@@ -115,11 +115,11 @@ void BaseView::PresentScene(zx_time_t presentation_time) {
   });
 }
 
-void BaseView::HandleSessionEvents(fidl::VectorPtr<ui::Event> events) {
-  const gfx::Metrics* new_metrics = nullptr;
+void BaseView::HandleSessionEvents(fidl::VectorPtr<fuchsia::ui::scenic::Event> events) {
+  const fuchsia::ui::gfx::Metrics* new_metrics = nullptr;
   for (const auto& event : *events) {
     if (event.is_gfx()) {
-      const gfx::Event& scenic_event = event.gfx();
+      const fuchsia::ui::gfx::Event& scenic_event = event.gfx();
       if (scenic_event.is_metrics() &&
           scenic_event.metrics().node_id == parent_node_.id()) {
         new_metrics = &scenic_event.metrics().metrics;
@@ -157,11 +157,11 @@ void BaseView::AdjustMetricsAndPhysicalSize() {
 
 void BaseView::OnPropertiesChanged(views_v1::ViewProperties old_properties) {}
 
-void BaseView::OnSceneInvalidated(images::PresentationInfo presentation_info) {}
+void BaseView::OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) {}
 
-void BaseView::OnSessionEvent(fidl::VectorPtr<ui::Event> events) {}
+void BaseView::OnSessionEvent(fidl::VectorPtr<fuchsia::ui::scenic::Event> events) {}
 
-bool BaseView::OnInputEvent(input::InputEvent event) {
+bool BaseView::OnInputEvent(fuchsia::ui::input::InputEvent event) {
   return false;
 }
 
@@ -202,7 +202,7 @@ void BaseView::OnChildUnavailable(uint32_t child_key,
   callback();
 }
 
-void BaseView::OnEvent(input::InputEvent event, OnEventCallback callback) {
+void BaseView::OnEvent(fuchsia::ui::input::InputEvent event, OnEventCallback callback) {
   TRACE_DURATION("view", "OnEvent");
   bool handled = OnInputEvent(std::move(event));
   callback(handled);

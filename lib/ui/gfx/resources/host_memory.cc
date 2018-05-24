@@ -10,21 +10,17 @@ namespace gfx {
 const ResourceTypeInfo HostMemory::kTypeInfo = {
     ResourceType::kMemory | ResourceType::kHostMemory, "HostMemory"};
 
-HostMemory::HostMemory(Session* session,
-                       scenic::ResourceId id,
-                       zx::vmo vmo,
+HostMemory::HostMemory(Session* session, scenic::ResourceId id, zx::vmo vmo,
                        uint64_t vmo_size)
     : Memory(session, id, HostMemory::kTypeInfo),
       shared_vmo_(fxl::MakeRefCounted<fsl::SharedVmo>(std::move(vmo),
                                                       ZX_VM_FLAG_PERM_READ)),
       size_(vmo_size) {}
 
-HostMemoryPtr HostMemory::New(Session* session,
-                              scenic::ResourceId id,
-                              vk::Device device,
-                              ::gfx::MemoryArgs args,
+HostMemoryPtr HostMemory::New(Session* session, scenic::ResourceId id,
+                              vk::Device device, ::fuchsia::ui::gfx::MemoryArgs args,
                               ErrorReporter* error_reporter) {
-  if (args.memory_type != images::MemoryType::HOST_MEMORY) {
+  if (args.memory_type != fuchsia::images::MemoryType::HOST_MEMORY) {
     error_reporter->ERROR() << "scenic::gfx::HostMemory::New(): "
                                "Memory must be of type HOST_MEMORY.";
     return nullptr;
@@ -33,10 +29,8 @@ HostMemoryPtr HostMemory::New(Session* session,
   return New(session, id, device, std::move(args.vmo), error_reporter);
 }
 
-HostMemoryPtr HostMemory::New(Session* session,
-                              scenic::ResourceId id,
-                              vk::Device device,
-                              zx::vmo vmo,
+HostMemoryPtr HostMemory::New(Session* session, scenic::ResourceId id,
+                              vk::Device device, zx::vmo vmo,
                               ErrorReporter* error_reporter) {
   uint64_t vmo_size;
   vmo.get_size(&vmo_size);

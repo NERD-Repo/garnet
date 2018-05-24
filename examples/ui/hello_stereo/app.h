@@ -20,7 +20,7 @@ class App {
 
  private:
   // Called asynchronously by constructor.
-  void Init(gfx::DisplayInfo display_info);
+  void Init(fuchsia::ui::gfx::DisplayInfo display_info);
 
   // Updates and presents the scene.  Called first by Init().  Each invocation
   // schedules another call to Update() when the result of the previous
@@ -33,7 +33,7 @@ class App {
 
   std::unique_ptr<component::ApplicationContext> application_context_;
   fsl::MessageLoop* loop_;
-  ui::ScenicPtr scenic_;
+  fuchsia::ui::scenic::ScenicPtr scenic_;
 
   std::unique_ptr<scenic_lib::Session> session_;
   std::unique_ptr<scenic_lib::DisplayCompositor> compositor_;
@@ -43,6 +43,6 @@ class App {
   uint64_t start_time_ = 0;
 };
 
-}  // namespace hello_pose_buffer
+}  // namespace hello_stereo
 
-#endif  // GARNET_EXAMPLES_UI_HELLO_POSE_BUFFER_APP_H_
+#endif  // GARNET_EXAMPLES_UI_HELLO_STEREO_APP_H_

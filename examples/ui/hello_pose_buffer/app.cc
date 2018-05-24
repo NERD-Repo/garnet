@@ -19,7 +19,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/quaternion.hpp>
 
-#include <gfx/cpp/fidl.h>
+#include <fuchsia/ui/gfx/cpp/fidl.h>
 #include <lib/async/cpp/task.h>
 
 #include "lib/app/cpp/connect.h"
@@ -48,13 +48,14 @@ App::App()
           component::ApplicationContext::CreateFromStartupInfo()),
       loop_(fsl::MessageLoop::GetCurrent()) {
   // Connect to the Mozart service.
-  scenic_ = application_context_->ConnectToEnvironmentService<ui::Scenic>();
+  scenic_ =
+      application_context_->ConnectToEnvironmentService<fuchsia::ui::scenic::Scenic>();
   scenic_.set_error_handler([this] {
     FXL_LOG(INFO) << "Lost connection to Mozart service.";
     loop_->QuitNow();
   });
   scenic_->GetDisplayInfo(
-      [this](gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
+      [this](fuchsia::ui::gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
 }
 
 void App::CreateExampleScene(float display_width, float display_height) {
@@ -143,13 +144,13 @@ void App::CreateExampleScene(float display_width, float display_height) {
   uint64_t time_interval = 1024 * 1024 * 60 / 3.0;  // 16.67 ms
   uint32_t num_entries = 1;
 
-  Memory mem(session, std::move(vmo), images::MemoryType::VK_DEVICE_MEMORY);
+  Memory mem(session, std::move(vmo), fuchsia::images::MemoryType::VK_DEVICE_MEMORY);
   Buffer pose_buffer(mem, 0, vmo_size);
 
   camera_->SetPoseBuffer(pose_buffer, num_entries, base_time, time_interval);
 }
 
-void App::Init(gfx::DisplayInfo display_info) {
+void App::Init(fuchsia::ui::gfx::DisplayInfo display_info) {
   FXL_LOG(INFO) << "Creating new Session";
 
   // TODO: set up SessionListener.
@@ -190,7 +191,7 @@ void App::Update(uint64_t next_presentation_time) {
 
   // Present
   session_->Present(
-      next_presentation_time, [this](images::PresentationInfo info) {
+      next_presentation_time, [this](fuchsia::images::PresentationInfo info) {
         Update(info.presentation_time + info.presentation_interval);
       });
 }

@@ -8,8 +8,8 @@
 #include <string>
 #include <unordered_map>
 
-#include <gfx/cpp/fidl.h>
-#include <ui/cpp/fidl.h>
+#include <fuchsia/ui/gfx/cpp/fidl.h>
+#include <fuchsia/ui/scenic/cpp/fidl.h>
 #include <views/cpp/fidl.h>
 #include <views_v1/cpp/fidl.h>
 #include "garnet/bin/ui/view_manager/input/input_connection_impl.h"
@@ -36,22 +36,19 @@ class ViewRegistry : public ViewInspector, public InputOwner {
 
   // VIEW MANAGER REQUESTS
 
-  void GetScenic(fidl::InterfaceRequest<ui::Scenic> scenic_request);
+  void GetScenic(fidl::InterfaceRequest<fuchsia::ui::scenic::Scenic> scenic_request);
   void CreateView(
       fidl::InterfaceRequest<views_v1::View> view_request,
       fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
       views_v1::ViewListenerPtr view_listener,
-      zx::eventpair parent_export_token,
-      fidl::StringPtr label);
+      zx::eventpair parent_export_token, fidl::StringPtr label);
   void CreateViewTree(
       fidl::InterfaceRequest<views_v1::ViewTree> view_tree_request,
-      views_v1::ViewTreeListenerPtr view_tree_listener,
-      fidl::StringPtr label);
+      views_v1::ViewTreeListenerPtr view_tree_listener, fidl::StringPtr label);
 
   // VIEW STUB REQUESTS
 
-  void OnViewResolved(ViewStub* view_stub,
-                      views_v1_token::ViewToken view_token,
+  void OnViewResolved(ViewStub* view_stub, views_v1_token::ViewToken view_token,
                       bool success);
   void TransferViewOwner(views_v1_token::ViewToken view_token,
                          fidl::InterfaceRequest<views_v1_token::ViewOwner>
@@ -72,15 +69,13 @@ class ViewRegistry : public ViewInspector, public InputOwner {
   // Adds a child, reparenting it if necessary.
   // Destroys |container_state| if an error occurs.
   void AddChild(
-      ViewContainerState* container_state,
-      uint32_t child_key,
+      ViewContainerState* container_state, uint32_t child_key,
       fidl::InterfaceHandle<views_v1_token::ViewOwner> child_view_owner,
       zx::eventpair host_import_token);
 
   // Removes a child.
   // Destroys |container_state| if an error occurs.
-  void RemoveChild(ViewContainerState* container_state,
-                   uint32_t child_key,
+  void RemoveChild(ViewContainerState* container_state, uint32_t child_key,
                    fidl::InterfaceRequest<views_v1_token::ViewOwner>
                        transferred_view_owner_request);
 
@@ -111,8 +106,8 @@ class ViewRegistry : public ViewInspector, public InputOwner {
   // VIEW INSPECTOR REQUESTS
 
   void HitTest(views_v1::ViewTreeToken view_tree_token,
-               const geometry::Point3F& ray_origin,
-               const geometry::Point3F& ray_direction,
+               const fuchsia::math::Point3F& ray_origin,
+               const fuchsia::math::Point3F& ray_direction,
                HitTestCallback callback) override;
   void ResolveFocusChain(views_v1::ViewTreeToken view_tree_token,
                          const ResolveFocusChainCallback& callback) override;
@@ -122,14 +117,14 @@ class ViewRegistry : public ViewInspector, public InputOwner {
                 const HasFocusCallback& callback) override;
   void GetSoftKeyboardContainer(
       views_v1_token::ViewToken view_token,
-      fidl::InterfaceRequest<input::SoftKeyboardContainer> container) override;
+      fidl::InterfaceRequest<fuchsia::ui::input::SoftKeyboardContainer> container) override;
   void GetImeService(
       views_v1_token::ViewToken view_token,
-      fidl::InterfaceRequest<input::ImeService> ime_service) override;
+      fidl::InterfaceRequest<fuchsia::ui::input::ImeService> ime_service) override;
 
   // Delivers an event to a view.
   void DeliverEvent(views_v1_token::ViewToken view_token,
-                    input::InputEvent event,
+                    fuchsia::ui::input::InputEvent event,
                     ViewInspector::OnEventDelivered callback) override;
 
   // INPUT CONNECTION CALLBACKS
@@ -194,12 +189,12 @@ class ViewRegistry : public ViewInspector, public InputOwner {
   // INPUT CONNECTION
   void CreateInputConnection(
       views_v1_token::ViewToken view_token,
-      fidl::InterfaceRequest<input::InputConnection> request);
+      fidl::InterfaceRequest<fuchsia::ui::input::InputConnection> request);
 
   // INPUT DISPATCHER
   void CreateInputDispatcher(
       views_v1::ViewTreeToken view_tree_token,
-      fidl::InterfaceRequest<input::InputDispatcher> request);
+      fidl::InterfaceRequest<fuchsia::ui::input::InputDispatcher> request);
 
   // LOOKUP
 
@@ -227,7 +222,7 @@ class ViewRegistry : public ViewInspector, public InputOwner {
   }
 
   component::ApplicationContext* application_context_;
-  ui::ScenicPtr scenic_;
+  fuchsia::ui::scenic::ScenicPtr scenic_;
   scenic_lib::Session session_;
 
   bool traversal_scheduled_ = false;

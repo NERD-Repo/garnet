@@ -18,7 +18,8 @@ package("bt-tools") {
 
   binaries = [
     {
-      name = "bt-cli"
+      name = "bt_cli"
+      dest = "bt-cli"
     },
     {
       name = "bt_fake_hci"

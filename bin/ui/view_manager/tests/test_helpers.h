@@ -17,8 +17,8 @@ void Capture(const fxl::Closure& quit, T* out, T value) {
   quit();
 }
 
-inline geometry::PointFPtr MakePointF(float x, float y) {
-  auto result = geometry::PointF::New();
+inline fuchsia::math::PointFPtr MakePointF(float x, float y) {
+  auto result = fuchsia::math::PointF::New();
   result->x = x;
   result->y = y;
   return result.Pass();
@@ -44,8 +44,7 @@ inline views_v1_token::ViewTokenPtr MakeDummyViewToken(uint32_t value) {
 }
 
 inline mozart::HitTestResultPtr MakeSimpleHitTestResult(
-    mozart::SceneTokenPtr scene_token,
-    mozart::TransformPtr transform) {
+    mozart::SceneTokenPtr scene_token, mozart::TransformPtr transform) {
   auto result = mozart::HitTestResult::New();
   result->root = mozart::SceneHit::New();
   result->root->scene_token = scene_token.Pass();

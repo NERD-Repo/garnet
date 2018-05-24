@@ -4,6 +4,7 @@
 
 #include "garnet/bin/media/media_player/framework/graph.h"
 
+#include "garnet/bin/media/media_player/framework/formatting.h"
 #include "garnet/bin/media/media_player/util/callback_joiner.h"
 #include "garnet/bin/media/media_player/util/threadsafe_callback_joiner.h"
 
@@ -92,7 +93,7 @@ void Graph::DisconnectOutput(const OutputRef& output) {
   FXL_DCHECK(mate);
 
   if (mate->prepared()) {
-    FXL_CHECK(false) << "attempt to disconnect prepared output";
+    FXL_CHECK(false) << "attempt to disconnect prepared input " << *mate;
     return;
   }
 
@@ -113,7 +114,8 @@ void Graph::DisconnectInput(const InputRef& input) {
   FXL_DCHECK(mate);
 
   if (actual_input->prepared()) {
-    FXL_CHECK(false) << "attempt to disconnect prepared input";
+    FXL_CHECK(false) << "attempt to disconnect prepared input "
+                     << *actual_input;
     return;
   }
 
@@ -131,11 +133,15 @@ void Graph::RemoveNodesConnectedToNode(NodeRef node) {
     to_remove.pop_front();
 
     for (size_t i = 0; i < node.input_count(); ++i) {
-      to_remove.push_back(node.input(i).node());
+      if (node.input(i).connected()) {
+        to_remove.push_back(node.input(i).mate().node());
+      }
     }
 
     for (size_t i = 0; i < node.output_count(); ++i) {
-      to_remove.push_back(node.output(i).node());
+      if (node.output(i).connected()) {
+        to_remove.push_back(node.output(i).mate().node());
+      }
     }
 
     RemoveNode(node);
@@ -188,27 +194,27 @@ void Graph::Reset() {
 void Graph::Prepare() {
   for (StageImpl* sink : sinks_) {
     for (size_t i = 0; i < sink->input_count(); ++i) {
-      engine_.PrepareInput(&sink->input(i));
+      PrepareInput(&sink->input(i));
     }
   }
 }
 
 void Graph::PrepareInput(const InputRef& input) {
   FXL_DCHECK(input);
-  engine_.PrepareInput(input.actual());
+  PrepareInput(input.actual());
 }
 
 void Graph::Unprepare() {
   for (StageImpl* sink : sinks_) {
     for (size_t i = 0; i < sink->input_count(); ++i) {
-      engine_.UnprepareInput(&sink->input(i));
+      UnprepareInput(&sink->input(i));
     }
   }
 }
 
 void Graph::UnprepareInput(const InputRef& input) {
   FXL_DCHECK(input);
-  engine_.UnprepareInput(input.actual());
+  UnprepareInput(input.actual());
 }
 
 void Graph::FlushOutput(const OutputRef& output, bool hold_frame,
@@ -291,7 +297,8 @@ void Graph::FlushOutputs(std::queue<Output*>* backlog, bool hold_frame,
 
     Input* input = output->mate();
     FXL_DCHECK(input);
-    FXL_DCHECK(input->prepared());
+    FXL_DCHECK(input->prepared())
+        << "Attempt to flush unprepared input " << *input;
     StageImpl* input_stage = input->stage();
 
     output->stage()->FlushOutput(output->index(),
@@ -307,6 +314,58 @@ void Graph::FlushOutputs(std::queue<Output*>* backlog, bool hold_frame,
   }
 
   callback_joiner->WhenJoined(callback);
+}
+
+void Graph::PrepareInput(Input* input) {
+  FXL_DCHECK(input);
+  VisitUpstream(input, [](Input* input, Output* output) {
+    FXL_DCHECK(input);
+    FXL_DCHECK(output);
+    FXL_DCHECK(!input->prepared()) << *input << " already prepared.";
+    std::shared_ptr<PayloadAllocator> allocator =
+        input->stage()->PrepareInput(input->index());
+    input->set_prepared(true);
+    output->stage()->PrepareOutput(output->index(), allocator);
+  });
+}
+
+void Graph::UnprepareInput(Input* input) {
+  FXL_DCHECK(input);
+  VisitUpstream(input, [](Input* input, Output* output) {
+    FXL_DCHECK(input);
+    FXL_DCHECK(output);
+    FXL_DCHECK(input->prepared()) << *input << " already unprepared.";
+    input->stage()->UnprepareInput(input->index());
+    input->set_prepared(false);
+    output->stage()->UnprepareOutput(output->index());
+  });
+}
+
+void Graph::VisitUpstream(Input* input, const Visitor& visitor) {
+  FXL_DCHECK(input);
+
+  std::queue<Input*> backlog;
+  backlog.push(input);
+
+  while (!backlog.empty()) {
+    Input* input = backlog.front();
+    backlog.pop();
+    FXL_DCHECK(input);
+
+    if (!input->connected()) {
+      continue;
+    }
+
+    Output* output = input->mate();
+    StageImpl* output_stage = output->stage();
+
+    visitor(input, output);
+
+    for (size_t input_index = 0; input_index < output_stage->input_count();
+         ++input_index) {
+      backlog.push(&output_stage->input(input_index));
+    }
+  }
 }
 
 }  // namespace media_player

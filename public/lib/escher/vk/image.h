@@ -49,6 +49,9 @@ class Image : public WaitableResource {
                       GpuMemPtr mem, vk::DeviceSize mem_offset = 0,
                       bool bind_image_memory = true);
 
+  static ImagePtr New(ResourceManager* image_owner, const ImageInfo& info,
+                      GpuAllocator* allocator);
+
   // Returns image_ and mem_ to the owner.
   ~Image() override;
 
@@ -62,9 +65,6 @@ class Image : public WaitableResource {
   const GpuMemPtr& memory() const { return mem_; }
   // Offset of the Image within its GpuMem.
   vk::DeviceSize memory_offset() const { return mem_offset_; }
-
-  // TODO(ES-44): Deprecated.  Use vk() instead.
-  vk::Image get() const { return image_; }
 
  protected:
   // Constructor.  In some cases it is necessary to wrap an un-owned vk::Image,

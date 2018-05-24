@@ -25,7 +25,7 @@ class HostImage : public Image {
  public:
   static const ResourceTypeInfo kTypeInfo;
 
-  // Create Image given a HostMemoryPtr, images::ImageInfoPtr, and
+  // Create Image given a HostMemoryPtr, fuchsia::images::ImageInfoPtr, and
   // memory_offset.
   //
   // |session| is the Session that this image can be referenced from.
@@ -38,15 +38,12 @@ class HostImage : public Image {
   // the caller.
   //
   // Returns the created Image, or nullptr if there was an error.
-  static ImagePtr New(Session* session,
-                      scenic::ResourceId id,
+  static ImagePtr New(Session* session, scenic::ResourceId id,
                       HostMemoryPtr memory,
-                      const images::ImageInfo& host_image_info,
-                      uint64_t memory_offset,
-                      ErrorReporter* error_reporter);
+                      const fuchsia::images::ImageInfo& host_image_info,
+                      uint64_t memory_offset, ErrorReporter* error_reporter);
 
-  static ImagePtr NewForTesting(Session* session,
-                                scenic::ResourceId id,
+  static ImagePtr NewForTesting(Session* session, scenic::ResourceId id,
                                 escher::ResourceManager* image_owner,
                                 HostMemoryPtr host_memory);
 
@@ -64,18 +61,15 @@ class HostImage : public Image {
   // |image| is the escher::Image that is being wrapped.
   // |host_memory_offset| specifies the offset into |memory| where the image is
   // stored.
-  HostImage(Session* session,
-            scenic::ResourceId id,
-            HostMemoryPtr memory,
-            escher::ImagePtr image,
-            uint64_t host_memory_offset,
-            images::ImageInfo host_image_format);
+  HostImage(Session* session, scenic::ResourceId id, HostMemoryPtr memory,
+            escher::ImagePtr image, uint64_t host_memory_offset,
+            fuchsia::images::ImageInfo host_image_format);
 
   HostMemoryPtr memory_;
   // The offset into |memory_| where the image is stored, in bytes.
   uint64_t memory_offset_;
   // The format of the image stored in host memory.
-  images::ImageInfo host_image_format_;
+  fuchsia::images::ImageInfo host_image_format_;
   escher::image_utils::ImageConversionFunction image_conversion_function_ =
       nullptr;
 };

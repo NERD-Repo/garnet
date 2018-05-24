@@ -6,11 +6,10 @@
 
 #include <iostream>
 
-#include <media/cpp/fidl.h>
 #include <lib/async-loop/cpp/loop.h>
 #include <lib/async/cpp/task.h>
+#include <media/cpp/fidl.h>
 
-#include "garnet/bin/media/media_player/fidl/fidl_formatting.h"
 #include "garnet/bin/media/media_player/test/fake_audio_renderer.h"
 #include "garnet/bin/media/media_player/test/fake_wav_reader.h"
 #include "lib/app/cpp/application_context.h"
@@ -23,7 +22,8 @@
 namespace media_player {
 namespace test {
 
-MediaPlayerTestUnattended::MediaPlayerTestUnattended(fxl::Closure quit_callback)
+MediaPlayerTestUnattended::MediaPlayerTestUnattended(
+    std::function<void(int)> quit_callback)
     : application_context_(
           component::ApplicationContext::CreateFromStartupInfo()),
       quit_callback_(quit_callback) {
@@ -38,7 +38,7 @@ MediaPlayerTestUnattended::MediaPlayerTestUnattended(fxl::Closure quit_callback)
       FXL_LOG(INFO) << "MediaPlayerTest "
                     << (fake_audio_renderer_.expected() ? "SUCCEEDED"
                                                         : "FAILED");
-      quit_callback_();
+      quit_callback_(fake_audio_renderer_.expected() ? 0 : 1);
     }
   };
 

@@ -8,7 +8,7 @@
 #include <map>
 #include <utility>
 
-#include <input/cpp/fidl.h>
+#include <fuchsia/ui/input/cpp/fidl.h>
 #include <lib/async/cpp/wait.h>
 #include "garnet/bin/ui/input_reader/input_interpreter.h"
 #include "lib/fsl/io/device_watcher.h"
@@ -27,7 +27,7 @@ namespace mozart {
 // process device input even if the console owns the display.
 class InputReader {
  public:
-  InputReader(input::InputDeviceRegistry* registry,
+  InputReader(fuchsia::ui::input::InputDeviceRegistry* registry,
               bool ignore_console = false);
   ~InputReader();
 
@@ -42,16 +42,14 @@ class InputReader {
   void DeviceAdded(std::unique_ptr<InputInterpreter> interpreter);
   void DeviceRemoved(zx_handle_t handle);
 
-  void OnDeviceHandleReady(async_t* async,
-                           async::WaitBase* wait,
+  void OnDeviceHandleReady(async_t* async, async::WaitBase* wait,
                            zx_status_t status,
                            const zx_packet_signal_t* signal);
-  void OnDisplayHandleReady(async_t* async,
-                            async::WaitBase* wait,
+  void OnDisplayHandleReady(async_t* async, async::WaitBase* wait,
                             zx_status_t status,
                             const zx_packet_signal_t* signal);
 
-  input::InputDeviceRegistry* const registry_;
+  fuchsia::ui::input::InputDeviceRegistry* const registry_;
   const bool ignore_console_;
 
   std::map<zx_handle_t, std::unique_ptr<DeviceInfo>> devices_;

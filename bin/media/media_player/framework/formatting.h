@@ -7,9 +7,11 @@
 
 #include <ostream>
 
-#include "garnet/bin/media/media_player/framework/models/demand.h"
 #include "garnet/bin/media/media_player/framework/packet.h"
 #include "garnet/bin/media/media_player/framework/result.h"
+#include "garnet/bin/media/media_player/framework/stages/input.h"
+#include "garnet/bin/media/media_player/framework/stages/output.h"
+#include "garnet/bin/media/media_player/framework/stages/stage_impl.h"
 #include "garnet/bin/media/media_player/framework/types/audio_stream_type.h"
 #include "garnet/bin/media/media_player/framework/types/stream_type.h"
 #include "garnet/bin/media/media_player/framework/types/video_stream_type.h"
@@ -60,7 +62,10 @@ std::ostream& operator<<(std::ostream& os, VideoStreamType::ColorSpace value);
 std::ostream& operator<<(std::ostream& os, const Bytes& value);
 std::ostream& operator<<(std::ostream& os, media::TimelineRate value);
 std::ostream& operator<<(std::ostream& os, media::TimelineFunction value);
-std::ostream& operator<<(std::ostream& os, Demand value);
+std::ostream& operator<<(std::ostream& os, const GenericNode& value);
+std::ostream& operator<<(std::ostream& os, const StageImpl& value);
+std::ostream& operator<<(std::ostream& os, const Input& value);
+std::ostream& operator<<(std::ostream& os, const Output& value);
 
 template <typename T>
 std::ostream& operator<<(std::ostream& os, Range<T> value) {
@@ -126,7 +131,7 @@ std::ostream& operator<<(std::ostream& os, const std::vector<T>& value) {
 
   int index = 0;
   for (const T& element : value) {
-    os << "\n" << begl << "[" << index++ << "] " << element;
+    os << newl << "[" << index++ << "] " << element;
   }
 
   return os;

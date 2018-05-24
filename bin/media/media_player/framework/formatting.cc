@@ -2,10 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "garnet/bin/media/media_player/framework/formatting.h"
+
 #include <iomanip>
 #include <iostream>
 
-#include "garnet/bin/media/media_player/framework/formatting.h"
+#include "garnet/bin/media/media_player/framework/stages/stage_impl.h"
 
 namespace media_player {
 
@@ -22,14 +24,16 @@ std::ostream& begl(std::ostream& os) {
   return os;
 }
 
-std::ostream& newl(std::ostream& os) {
-  return os << "\n" << begl;
-}
+std::ostream& newl(std::ostream& os) { return os << "\n" << begl; }
 
 // Prints an ns value in 0.124,456,789 format.
 std::ostream& operator<<(std::ostream& os, AsNs value) {
   if (value.value_ == media::kUnspecifiedTime) {
     return os << "<unspecified>";
+  }
+
+  if (value.value_ == media::kMaxTime) {
+    return os << "<maximum>";
   }
 
   if (value.value_ == 0) {
@@ -81,12 +85,18 @@ std::ostream& operator<<(std::ostream& os, const PacketPtr& value) {
     return os << "<null>";
   }
 
-  os << "&" << std::hex << uint64_t(value.get()) << std::dec;
-  os << "/pts:" << value->pts() << "(" << value->pts_rate() << ")";
-  os << "/key:" << (value->keyframe() ? "t" : "f");
-  os << "/eos:" << (value->end_of_stream() ? "t" : "f");
-  os << "/size:" << value->size();
-  os << "/payload:" << std::hex << uint64_t(value->payload()) << std::dec;
+  os << AsNs(value->GetPts(media::TimelineRate::NsPerSecond)) << " ("
+     << value->pts() << "@" << value->pts_rate() << ")"
+     << " " << value->size() << " bytes";
+
+  if (value->keyframe()) {
+    os << " keyframe";
+  }
+
+  if (value->end_of_stream()) {
+    os << " eos";
+  }
+
   return os;
 }
 
@@ -285,16 +295,26 @@ std::ostream& operator<<(std::ostream& os, media::TimelineFunction value) {
             << "::" << AsNs(value.reference_time()) << "@" << value.rate();
 }
 
-std::ostream& operator<<(std::ostream& os, Demand value) {
-  switch (value) {
-    case Demand::kNegative:
-      return os << "negative";
-    case Demand::kNeutral:
-      return os << "=neutral";
-    case Demand::kPositive:
-      return os << "positive";
-  }
-  return os;
+std::ostream& operator<<(std::ostream& os, const GenericNode& value) {
+  return os << value.label();
+}
+
+std::ostream& operator<<(std::ostream& os, const StageImpl& value) {
+  FXL_DCHECK(value.GetGenericNode());
+
+  return os << *value.GetGenericNode();
+}
+
+std::ostream& operator<<(std::ostream& os, const Input& value) {
+  FXL_DCHECK(value.stage());
+
+  return os << *value.stage() << ".input#" << value.index();
+}
+
+std::ostream& operator<<(std::ostream& os, const Output& value) {
+  FXL_DCHECK(value.stage());
+
+  return os << *value.stage() << ".output#" << value.index();
 }
 
 }  // namespace media_player

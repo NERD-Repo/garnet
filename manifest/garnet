@@ -3,9 +3,17 @@
   <imports>
     <localimport file="minimal"/>
     <localimport file="third_party"/>
+    <import remote="https://fuchsia.googlesource.com/build"
+            manifest="manifest/build"
+            name="build"
+            revision="869b3199a639371518073b4aa504d89de67c5f29"/>
+    <import remote="https://fuchsia.googlesource.com/scripts"
+            manifest="manifest/scripts"
+            name="scripts"
+            revision="e998970a7c8c80d7a5294d099f6e27414f88b0ca"/>
     <import remote="https://fuchsia.googlesource.com/zircon"
             manifest="manifest/zircon"
             name="zircon"
-            revision="aaae2220176e46bfb19c8d8180d4cf24228afe15"/>
+            revision="0aae85492baaf547b4d033cfe617fe7a082fba03"/>
     </imports>
 </manifest>

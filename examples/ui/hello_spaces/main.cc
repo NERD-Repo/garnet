@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <ui/cpp/fidl.h>
+#include <fuchsia/ui/scenic/cpp/fidl.h>
 
 #include "lib/app/cpp/application_context.h"
 #include "lib/fsl/tasks/message_loop.h"
@@ -20,7 +20,7 @@ class App {
 
  private:
   // Called asynchronously by constructor.
-  void Init(gfx::DisplayInfo display_info);
+  void Init(fuchsia::ui::gfx::DisplayInfo display_info);
 
   // Updates and presents the scene.  Called first by Init().  Each invocation
   // schedules another call to Update() when the result of the previous
@@ -33,7 +33,7 @@ class App {
   std::unique_ptr<component::ApplicationContext> application_context_;
   fsl::MessageLoop* loop_;
 
-  ui::ScenicPtr scenic_;
+  fuchsia::ui::scenic::ScenicPtr scenic_;
   std::unique_ptr<scenic_lib::Session> session_;
 };
 
@@ -42,16 +42,17 @@ App::App()
           component::ApplicationContext::CreateFromStartupInfo()),
       loop_(fsl::MessageLoop::GetCurrent()) {
   // Connect to the SceneManager service.
-  scenic_ = application_context_->ConnectToEnvironmentService<ui::Scenic>();
+  scenic_ =
+      application_context_->ConnectToEnvironmentService<fuchsia::ui::scenic::Scenic>();
   scenic_.set_error_handler([this] {
     FXL_LOG(INFO) << "Lost connection to Scenic service.";
     loop_->QuitNow();
   });
   scenic_->GetDisplayInfo(
-      [this](gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
+      [this](fuchsia::ui::gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
 }
 
-void App::Init(gfx::DisplayInfo display_info) {
+void App::Init(fuchsia::ui::gfx::DisplayInfo display_info) {
   FXL_LOG(INFO) << "Creating new Session";
 
   // TODO: set up SessionListener.
@@ -73,7 +74,7 @@ void App::Init(gfx::DisplayInfo display_info) {
 void App::Update(uint64_t next_presentation_time) {
   // Present.  Upon success, schedule the next frame's update.
   session_->Present(
-      next_presentation_time, [this](images::PresentationInfo info) {
+      next_presentation_time, [this](fuchsia::images::PresentationInfo info) {
         Update(info.presentation_time + info.presentation_interval);
       });
 }

@@ -10,8 +10,8 @@
 #include <wlan/mlme/mac_frame.h>
 #include <wlan/mlme/sequence.h>
 
-#include <wlan_stats/c/fidl.h>
 #include <wlan_mlme/cpp/fidl.h>
+#include <wlan_stats/c/fidl.h>
 
 #include <fbl/unique_ptr.h>
 #include <wlan/common/macaddr.h>
@@ -104,6 +104,10 @@ class Station : public FrameHandler {
                                     const wlan_rx_info_t& rxinfo) override;
     zx_status_t HandleDataFrame(const ImmutableDataFrame<LlcHeader>& frame,
                                 const wlan_rx_info_t& rxinfo) override;
+    zx_status_t HandleLlcFrame(const LlcHeader& llc_frame, size_t llc_frame_len,
+                               const common::MacAddr& dest, const common::MacAddr& src);
+    zx_status_t HandleAmsduFrame(const ImmutableDataFrame<LlcHeader>& frame,
+                                 const wlan_rx_info_t& rxinfo);
 
     zx_status_t HandleEthFrame(const ImmutableBaseFrame<EthernetII>& frame) override;
     zx_status_t HandleTimeout();
@@ -144,7 +148,7 @@ class Station : public FrameHandler {
     zx::time signal_report_timeout_;
     zx::time last_seen_;
     uint16_t aid_ = 0;
-    common::MovingAverage<uint8_t, uint16_t, 20> avg_rssi_;
+    common::MovingAverage<int8_t, int16_t, 20> avg_rssi_dbm_;
     AuthAlgorithm auth_alg_ = AuthAlgorithm::kOpenSystem;
     eapol::PortState controlled_port_ = eapol::PortState::kBlocked;
 

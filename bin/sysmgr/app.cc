@@ -97,7 +97,10 @@ void App::ConnectToService(const std::string& service_name,
                            zx::channel channel) {
   fbl::RefPtr<fs::Vnode> child;
   svc_root_->Lookup(&child, service_name);
-  vfs_.ServeDirectory(child, std::move(channel));
+  auto status = child->Serve(&vfs_, std::move(channel), 0);
+  if (status != ZX_OK) {
+    FXL_LOG(ERROR) << "Could not serve " << service_name << ": " << status;
+  }
 }
 
 // We explicitly launch netstack because netstack registers itself as
@@ -120,7 +123,7 @@ void App::LaunchWlanstack() {
 }
 
 void App::RegisterSingleton(std::string service_name,
-                            component::ApplicationLaunchInfoPtr launch_info) {
+                            component::LaunchInfoPtr launch_info) {
   auto child = fbl::AdoptRef(
       new fs::Service([this, service_name, launch_info = std::move(launch_info),
                        controller = component::ApplicationControllerPtr()](
@@ -132,7 +135,7 @@ void App::RegisterSingleton(std::string service_name,
           FXL_VLOG(1) << "Starting singleton " << launch_info->url
                       << " for service " << service_name;
           component::Services services;
-          component::ApplicationLaunchInfo dup_launch_info;
+          component::LaunchInfo dup_launch_info;
           dup_launch_info.url = launch_info->url;
           fidl::Clone(launch_info->arguments, &dup_launch_info.arguments);
           dup_launch_info.directory_request = services.NewRequest();
@@ -169,7 +172,7 @@ void App::RegisterAppLoaders(Config::ServiceMap app_loaders) {
   svc_root_->AddEntry(component::Loader::Name_, std::move(child));
 }
 
-void App::LaunchApplication(component::ApplicationLaunchInfo launch_info) {
+void App::LaunchApplication(component::LaunchInfo launch_info) {
   FXL_VLOG(1) << "Launching application " << launch_info.url;
   env_launcher_->CreateApplication(std::move(launch_info), nullptr);
 }

@@ -7,14 +7,14 @@
 
 #include <limits>
 
-#include "garnet/bin/media/media_player/framework/models/sink.h"
+#include "garnet/bin/media/media_player/framework/models/async_node.h"
 #include "garnet/bin/media/media_player/framework/types/stream_type.h"
 #include "lib/media/timeline/timeline_function.h"
 
 namespace media_player {
 
 // Abstract base class for sinks that render packets.
-class Renderer : public Sink {
+class Renderer : public AsyncNode {
  public:
   Renderer();
 
@@ -30,8 +30,10 @@ class Renderer : public Sink {
   // |Provision|.
   void Deprovision();
 
-  // Sink implementation.
-  void Dump(std::ostream& os, NodeRef ref) const override;
+  // AsyncNode implementation.
+  void Dump(std::ostream& os) const override;
+
+  void GetConfiguration(size_t* input_count, size_t* output_count) override;
 
   // Returns the types of the streams the renderer is able
   // to consume.
@@ -98,7 +100,9 @@ class Renderer : public Sink {
     return end_of_stream_pts_ != media::kUnspecifiedTime;
   }
 
-  int64_t end_of_stream_pts() { return end_of_stream_pts_; }
+  // PTS at which end-of-stream is to occur or |kUnspecifiedTime| if an end-
+  // of-stream packet has not yet been encountered.
+  int64_t end_of_stream_pts() const { return end_of_stream_pts_; }
 
   // Returns the minimum PTS for the specified program.
   int64_t min_pts(uint64_t program) {

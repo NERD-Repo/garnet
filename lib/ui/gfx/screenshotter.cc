@@ -18,12 +18,9 @@ namespace gfx {
 
 // static
 void Screenshotter::OnCommandBufferDone(
-    const std::string& filename,
-    const escher::ImagePtr& image,
-    uint32_t width,
-    uint32_t height,
-    vk::Device device,
-    ui::Scenic::TakeScreenshotCallback done_callback) {
+    const std::string& filename, const escher::ImagePtr& image, uint32_t width,
+    uint32_t height, vk::Device device,
+    fuchsia::ui::scenic::Scenic::TakeScreenshotCallback done_callback) {
   // Map the final image so CPU can read it.
   const vk::ImageSubresource sr(vk::ImageAspectFlagBits::eColor, 0, 0);
   vk::SubresourceLayout sr_layout;
@@ -65,7 +62,7 @@ void Screenshotter::OnCommandBufferDone(
 
 void Screenshotter::TakeScreenshot(
     const std::string& filename,
-    ui::Scenic::TakeScreenshotCallback done_callback) {
+    fuchsia::ui::scenic::Scenic::TakeScreenshotCallback done_callback) {
   auto* escher = engine_->escher();
   Compositor* compositor = engine_->GetFirstCompositor();
 

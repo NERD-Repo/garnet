@@ -4,11 +4,10 @@
 
 #pragma once
 
-#include <media/cpp/fidl.h>
 #include <lib/async-loop/cpp/loop.h>
 #include <lib/async/cpp/task.h>
+#include <media/cpp/fidl.h>
 
-#include "garnet/bin/media/media_player/fidl/fidl_formatting.h"
 #include "garnet/bin/media/media_player/test/fake_audio_renderer.h"
 #include "garnet/bin/media/media_player/test/fake_wav_reader.h"
 #include "lib/app/cpp/application_context.h"
@@ -23,11 +22,11 @@ namespace test {
 
 class MediaPlayerTestUnattended {
  public:
-  MediaPlayerTestUnattended(fxl::Closure quit_callback);
+  MediaPlayerTestUnattended(std::function<void(int)> quit_callback);
 
  private:
   std::unique_ptr<component::ApplicationContext> application_context_;
-  fxl::Closure quit_callback_;
+  std::function<void(int)> quit_callback_;
   FakeWavReader fake_reader_;
   FakeAudioRenderer fake_audio_renderer_;
   MediaPlayerPtr media_player_;

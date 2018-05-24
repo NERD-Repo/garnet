@@ -2,6 +2,7 @@
     "imports": [
         "garnet/packages/tests/amber",
         "garnet/packages/tests/asio",
+        "garnet/packages/tests/ath10k",
         "garnet/packages/tests/auth",
         "garnet/packages/tests/bluetooth",
         "garnet/packages/tests/boringssl",
@@ -14,7 +15,6 @@
         "garnet/packages/tests/dhcpd",
         "garnet/packages/tests/escher",
         "garnet/packages/tests/fidl",
-        "garnet/packages/tests/fidl_compatibility_test",
         "garnet/packages/tests/fidl_compatibility_test_server_cpp",
         "garnet/packages/tests/fsl",
         "garnet/packages/tests/fxl",

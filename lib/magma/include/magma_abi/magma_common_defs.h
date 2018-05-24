@@ -12,7 +12,6 @@ extern "C" {
 #endif
 
 #define MAGMA_CAPABILITY_RENDERING 1
-#define MAGMA_CAPABILITY_DISPLAY 2
 
 #define MAGMA_QUERY_DEVICE_ID 1
 #define MAGMA_QUERY_VENDOR_PARAM_0 10000
@@ -42,6 +41,7 @@ extern "C" {
 // possible values for magma_cache_policy_t
 #define MAGMA_CACHE_POLICY_CACHED 0
 #define MAGMA_CACHE_POLICY_WRITE_COMBINING 1
+#define MAGMA_CACHE_POLICY_UNCACHED 2
 
 typedef int32_t magma_status_t;
 

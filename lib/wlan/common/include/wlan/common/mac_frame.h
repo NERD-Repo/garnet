@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <fbl/algorithm.h>
 #include <fbl/type_support.h>
 #include <lib/zx/time.h>
 #include <wlan/common/action_frame.h>
@@ -170,7 +171,6 @@ class CapabilityInfo : public common::BitField<uint16_t> {
     WLAN_BIT_FIELD(delayed_block_ack, 14, 1);
     WLAN_BIT_FIELD(immediate_block_ack, 15, 1);
 };
-
 
 // TODO: Replace native ReasonCode with FIDL ReasonCode
 // IEEE Std 802.11-2016, 9.4.1.7, Table 9-45
@@ -390,6 +390,8 @@ class FrameControl : public common::BitField<uint16_t> {
     bool IsData() const { return type() == FrameType::kData; }
 
     bool HasHtCtrl() const { return htc_order() != 0; }
+
+    constexpr uint16_t len() const { return sizeof(FrameControl); }
 };
 
 // IEEE Std 802.11-2016, 9.3.3.2
@@ -617,12 +619,19 @@ struct DataFrameHeader {
     const DataFrameHeader* const_this() { return const_cast<const DataFrameHeader*>(this); }
 } __PACKED;
 
+// IEEE Std 802.11-2016, 9.3.1.1
+// Officially control frames share no common header .
+class CtrlFrameIdentifier {
+} __PACKED;
+
 // IEEE Std 802.11-2016, 9.3.1.5
-struct PsPollFrame {
+struct PsPollFrame : CtrlFrameIdentifier {
     FrameControl fc;
     uint16_t aid;
     common::MacAddr bssid;
     common::MacAddr ta;
+
+    constexpr uint16_t len() const { return sizeof(FrameControl); }
 } __PACKED;
 
 // IEEE Std 802.2, 1998 Edition, 3.2
@@ -633,6 +642,32 @@ struct LlcHeader {
     uint8_t oui[3];
     uint16_t protocol_id;
     uint8_t payload[];
+} __PACKED;
+
+// IEEE Std 802.11-2016, 9.3.2.2.2
+struct AmsduSubframeHeader {
+    // Note this is the same as the IEEE 802.3 frame format.
+    common::MacAddr da;
+    common::MacAddr sa;
+    uint16_t msdu_len;
+} __PACKED;
+
+// IEEE Std 802.11-2016, 9.3.2.2.3
+struct AmsduSubframeHeaderShort {
+    uint16_t msdu_len;
+} __PACKED;
+
+struct AmsduSubframe {
+    AmsduSubframeHeader hdr;
+    uint8_t msdu[];
+    // uint8_t padding[];
+
+    const LlcHeader* get_msdu() const { return reinterpret_cast<const LlcHeader*>(msdu); }
+
+    size_t PaddingLen(bool is_last_subframe) const {
+        return (is_last_subframe) ? 0 : (fbl::round_up(hdr.msdu_len, 4u) - hdr.msdu_len);
+    }
+
 } __PACKED;
 
 // RFC 1042
@@ -690,6 +725,8 @@ struct EthernetII {
     common::MacAddr src;
     uint16_t ether_type;
     uint8_t payload[];
+
+    constexpr uint16_t len() const { return sizeof(EthernetII); }
 } __PACKED;
 
 // IEEE Std 802.1X-2010, 11.3, Figure 11-1

@@ -36,8 +36,7 @@ class ImagePipeTest : public SessionTest, public escher::ResourceManager {
 };
 
 fxl::RefPtr<fsl::SharedVmo> CreateVmoWithBuffer(
-    size_t buffer_size,
-    std::unique_ptr<uint8_t[]> buffer_pixels) {
+    size_t buffer_size, std::unique_ptr<uint8_t[]> buffer_pixels) {
   auto shared_vmo = CreateSharedVmo(buffer_size);
 
   memcpy(shared_vmo->Map(), buffer_pixels.get(), buffer_size);
@@ -51,10 +50,10 @@ fxl::RefPtr<fsl::SharedVmo> CreateVmoWithCheckerboardPixels(size_t w,
   return CreateVmoWithBuffer(pixels_size, std::move(pixels));
 }
 
-images::ImageInfo CreateImageInfoForBgra8Image(size_t w, size_t h) {
-  images::ImageInfo image_info;
-  image_info.pixel_format = images::PixelFormat::BGRA_8;
-  image_info.tiling = images::Tiling::LINEAR;
+fuchsia::images::ImageInfo CreateImageInfoForBgra8Image(size_t w, size_t h) {
+  fuchsia::images::ImageInfo image_info;
+  image_info.pixel_format = fuchsia::images::PixelFormat::BGRA_8;
+  image_info.tiling = fuchsia::images::Tiling::LINEAR;
   image_info.width = w;
   image_info.height = h;
   image_info.stride = w;
@@ -70,16 +69,14 @@ fxl::RefPtr<fsl::SharedVmo> CreateVmoWithGradientPixels(size_t w, size_t h) {
 class ImagePipeThatCreatesDummyImages : public ImagePipe {
  public:
   ImagePipeThatCreatesDummyImages(
-      Session* session,
-      escher::ResourceManager* dummy_resource_manager)
+      Session* session, escher::ResourceManager* dummy_resource_manager)
       : ImagePipe(session, 0u),
         dummy_resource_manager_(dummy_resource_manager) {}
 
  private:
   // Override to create an Image without a backing escher::Image.
-  ImagePtr CreateImage(Session* session,
-                       MemoryPtr memory,
-                       const images::ImageInfo& image_info,
+  ImagePtr CreateImage(Session* session, MemoryPtr memory,
+                       const fuchsia::images::ImageInfo& image_info,
                        uint64_t memory_offset,
                        ErrorReporter* error_reporter) override {
     return HostImage::NewForTesting(session, 0u, dummy_resource_manager_,
@@ -105,7 +102,7 @@ TEST_F(ImagePipeTest, ImagePipeImageIdMustNotBeZero) {
     // Add the image to the image pipe with ImagePipe.AddImage().
     image_pipe->AddImage(imageId1, std::move(image_info),
                          CopyVmo(checkerboard->vmo()),
-                         images::MemoryType::HOST_MEMORY, 0);
+                         fuchsia::images::MemoryType::HOST_MEMORY, 0);
 
     EXPECT_EQ("ImagePipe::AddImage: Image can not be assigned an ID of 0.",
               reported_errors_.back());
@@ -128,9 +125,9 @@ TEST_F(ImagePipeTest, PresentImagesOutOfOrder) {
     // Add the image to the image pipe with ImagePipe.AddImage().
     image_pipe->AddImage(imageId1, std::move(image_info),
                          CopyVmo(checkerboard->vmo()),
-                         images::MemoryType::HOST_MEMORY, 0);
+                         fuchsia::images::MemoryType::HOST_MEMORY, 0);
   }
-  images::ImagePipe::PresentImageCallback callback = [](auto) {};
+  fuchsia::images::ImagePipe::PresentImageCallback callback = [](auto) {};
 
   image_pipe->PresentImage(imageId1, 1, CopyEventIntoFidlArray(CreateEvent()),
                            CopyEventIntoFidlArray(CreateEvent()), callback);
@@ -159,9 +156,9 @@ TEST_F(ImagePipeTest, PresentImagesInOrder) {
     // Add the image to the image pipe with ImagePipe.AddImage().
     image_pipe->AddImage(imageId1, std::move(image_info),
                          CopyVmo(checkerboard->vmo()),
-                         images::MemoryType::HOST_MEMORY, 0);
+                         fuchsia::images::MemoryType::HOST_MEMORY, 0);
   }
-  images::ImagePipe::PresentImageCallback callback = [](auto) {};
+  fuchsia::images::ImagePipe::PresentImageCallback callback = [](auto) {};
 
   image_pipe->PresentImage(imageId1, 1, CopyEventIntoFidlArray(CreateEvent()),
                            CopyEventIntoFidlArray(CreateEvent()), callback);
@@ -189,7 +186,7 @@ TEST_F(ImagePipeTest, ImagePipePresentTwoFrames) {
     // Add the image to the image pipe with ImagePipe.AddImage().
     image_pipe->AddImage(imageId1, std::move(image_info),
                          CopyVmo(checkerboard->vmo()),
-                         images::MemoryType::HOST_MEMORY, 0);
+                         fuchsia::images::MemoryType::HOST_MEMORY, 0);
   }
 
   // Make checkerboard the currently displayed image.
@@ -229,7 +226,7 @@ TEST_F(ImagePipeTest, ImagePipePresentTwoFrames) {
     // Add the image to the image pipe.
     image_pipe->AddImage(imageId2, std::move(image_info),
                          CopyVmo(gradient->vmo()),
-                         images::MemoryType::HOST_MEMORY, 0);
+                         fuchsia::images::MemoryType::HOST_MEMORY, 0);
   }
 
   // The first image should not have been released.

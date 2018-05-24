@@ -42,13 +42,14 @@ App::App()
           component::ApplicationContext::CreateFromStartupInfo()),
       loop_(fsl::MessageLoop::GetCurrent()) {
   // Connect to the SceneManager service.
-  scenic_ = application_context_->ConnectToEnvironmentService<ui::Scenic>();
+  scenic_ =
+      application_context_->ConnectToEnvironmentService<fuchsia::ui::scenic::Scenic>();
   scenic_.set_error_handler([this] {
     FXL_LOG(INFO) << "Lost connection to Scenic service.";
     loop_->QuitNow();
   });
   scenic_->GetDisplayInfo(
-      [this](gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
+      [this](fuchsia::ui::gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
 }
 
 void App::CreateExampleScene(float display_width, float display_height) {
@@ -130,7 +131,7 @@ void App::CreateExampleScene(float display_width, float display_height) {
   }
 }
 
-void App::Init(gfx::DisplayInfo display_info) {
+void App::Init(fuchsia::ui::gfx::DisplayInfo display_info) {
   FXL_LOG(INFO) << "Creating new Session";
 
   // TODO: set up SessionListener.
@@ -158,7 +159,7 @@ void App::Init(gfx::DisplayInfo display_info) {
 void App::Update(uint64_t next_presentation_time) {
   // Present
   session_->Present(
-      next_presentation_time, [this](images::PresentationInfo info) {
+      next_presentation_time, [this](fuchsia::images::PresentationInfo info) {
         Update(info.presentation_time + info.presentation_interval);
       });
 }

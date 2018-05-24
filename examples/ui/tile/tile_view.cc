@@ -43,7 +43,7 @@ void TileView::ConnectViews() {
     component::Services services;
     component::ApplicationControllerPtr controller;
 
-    component::ApplicationLaunchInfo launch_info;
+    component::LaunchInfo launch_info;
     launch_info.url = url;
     launch_info.directory_request = services.NewRequest();
 
@@ -124,7 +124,7 @@ void TileView::RemoveChildView(uint32_t child_key) {
   InvalidateScene();
 }
 
-void TileView::OnSceneInvalidated(images::PresentationInfo presentation_info) {
+void TileView::OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) {
   if (!has_logical_size() || views_.empty())
     return;
 
@@ -147,7 +147,7 @@ void TileView::OnSceneInvalidated(images::PresentationInfo presentation_info) {
       excess--;
     }
 
-    geometry::RectF layout_bounds;
+    fuchsia::math::RectF layout_bounds;
     if (vertical) {
       layout_bounds.x = 0;
       layout_bounds.y = offset;
@@ -178,8 +178,7 @@ void TileView::OnSceneInvalidated(images::PresentationInfo presentation_info) {
   }
 }
 
-TileView::ViewData::ViewData(const std::string& url,
-                             uint32_t key,
+TileView::ViewData::ViewData(const std::string& url, uint32_t key,
                              component::ApplicationControllerPtr controller,
                              scenic_lib::Session* session)
     : url(url),

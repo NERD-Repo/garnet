@@ -29,19 +29,40 @@ FidlVideoRenderer::FidlVideoRenderer() : arrivals_(true), draws_(true) {
 
 FidlVideoRenderer::~FidlVideoRenderer() {}
 
-const char* FidlVideoRenderer::label() const {
-  return "video renderer";
-}
+const char* FidlVideoRenderer::label() const { return "video_renderer"; }
 
-void FidlVideoRenderer::Dump(std::ostream& os, NodeRef ref) const {
-  Renderer::Dump(os, ref);
+void FidlVideoRenderer::Dump(std::ostream& os) const {
+  Renderer::Dump(os);
+
+  os << newl << "priming:               " << !!prime_callback_;
+  os << newl << "flushed:               " << flushed_;
+  os << newl << "presentation time:     " << AsNs(pts_ns_);
+  os << newl << "video size:            " << video_size().width << "x"
+     << video_size().height;
+  os << newl << "pixel aspect ratio:    " << pixel_aspect_ratio().width << "x"
+     << pixel_aspect_ratio().height;
+
+  if (held_packet_) {
+    os << newl << "held packet:           " << held_packet_;
+  }
+
+  if (!packet_queue_.empty()) {
+    os << newl << "queued packets:" << indent;
+
+    for (auto& packet : packet_queue_) {
+      os << newl << packet;
+    }
+
+    os << outdent;
+  }
 
   if (arrivals_.count() != 0) {
     os << newl << "video packet arrivals: " << indent << arrivals_ << outdent;
   }
 
   if (scenic_lead_.count() != 0) {
-    os << newl << "packet availabiliy on draw: " << indent << draws_ << outdent;
+    os << newl << "packet availability on draw: " << indent << draws_
+       << outdent;
     os << newl << "scenic lead times:";
     os << newl << "    minimum           " << AsNs(scenic_lead_.min());
     os << newl << "    average           " << AsNs(scenic_lead_.average());
@@ -51,9 +72,15 @@ void FidlVideoRenderer::Dump(std::ostream& os, NodeRef ref) const {
   if (frame_rate_.progress_interval_count()) {
     os << newl << "scenic frame rate: " << indent << frame_rate_ << outdent;
   }
+
+  stage()->Dump(os);
 }
 
-void FidlVideoRenderer::Flush(bool hold_frame) {
+void FidlVideoRenderer::FlushInput(bool hold_frame, size_t input_index,
+                                   fxl::Closure callback) {
+  FXL_DCHECK(input_index == 0);
+  FXL_DCHECK(callback);
+
   flushed_ = true;
 
   if (!packet_queue_.empty()) {
@@ -62,21 +89,20 @@ void FidlVideoRenderer::Flush(bool hold_frame) {
     }
 
     while (!packet_queue_.empty()) {
-      packet_queue_.pop();
+      packet_queue_.pop_front();
     }
   }
 
   SetEndOfStreamPts(media::kUnspecifiedTime);
 
   InvalidateViews();
+
+  callback();
 }
 
-std::shared_ptr<PayloadAllocator> FidlVideoRenderer::allocator() {
-  return nullptr;
-}
-
-Demand FidlVideoRenderer::SupplyPacket(PacketPtr packet) {
+void FidlVideoRenderer::PutInputPacket(PacketPtr packet, size_t input_index) {
   FXL_DCHECK(packet);
+  FXL_DCHECK(input_index == 0);
 
   int64_t packet_pts_ns = packet->GetPts(media::TimelineRate::NsPerSecond);
 
@@ -102,10 +128,16 @@ Demand FidlVideoRenderer::SupplyPacket(PacketPtr packet) {
   // Discard packets that fall outside the program range.
   if (flushed_ || packet->payload() == nullptr || packet_pts_ns < min_pts(0) ||
       packet_pts_ns > max_pts(0)) {
-    return need_more_packets() ? Demand::kPositive : Demand::kNegative;
+    if (need_more_packets()) {
+      stage()->RequestInputPacket();
+    }
+
+    return;
   }
 
-  packet_queue_.push(std::move(packet));
+  held_packet_.reset();
+
+  packet_queue_.push_back(std::move(packet));
 
   int64_t now = media::Timeline::local_now();
   AdvanceReferenceTime(now);
@@ -120,7 +152,8 @@ Demand FidlVideoRenderer::SupplyPacket(PacketPtr packet) {
   }
 
   if (need_more_packets()) {
-    return Demand::kPositive;
+    stage()->RequestInputPacket();
+    return;
   }
 
   // We have enough packets. If we're priming, complete the operation.
@@ -128,8 +161,6 @@ Demand FidlVideoRenderer::SupplyPacket(PacketPtr packet) {
     prime_callback_();
     prime_callback_ = nullptr;
   }
-
-  return Demand::kNegative;
 }
 
 void FidlVideoRenderer::SetStreamType(const StreamType& stream_type) {
@@ -145,14 +176,14 @@ void FidlVideoRenderer::Prime(fxl::Closure callback) {
   }
 
   prime_callback_ = callback;
-  stage()->SetDemand(Demand::kPositive);
+  stage()->RequestInputPacket();
 }
 
-geometry::Size FidlVideoRenderer::video_size() const {
+fuchsia::math::Size FidlVideoRenderer::video_size() const {
   return converter_.GetSize();
 }
 
-geometry::Size FidlVideoRenderer::pixel_aspect_ratio() const {
+fuchsia::math::Size FidlVideoRenderer::pixel_aspect_ratio() const {
   return converter_.GetPixelAspectRatio();
 }
 
@@ -182,7 +213,7 @@ void FidlVideoRenderer::AdvanceReferenceTime(int64_t reference_time) {
 }
 
 void FidlVideoRenderer::GetRgbaFrame(uint8_t* rgba_buffer,
-                                     const geometry::Size& rgba_buffer_size) {
+                                     const fuchsia::math::Size& rgba_buffer_size) {
   if (held_packet_) {
     converter_.ConvertFrame(rgba_buffer, rgba_buffer_size.width,
                             rgba_buffer_size.height, held_packet_->payload(),
@@ -209,7 +240,7 @@ void FidlVideoRenderer::DiscardOldPackets() {
          packet_queue_.front()->GetPts(media::TimelineRate::NsPerSecond) <
              pts_ns_) {
     // TODO(dalesat): Add hysteresis.
-    packet_queue_.pop();
+    packet_queue_.pop_front();
     // Make sure the front of the queue has been checked for revised media
     // type.
     CheckForRevisedStreamType(packet_queue_.front());
@@ -254,7 +285,7 @@ void FidlVideoRenderer::OnSceneInvalidated(int64_t reference_time) {
   frame_rate_.AddSample(now, Progressing());
 
   if (need_more_packets()) {
-    stage()->SetDemand(Demand::kPositive);
+    stage()->RequestInputPacket();
   }
 }
 
@@ -262,8 +293,7 @@ FidlVideoRenderer::View::View(
     views_v1::ViewManagerPtr view_manager,
     fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
     std::shared_ptr<FidlVideoRenderer> renderer)
-    : mozart::BaseView(std::move(view_manager),
-                       std::move(view_owner_request),
+    : mozart::BaseView(std::move(view_manager), std::move(view_owner_request),
                        "Video Renderer"),
       renderer_(renderer),
       image_cycler_(session()) {
@@ -275,12 +305,12 @@ FidlVideoRenderer::View::View(
 FidlVideoRenderer::View::~View() {}
 
 void FidlVideoRenderer::View::OnSceneInvalidated(
-    images::PresentationInfo presentation_info) {
+    fuchsia::images::PresentationInfo presentation_info) {
   TRACE_DURATION("motown", "OnSceneInvalidated");
 
   renderer_->OnSceneInvalidated(presentation_info.presentation_time);
 
-  geometry::Size video_size = renderer_->video_size();
+  fuchsia::math::Size video_size = renderer_->video_size();
   if (!has_logical_size() || video_size.width == 0 || video_size.height == 0) {
     return;
   }
@@ -288,7 +318,7 @@ void FidlVideoRenderer::View::OnSceneInvalidated(
   // Update the image.
   const scenic_lib::HostImage* image = image_cycler_.AcquireImage(
       video_size.width, video_size.height, video_size.width * 4u,
-      images::PixelFormat::BGRA_8, images::ColorSpace::SRGB);
+      fuchsia::images::PixelFormat::BGRA_8, fuchsia::images::ColorSpace::SRGB);
   FXL_DCHECK(image);
   renderer_->GetRgbaFrame(static_cast<uint8_t*>(image->image_ptr()),
                           video_size);

@@ -5,8 +5,8 @@
 #ifndef GARNET_BIN_MEDIA_MEDIA_PLAYER_FRAMEWORK_STAGES_ASYNC_NODE_STAGE_H_
 #define GARNET_BIN_MEDIA_MEDIA_PLAYER_FRAMEWORK_STAGES_ASYNC_NODE_STAGE_H_
 
+#include <deque>
 #include <mutex>
-#include <queue>
 
 #include "garnet/bin/media/media_player/framework/models/async_node.h"
 #include "garnet/bin/media/media_player/framework/stages/stage_impl.h"
@@ -35,10 +35,9 @@ class AsyncNodeStageImpl : public AsyncNodeStage, public StageImpl {
   std::shared_ptr<PayloadAllocator> PrepareInput(size_t input_index) override;
 
   void PrepareOutput(size_t output_index,
-                     std::shared_ptr<PayloadAllocator> allocator,
-                     UpstreamCallback callback) override;
+                     std::shared_ptr<PayloadAllocator> allocator) override;
 
-  void UnprepareOutput(size_t output_index, UpstreamCallback callback) override;
+  void UnprepareOutput(size_t output_index) override;
 
   void FlushInput(size_t input_index, bool hold_frame,
                   fxl::Closure callback) override;
@@ -47,7 +46,7 @@ class AsyncNodeStageImpl : public AsyncNodeStage, public StageImpl {
 
  protected:
   // StageImpl implementation.
-  GenericNode* GetGenericNode() override;
+  GenericNode* GetGenericNode() const override;
 
   void Update() override;
 
@@ -55,14 +54,20 @@ class AsyncNodeStageImpl : public AsyncNodeStage, public StageImpl {
   // AsyncNodeStage implementation.
   void PostTask(const fxl::Closure& task) override;
 
+  void Dump(std::ostream& os) const override;
+
   void RequestInputPacket(size_t input_index = 0) override;
 
   void PutOutputPacket(PacketPtr packet, size_t output_index = 0) override;
 
   // Takes a packet from the queue for |output| if that queue isn't empty and
-  // the output's demand is |kPositive|. Returns true if and only if the queue
-  // is empty and the output's demand is |kPositive|.
+  // the output needs a packet. Returns true if and only if the queue is empty
+  // and the output needs a packet.
   bool MaybeTakePacketForOutput(const Output& output, PacketPtr* packet_out);
+
+  void DumpInputDetail(std::ostream& os, const Input& input) const;
+
+  void DumpOutputDetail(std::ostream& os, const Output& output) const;
 
   // The fields below are not changed between the completion of the constructor
   // and the initiation of the destructor.
@@ -71,7 +76,7 @@ class AsyncNodeStageImpl : public AsyncNodeStage, public StageImpl {
   std::vector<Output> outputs_;
 
   mutable std::mutex packets_per_output_mutex_;
-  std::vector<std::queue<PacketPtr>> packets_per_output_
+  std::vector<std::deque<PacketPtr>> packets_per_output_
       FXL_GUARDED_BY(packets_per_output_mutex_);
 };
 

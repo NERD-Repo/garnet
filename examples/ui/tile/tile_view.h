@@ -32,8 +32,7 @@ class TileView : public mozart::BaseView, public presentation::Presenter {
 
  private:
   struct ViewData {
-    explicit ViewData(const std::string& url,
-                      uint32_t key,
+    explicit ViewData(const std::string& url, uint32_t key,
                       component::ApplicationControllerPtr controller,
                       scenic_lib::Session* session);
     ~ViewData();
@@ -51,12 +50,15 @@ class TileView : public mozart::BaseView, public presentation::Presenter {
   void OnChildAttached(uint32_t child_key,
                        views_v1::ViewInfo child_view_info) override;
   void OnChildUnavailable(uint32_t child_key) override;
-  void OnSceneInvalidated(images::PresentationInfo presentation_info) override;
+  void OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) override;
 
   // |Presenter|:
   void Present(
       fidl::InterfaceHandle<views_v1_token::ViewOwner> view_owner,
       fidl::InterfaceRequest<presentation::Presentation> presentation) override;
+  void HACK_SetRendererParams(
+      bool enable_clipping,
+      ::fidl::VectorPtr<fuchsia::ui::gfx::RendererParam> params) override{};
 
   // Set up environment with a |Presenter| service.
   // We launch apps with this environment.

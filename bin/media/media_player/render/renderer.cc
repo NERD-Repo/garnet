@@ -11,9 +11,7 @@
 
 namespace media_player {
 
-Renderer::Renderer() {
-  ClearPendingTimelineFunction();
-}
+Renderer::Renderer() { ClearPendingTimelineFunction(); }
 
 Renderer::~Renderer() {}
 
@@ -27,15 +25,23 @@ void Renderer::Deprovision() {
   update_callback_ = nullptr;
 }
 
-void Renderer::Dump(std::ostream& os, NodeRef ref) const {
-  os << label() << indent;
-  os << newl << "timeline:         " << current_timeline_function();
-  os << newl << "end of stream:    " << end_of_stream();
-  os << outdent;
+void Renderer::Dump(std::ostream& os) const {
+  os << label();
+  os << newl << "timeline:              " << current_timeline_function();
+  os << newl << "end of stream:         " << end_of_stream();
+  os << newl << "end of stream pts:     " << AsNs(end_of_stream_pts());
+  os << newl << "minimum pts:           " << AsNs(program_0_min_pts_);
+  os << newl << "maximum pts:           " << AsNs(program_0_max_pts_);
 }
 
-void Renderer::SetProgramRange(uint64_t program,
-                               int64_t min_pts,
+void Renderer::GetConfiguration(size_t* input_count, size_t* output_count) {
+  FXL_DCHECK(input_count);
+  FXL_DCHECK(output_count);
+  *input_count = 1;
+  *output_count = 0;
+}
+
+void Renderer::SetProgramRange(uint64_t program, int64_t min_pts,
                                int64_t max_pts) {
   FXL_DCHECK(program == 0) << "Only program 0 is currently supported.";
   program_0_min_pts_ = min_pts;

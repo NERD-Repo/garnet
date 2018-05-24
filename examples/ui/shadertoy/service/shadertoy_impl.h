@@ -31,11 +31,11 @@ class ShadertoyImpl : public shadertoy::Shadertoy {
   void SetResolution(uint32_t width, uint32_t height) override;
 
   // |Shadertoy|
-  void SetMouse(gfx::vec4 i_mouse) override;
+  void SetMouse(fuchsia::ui::gfx::vec4 i_mouse) override;
 
   // |Shadertoy|
   void SetImage(uint32_t channel,
-                ::fidl::InterfaceRequest<images::ImagePipe> request) override;
+                ::fidl::InterfaceRequest<fuchsia::images::ImagePipe> request) override;
 
   fxl::RefPtr<ShadertoyState> state_;
 

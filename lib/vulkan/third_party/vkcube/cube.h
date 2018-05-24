@@ -41,7 +41,7 @@
 #include "lib/fxl/log_settings.h"
 #include "lib/fxl/logging.h"
 
-#include <gfx/cpp/fidl.h>
+#include <fuchsia/ui/gfx/cpp/fidl.h>
 #include "garnet/public/lib/ui/scenic/fidl_helpers.h"
 #include "garnet/public/lib/ui/scenic/types.h"
 #include "lib/ui/scenic/client/resources.h"
@@ -85,7 +85,7 @@ typedef struct {
 struct FuchsiaState {
     fsl::MessageLoop loop;
     uint32_t image_pipe_handle = 0;
-    images::ImagePipePtr pipe;
+    fuchsia::images::ImagePipePtr pipe;
     std::unique_ptr<mozart::ViewProviderService> view_provider_service;
     uint32_t num_frames = 60;
     uint32_t elapsed_frames = 0;

@@ -9,16 +9,15 @@
 
 namespace scenic {
 
-Session::Session(Scenic* owner,
-                 SessionId id,
-                 ::fidl::InterfaceHandle<ui::SessionListener> listener)
+Session::Session(Scenic* owner, SessionId id,
+                 ::fidl::InterfaceHandle<fuchsia::ui::scenic::SessionListener> listener)
     : scenic_(owner), id_(id), listener_(listener.Bind()), weak_factory_(this) {
   FXL_DCHECK(scenic_);
 }
 
 Session::~Session() = default;
 
-void Session::Enqueue(::fidl::VectorPtr<ui::Command> cmds) {
+void Session::Enqueue(::fidl::VectorPtr<fuchsia::ui::scenic::Command> cmds) {
   for (auto& cmd : *cmds) {
     // TODO(SCN-710): This dispatch is far from optimal in terms of performance.
     // We need to benchmark it to figure out whether it matters.
@@ -29,7 +28,7 @@ void Session::Enqueue(::fidl::VectorPtr<ui::Command> cmds) {
     if (dispatcher) {
       dispatcher->DispatchCommand(std::move(cmd));
     } else {
-      ui::Event event;
+      fuchsia::ui::scenic::Event event;
       event.set_unhandled(std::move(cmd));
       EnqueueEvent(std::move(event));
     }
@@ -57,10 +56,8 @@ void Session::SetCommandDispatchers(
   }
 }
 
-void Session::HitTest(uint32_t node_id,
-                      ::gfx::vec3 ray_origin,
-                      ::gfx::vec3 ray_direction,
-                      HitTestCallback callback) {
+void Session::HitTest(uint32_t node_id, ::fuchsia::ui::gfx::vec3 ray_origin,
+                      ::fuchsia::ui::gfx::vec3 ray_direction, HitTestCallback callback) {
   auto& dispatcher = dispatchers_[System::TypeId::kGfx];
   FXL_DCHECK(dispatcher);
   TempSessionDelegate* delegate =
@@ -69,8 +66,8 @@ void Session::HitTest(uint32_t node_id,
                     callback);
 }
 
-void Session::HitTestDeviceRay(::gfx::vec3 ray_origin,
-                               ::gfx::vec3 ray_direction,
+void Session::HitTestDeviceRay(::fuchsia::ui::gfx::vec3 ray_origin,
+                               ::fuchsia::ui::gfx::vec3 ray_direction,
                                HitTestCallback callback) {
   auto& dispatcher = dispatchers_[System::TypeId::kGfx];
   FXL_DCHECK(dispatcher);
@@ -80,7 +77,7 @@ void Session::HitTestDeviceRay(::gfx::vec3 ray_origin,
                              callback);
 }
 
-void Session::EnqueueEvent(ui::Event event) {
+void Session::EnqueueEvent(fuchsia::ui::scenic::Event event) {
   // If this is the first EnqueueEvent() since the last FlushEvent(), post a
   // task to ensure that FlushEvents() is called.
   if (buffered_events_->empty()) {

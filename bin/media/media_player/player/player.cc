@@ -12,11 +12,6 @@
 #include "lib/fxl/logging.h"
 
 namespace media_player {
-namespace {
-
-static const Problem kMediaTypeNotSupported{kProblemMediaTypeNotSupported, ""};
-
-}  // namespace
 
 Player::Player(async_t* async) : graph_(async), async_(async) {}
 
@@ -25,20 +20,11 @@ Player::~Player() {}
 void Player::SetSourceSegment(std::unique_ptr<SourceSegment> source_segment,
                               fxl::Closure callback) {
   if (source_segment_) {
-    source_segment_->Deprovision();
-
     while (!streams_.empty()) {
       OnStreamRemoval(streams_.size() - 1);
     }
 
-    for (auto& stream : streams_) {
-      if (stream.sink_segment_) {
-        if (stream.sink_segment_->connected()) {
-          stream.sink_segment_->Unprepare();
-          stream.sink_segment_->Disconnect();
-        }
-      }
-    }
+    source_segment_->Deprovision();
   }
 
   source_segment_ = std::move(source_segment);
@@ -208,22 +194,6 @@ const Problem* Player::problem() const {
     return source_segment_->problem();
   }
 
-  // If there's video and a video sink segment, but we couldn't connect it,
-  // report that as a problem.
-  if (content_has_medium(StreamType::Medium::kVideo) &&
-      has_sink_segment(StreamType::Medium::kVideo) &&
-      !medium_connected(StreamType::Medium::kVideo)) {
-    return &kMediaTypeNotSupported;
-  }
-
-  // If there's audio and a audio sink segment, but we couldn't connect it,
-  // report that as a problem.
-  if (content_has_medium(StreamType::Medium::kAudio) &&
-      has_sink_segment(StreamType::Medium::kAudio) &&
-      !medium_connected(StreamType::Medium::kAudio)) {
-    return &kMediaTypeNotSupported;
-  }
-
   // See if any of the sink segments have a problem to report.
   for (auto& stream : streams_) {
     if (stream.sink_segment_ && stream.sink_segment_->problem()) {
@@ -374,7 +344,12 @@ void Player::ConnectAndPrepareStream(Stream* stream) {
 
   stream->sink_segment_->Connect(
       *stream->stream_type_, stream->output_,
-      [this, medium = stream->stream_type_->medium()]() {
+      [this, medium = stream->stream_type_->medium()](Result result) {
+        if (result != Result::kOk) {
+          // The segment will report a problem separately.
+          return;
+        }
+
         Stream* stream = GetStream(medium);
         if (stream && stream->sink_segment_) {
           stream->sink_segment_->Prepare();
@@ -386,7 +361,7 @@ void Player::ConnectAndPrepareStream(Stream* stream) {
 
 void Player::Dump(std::ostream& os) const {
   os << newl << "source:             ";
-  source_node().GetGenericNode()->Dump(os, source_node());
+  source_node().GetGenericNode()->Dump(os);
 }
 
 }  // namespace media_player

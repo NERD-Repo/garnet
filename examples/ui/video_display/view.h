@@ -50,12 +50,12 @@ class View : public mozart::BaseView {
   zx_status_t OnSetFormat(uint64_t max_frame_size);
 
   // From mozart::BaseView. Called on a mouse or keyboard event.
-  virtual bool OnInputEvent(input::InputEvent event) override;
+  virtual bool OnInputEvent(fuchsia::ui::input::InputEvent event) override;
 
   // From mozart::BaseView. Called when the scene is "invalidated".
   // Invalidation should happen when the surfaces change, but not
   // necessarily when a texture changes.
-  void OnSceneInvalidated(images::PresentationInfo presentation_info) override;
+  void OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) override;
 
   // Creates a new buffer and registers an image with scenic.  If the buffer
   // already exists, returns a pointer to that buffer.  Buffer is not required
@@ -79,7 +79,7 @@ class View : public mozart::BaseView {
   scenic_lib::ShapeNode node_;
 
   // Image pipe to send to display
-  images::ImagePipePtr image_pipe_;
+  fuchsia::images::ImagePipePtr image_pipe_;
 
   std::vector<std::unique_ptr<FencedBuffer>> frame_buffers_;
   uint32_t last_buffer_index_ = 0;

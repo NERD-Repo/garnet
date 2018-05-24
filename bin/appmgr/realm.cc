@@ -17,10 +17,12 @@
 
 #include <utility>
 
+#include "garnet/bin/appmgr/cmx_metadata.h"
 #include "garnet/bin/appmgr/dynamic_library_loader.h"
+#include "garnet/bin/appmgr/hub/realm_hub.h"
 #include "garnet/bin/appmgr/namespace_builder.h"
-#include "garnet/bin/appmgr/realm_hub_holder.h"
 #include "garnet/bin/appmgr/runtime_metadata.h"
+#include "garnet/bin/appmgr/sandbox_metadata.h"
 #include "garnet/bin/appmgr/url_resolver.h"
 #include "garnet/lib/far/format.h"
 #include "lib/app/cpp/connect.h"
@@ -51,7 +53,7 @@ enum class LaunchType {
 };
 
 std::vector<const char*> GetArgv(const std::string& argv0,
-                                 const ApplicationLaunchInfo& launch_info) {
+                                 const LaunchInfo& launch_info) {
   std::vector<const char*> argv;
   argv.reserve(launch_info.arguments->size() + 1);
   argv.push_back(argv0.c_str());
@@ -88,7 +90,7 @@ void PushFileDescriptor(component::FileDescriptorPtr fd, int new_fd,
 
 zx::process CreateProcess(const zx::job& job, fsl::SizedVmo data,
                           const std::string& argv0,
-                          ApplicationLaunchInfo launch_info,
+                          LaunchInfo launch_info,
                           zx::channel loader_service,
                           fdio_flat_namespace_t* flat) {
   if (!data)
@@ -164,11 +166,11 @@ struct ExportedDirChannels {
   // dir.
   zx::channel exported_dir;
 
-  // The server side of our client's |ApplicationLaunchInfo.directory_request|.
+  // The server side of our client's |LaunchInfo.directory_request|.
   zx::channel client_request;
 };
 
-ExportedDirChannels BindDirectory(ApplicationLaunchInfo* launch_info) {
+ExportedDirChannels BindDirectory(LaunchInfo* launch_info) {
   zx::channel exported_dir_server, exported_dir_client;
   zx_status_t status =
       zx::channel::create(0u, &exported_dir_server, &exported_dir_client);
@@ -255,6 +257,10 @@ zx::channel Realm::OpenRootInfoDir() {
   return h2;
 }
 
+HubInfo Realm::HubInfo() {
+  return component::HubInfo(label_, koid_, hub_.dir());
+}
+
 void Realm::CreateNestedJob(
     zx::channel host_directory,
     fidl::InterfaceRequest<ApplicationEnvironment> environment,
@@ -267,7 +273,7 @@ void Realm::CreateNestedJob(
   child->AddBinding(std::move(environment));
 
   // update hub
-  hub_.AddRealm(child);
+  hub_.AddRealm(child->HubInfo());
 
   children_.emplace(child, std::move(controller));
 
@@ -280,7 +286,7 @@ void Realm::CreateNestedJob(
 }
 
 void Realm::CreateApplication(
-    ApplicationLaunchInfo launch_info,
+    LaunchInfo launch_info,
     fidl::InterfaceRequest<ApplicationController> controller) {
   if (launch_info.url.get().empty()) {
     FXL_LOG(ERROR) << "Cannot create application because launch_info contains"
@@ -300,7 +306,7 @@ void Realm::CreateApplication(
   loader_->LoadComponent(
       url, fxl::MakeCopyable([this, launch_info = std::move(launch_info),
                               controller = std::move(controller)](
-                                 ApplicationPackagePtr package) mutable {
+                                 PackagePtr package) mutable {
         fxl::RefPtr<Namespace> ns = default_namespace_;
         if (launch_info.additional_services) {
           ns = fxl::MakeRefCounted<Namespace>(
@@ -342,7 +348,7 @@ std::unique_ptr<ApplicationEnvironmentControllerImpl> Realm::ExtractChild(
   auto controller = std::move(it->second);
 
   // update hub
-  hub_.RemoveRealm(child);
+  hub_.RemoveRealm(child->HubInfo());
 
   children_.erase(it);
   return controller;
@@ -357,7 +363,7 @@ std::unique_ptr<ApplicationControllerImpl> Realm::ExtractApplication(
   auto application = std::move(it->second);
 
   // update hub
-  hub_.RemoveComponent(application.get());
+  hub_.RemoveComponent(application->HubInfo());
 
   applications_.erase(it);
   return application;
@@ -369,7 +375,7 @@ void Realm::AddBinding(
 }
 
 void Realm::CreateApplicationWithProcess(
-    ApplicationPackagePtr package, ApplicationLaunchInfo launch_info,
+    PackagePtr package, LaunchInfo launch_info,
     fidl::InterfaceRequest<ApplicationController> controller,
     fxl::RefPtr<Namespace> ns) {
   zx::channel svc = ns->services().OpenAsDirectory();
@@ -407,14 +413,14 @@ void Realm::CreateApplicationWithProcess(
         ExportedDirType::kPublicDebugCtrlLayout,
         std::move(channels.exported_dir), std::move(channels.client_request));
     // update hub
-    hub_.AddComponent(application.get());
+    hub_.AddComponent(application->HubInfo());
     ApplicationControllerImpl* key = application.get();
     applications_.emplace(key, std::move(application));
   }
 }
 
 void Realm::CreateApplicationFromPackage(
-    ApplicationPackagePtr package, ApplicationLaunchInfo launch_info,
+    PackagePtr package, LaunchInfo launch_info,
     fidl::InterfaceRequest<ApplicationController> controller,
     fxl::RefPtr<Namespace> ns) {
   zx::channel svc = ns->services().OpenAsDirectory();
@@ -423,6 +429,8 @@ void Realm::CreateApplicationFromPackage(
 
   zx::channel pkg;
   std::unique_ptr<archive::FileSystem> pkg_fs;
+  std::string cmx_data;
+  std::string cmx_path = CmxMetadata::GetCmxPath(package->resolved_url.get());
   std::string sandbox_data;
   std::string runtime_data;
   ExportedDirType exported_dir_layout(ExportedDirType::kPublicDebugCtrlLayout);
@@ -433,6 +441,7 @@ void Realm::CreateApplicationFromPackage(
     pkg_fs =
         std::make_unique<archive::FileSystem>(std::move(package->data->vmo));
     pkg = pkg_fs->OpenAsDirectory();
+    pkg_fs->GetFileAsString(cmx_path, &cmx_data);
     pkg_fs->GetFileAsString(kSandboxPath, &sandbox_data);
     if (!pkg_fs->GetFileAsString(kRuntimePath, &runtime_data))
       app_data = pkg_fs->GetFileAsVMO(kAppPath);
@@ -442,6 +451,9 @@ void Realm::CreateApplicationFromPackage(
   } else if (package->directory) {
     fxl::UniqueFD fd =
         fsl::OpenChannelAsFileDescriptor(std::move(package->directory));
+    if (!cmx_path.empty()) {
+      files::ReadFileToStringAt(fd.get(), cmx_path, &cmx_data);
+    }
     files::ReadFileToStringAt(fd.get(), kSandboxPath, &sandbox_data);
     if (!files::ReadFileToStringAt(fd.get(), kRuntimePath, &runtime_data))
       VmoFromFilenameAt(fd.get(), kAppPath, &app_data);
@@ -464,12 +476,20 @@ void Realm::CreateApplicationFromPackage(
   builder.AddPackage(std::move(pkg));
   builder.AddServices(std::move(svc));
 
-  if (!sandbox_data.empty()) {
+  // If meta/*.cmx exists, read sandbox data from it, instead of meta/sandbox.
+  // TODO(CP-37): Remove meta/sandbox once completely migrated.
+  if (!sandbox_data.empty() || !cmx_data.empty()) {
     SandboxMetadata sandbox;
-    if (!sandbox.Parse(sandbox_data)) {
-      FXL_LOG(ERROR) << "Failed to parse sandbox metadata for "
-                     << launch_info.url;
-      return;
+
+    CmxMetadata cmx;
+    if (!cmx_data.empty()) {
+      sandbox.Parse(cmx.ParseSandboxMetadata(cmx_data));
+    } else {
+      if (!sandbox.Parse(sandbox_data)) {
+        FXL_LOG(ERROR) << "Failed to parse sandbox metadata for "
+                       << launch_info.url;
+        return;
+      }
     }
 
     // If an app has the "shell" feature, then we use the libraries from the
@@ -502,7 +522,7 @@ void Realm::CreateApplicationFromPackage(
           exported_dir_layout, std::move(channels.exported_dir),
           std::move(channels.client_request));
       // update hub
-      hub_.AddComponent(application.get());
+      hub_.AddComponent(application->HubInfo());
       ApplicationControllerImpl* key = application.get();
       applications_.emplace(key, std::move(application));
     }
@@ -514,10 +534,10 @@ void Realm::CreateApplicationFromPackage(
       return;
     }
 
-    ApplicationPackage inner_package;
+    Package inner_package;
     inner_package.resolved_url = package->resolved_url;
 
-    ApplicationStartupInfo startup_info;
+    StartupInfo startup_info;
     startup_info.launch_info = std::move(launch_info);
     startup_info.flat_namespace = builder.BuildForRunner();
 
@@ -540,7 +560,7 @@ ApplicationRunnerHolder* Realm::GetOrCreateRunner(const std::string& runner) {
   if (result.second) {
     Services runner_services;
     ApplicationControllerPtr runner_controller;
-    ApplicationLaunchInfo runner_launch_info;
+    LaunchInfo runner_launch_info;
     runner_launch_info.url = runner;
     runner_launch_info.directory_request = runner_services.NewRequest();
     CreateApplication(std::move(runner_launch_info),
