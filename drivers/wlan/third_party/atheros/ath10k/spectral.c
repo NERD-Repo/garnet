@@ -66,7 +66,7 @@ static inline size_t ath10k_spectral_fix_bin_size(struct ath10k* ar,
      * radar detection purpose. Strip last 'm' bytes to make bin size
      * as a valid one. 'm' can take possible values of 4, 12.
      */
-    if (!is_power_of_2(bin_len)) {
+    if (!IS_POW2(bin_len)) {
         bin_len -= ar->hw_params.spectral_bin_discard;
     }
 
@@ -476,7 +476,7 @@ static ssize_t write_file_spectral_bins(struct file* file,
         return -EINVAL;
     }
 
-    if (!is_power_of_2(val)) {
+    if (!IS_POW2(val)) {
         return -EINVAL;
     }
 

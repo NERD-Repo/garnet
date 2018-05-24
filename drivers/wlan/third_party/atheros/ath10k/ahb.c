@@ -295,7 +295,7 @@ static void ath10k_ahb_halt_axi_bus(struct ath10k* ar, uint32_t haltreq_reg,
             break;
         }
 
-        mdelay(1);
+        zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
     } while (time_before(jiffies, timeout));
 
     if (!(val & AHB_AXI_BUS_HALT_ACK)) {

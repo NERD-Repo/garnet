@@ -69,6 +69,8 @@
 
 #define IS_ALIGNED(a, b) (!(((uintptr_t)(a)) & (((uintptr_t)(b))-1)))
 
+#define IS_POW2(x) (((x) & ((x) - 1)) == 0)
+
 #define LOG2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
 
@@ -79,15 +81,6 @@
         (*(volatile uint32_t*)(uintptr_t)(addr)) = (value);   \
     } while (0)
 
-
-#define is_power_of_2(x) (((x) & ((x) - 1)) == 0)
-
-#define mdelay(msecs)                                                                    \
-    do {                                                                                 \
-            zx_time_t busy_loop_end = zx_clock_get(ZX_CLOCK_MONOTONIC) + ZX_MSEC(msecs); \
-        while (zx_clock_get(ZX_CLOCK_MONOTONIC) < busy_loop_end) {                       \
-        }                                                                                \
-    } while (0)
 
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 #define min_t(t,a,b) (((t)(a) < (t)(b)) ? (t)(a) : (t)(b))

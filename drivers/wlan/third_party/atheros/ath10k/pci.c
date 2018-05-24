@@ -910,7 +910,7 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
         i = 0;
         while (ath10k_ce_completed_send_next_nolock(ce_diag,
                 NULL) != ZX_OK) {
-            mdelay(1);
+            zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
                 ret = ZX_ERR_SHOULD_WAIT;
                 goto done;
@@ -922,7 +922,7 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
                 (void**)&buf,
                 &completed_nbytes)
                 != ZX_OK) {
-            mdelay(1);
+            zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
                 ret = ZX_ERR_SHOULD_WAIT;
@@ -1063,7 +1063,7 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
         i = 0;
         while (ath10k_ce_completed_send_next_nolock(ce_diag,
                 NULL) != ZX_OK) {
-            mdelay(1);
+            zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
                 ret = ZX_ERR_SHOULD_WAIT;
@@ -1076,7 +1076,7 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
                 (void**)&buf,
                 &completed_nbytes)
                 != ZX_OK) {
-            mdelay(1);
+            zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
                 ret = ZX_ERR_SHOULD_WAIT;
@@ -2828,7 +2828,7 @@ zx_status_t ath10k_pci_wait_for_target_init(struct ath10k* ar) {
             ath10k_pci_enable_legacy_irq(ar);
         }
 
-        mdelay(10);
+        zx_nanosleep(zx_deadline_after(ZX_MSEC(10)));
     } while (zx_clock_get(ZX_CLOCK_MONOTONIC) < timeout);
 
     ath10k_pci_disable_and_clear_legacy_irq(ar);

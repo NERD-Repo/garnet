@@ -42,7 +42,7 @@
 static int ath10k_htt_rx_get_csum_state(struct sk_buff* skb);
 #endif // NEEDS PORTING
 
-static_assert(is_power_of_2(HTT_RX_BUF_HTABLE_SZ),
+static_assert(IS_POW2(HTT_RX_BUF_HTABLE_SZ),
               "Invalid hash table size, must be power of 2");
 
 static struct ath10k_msg_buf*
@@ -422,7 +422,7 @@ zx_status_t ath10k_htt_rx_alloc(struct ath10k_htt* htt) {
     htt->rx_ring.size_mask = htt->rx_ring.size - 1;
     htt->rx_ring.fill_level = HTT_RX_RING_FILL_LEVEL;
 
-    if (!is_power_of_2(htt->rx_ring.size)) {
+    if (!IS_POW2(htt->rx_ring.size)) {
         ath10k_warn("htt rx ring size (%d) is not power of 2\n", htt->rx_ring.size);
         return ZX_ERR_INVALID_ARGS;
     }
