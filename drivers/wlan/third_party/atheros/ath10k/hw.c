@@ -523,20 +523,20 @@ static void ath10k_hw_qca988x_set_coverage_class(struct ath10k* ar,
 
     slottime = MS(slottime_reg, WAVE1_PCU_GBL_IFS_SLOT);
     slottime += value * 3 * phyclk;
-    slottime = min_t(uint32_t, slottime, WAVE1_PCU_GBL_IFS_SLOT_MAX);
+    slottime = MIN_T(uint32_t, slottime, WAVE1_PCU_GBL_IFS_SLOT_MAX);
     slottime = SM(slottime, WAVE1_PCU_GBL_IFS_SLOT);
     slottime_reg = (slottime_reg & ~WAVE1_PCU_GBL_IFS_SLOT_MASK) | slottime;
 
     /* Update ack timeout (lower halfword). */
     ack_timeout = MS(timeout_reg, WAVE1_PCU_ACK_CTS_TIMEOUT_ACK);
     ack_timeout += 3 * value * phyclk;
-    ack_timeout = min_t(uint32_t, ack_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
+    ack_timeout = MIN_T(uint32_t, ack_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
     ack_timeout = SM(ack_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_ACK);
 
     /* Update cts timeout (upper halfword). */
     cts_timeout = MS(timeout_reg, WAVE1_PCU_ACK_CTS_TIMEOUT_CTS);
     cts_timeout += 3 * value * phyclk;
-    cts_timeout = min_t(uint32_t, cts_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
+    cts_timeout = MIN_T(uint32_t, cts_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_MAX);
     cts_timeout = SM(cts_timeout, WAVE1_PCU_ACK_CTS_TIMEOUT_CTS);
 
     timeout_reg = ack_timeout | cts_timeout;

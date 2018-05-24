@@ -26,10 +26,10 @@ static inline uint32_t ath10k_frm_hdr_len(const void* buf, size_t len) {
 
     /* In some rare cases (e.g. fcs error) device reports frame buffer
      * shorter than what frame header implies (e.g. len = 0). The buffer
-     * can still be accessed so do a simple min() to guarantee caller
+     * can still be accessed so do a simple MIN() to guarantee caller
      * doesn't get value greater than len.
      */
-    return min_t(uint32_t, len, ieee80211_hdrlen(hdr->frame_control));
+    return MIN_T(uint32_t, len, ieee80211_hdrlen(hdr->frame_control));
 }
 #endif
 

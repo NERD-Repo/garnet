@@ -867,7 +867,7 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
      * Allocate a temporary buffer to hold caller's data
      * to be DMA'ed from Target.
      */
-    alloc_nbytes = min_t(unsigned int, nbytes, DIAG_TRANSFER_LIMIT);
+    alloc_nbytes = MIN_T(unsigned int, nbytes, DIAG_TRANSFER_LIMIT);
 
     struct ath10k_msg_buf* iobuf;
     ret = ath10k_msg_buf_alloc(ar, &iobuf, ATH10K_MSG_TYPE_BASE, alloc_nbytes);
@@ -879,7 +879,7 @@ static zx_status_t ath10k_pci_diag_read_mem(struct ath10k* ar, uint32_t address,
     ce_data = iobuf->paddr;
     remaining_bytes = nbytes;
     while (remaining_bytes) {
-        nbytes = min_t(unsigned int, remaining_bytes,
+        nbytes = MIN_T(unsigned int, remaining_bytes,
                        DIAG_TRANSFER_LIMIT);
 
         ret = __ath10k_ce_rx_post_buf(ce_diag, &ce_data, ce_data);
@@ -1042,7 +1042,7 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
     ce_data = ce_data_base;
     while (remaining_bytes) {
         /* FIXME: check cast */
-        nbytes = min_t(int, remaining_bytes, DIAG_TRANSFER_LIMIT);
+        nbytes = MIN_T(int, remaining_bytes, DIAG_TRANSFER_LIMIT);
 
         /* Set up to receive directly into Target(!) address */
         ret = __ath10k_ce_rx_post_buf(ce_diag, &ce_address, ce_address);
@@ -1807,7 +1807,7 @@ err_resp:
     }
 err_req:
     if (ret == ZX_OK && resp_len) {
-        *resp_len = min(*resp_len, xfer.resp_len);
+        *resp_len = MIN(*resp_len, xfer.resp_len);
         memcpy(resp, resp_vaddr, xfer.resp_len);
     }
     ath10k_msg_buf_free(treq);

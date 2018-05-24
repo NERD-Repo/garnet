@@ -604,7 +604,7 @@ static zx_status_t ath10k_download_board_data(struct ath10k* ar, const void* dat
     }
 
     ret = ath10k_bmi_write_memory(ar, address, data,
-                                  min_t(uint32_t, board_data_size,
+                                  MIN_T(uint32_t, board_data_size,
                                         data_len));
     if (ret != ZX_OK) {
         ath10k_err("could not write board data (%s)\n", zx_status_get_string(ret));

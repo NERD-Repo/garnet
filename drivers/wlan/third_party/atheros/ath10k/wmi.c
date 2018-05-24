@@ -1851,7 +1851,7 @@ ath10k_wmi_op_gen_mgmt_tx(struct ath10k* ar, struct sk_buff* msdu) {
         buf_len += IEEE80211_CCMP_MIC_LEN;
     }
 
-    len = round_up(len, 4);
+    len = ROUNDUP(len, 4);
 
     skb = ath10k_wmi_alloc_skb(ar, len);
     if (!skb) {
@@ -4208,7 +4208,7 @@ static uint8_t ath10k_tpc_config_get_rate(struct ath10k* ar,
     preamble = ATH10K_HW_PREAMBLE(rate_code);
     ch = num_chains - 1;
 
-    tpc = min_t(uint8_t, ev->rates_array[rate_idx], ev->max_reg_allow_pow[ch]);
+    tpc = MIN_T(uint8_t, ev->rates_array[rate_idx], ev->max_reg_allow_pow[ch]);
 
     if (ev->num_tx_chain <= 1) {
         goto out;
@@ -4225,15 +4225,15 @@ static uint8_t ath10k_tpc_config_get_rate(struct ath10k* ar,
 
     switch (type) {
     case WMI_TPC_TABLE_TYPE_STBC:
-        tpc = min_t(uint8_t, tpc,
+        tpc = MIN_T(uint8_t, tpc,
                     ev->max_reg_allow_pow_agstbc[ch - 1][stm_idx]);
         break;
     case WMI_TPC_TABLE_TYPE_TXBF:
-        tpc = min_t(uint8_t, tpc,
+        tpc = MIN_T(uint8_t, tpc,
                     ev->max_reg_allow_pow_agtxbf[ch - 1][stm_idx]);
         break;
     case WMI_TPC_TABLE_TYPE_CDD:
-        tpc = min_t(uint8_t, tpc,
+        tpc = MIN_T(uint8_t, tpc,
                     ev->max_reg_allow_pow_agcdd[ch - 1][stm_idx]);
         break;
     default:
@@ -4507,7 +4507,7 @@ static int ath10k_wmi_alloc_chunk(struct ath10k* ar, uint32_t req_id,
     if (status != ZX_OK) {
         return -1;
     }
-    pool_size = num_units * roundup(unit_len, 4);
+    pool_size = num_units * ROUNDUP(unit_len, 4);
     status = io_buffer_init(&ar->wmi.mem_chunks[idx].handle, bti_handle, pool_size,
                             IO_BUFFER_RW | IO_BUFFER_CONTIG);
 
@@ -4578,7 +4578,7 @@ ath10k_wmi_is_host_mem_allocated(struct ath10k* ar,
         found = false;
         for (j = 0; j < ar->wmi.num_mem_chunks; j++) {
             if (ar->wmi.mem_chunks[j].req_id == req_id) {
-                pool_size = num_units * round_up(unit_size, 4);
+                pool_size = num_units * ROUNDUP(unit_size, 4);
                 if (ar->wmi.mem_chunks[j].len == pool_size) {
                     found = true;
                     break;
@@ -4621,7 +4621,7 @@ ath10k_wmi_main_op_pull_svc_rdy_ev(struct ath10k* ar, struct sk_buff* skb,
     arg->service_map = ev->wmi_service_bitmap;
     arg->service_map_len = sizeof(ev->wmi_service_bitmap);
 
-    n = min_t(size_t, arg->num_mem_reqs,
+    n = MIN_T(size_t, arg->num_mem_reqs,
               countof(arg->mem_reqs));
     for (i = 0; i < n; i++) {
         arg->mem_reqs[i] = &ev->mem_reqs[i];
@@ -4661,7 +4661,7 @@ ath10k_wmi_10x_op_pull_svc_rdy_ev(struct ath10k* ar, struct sk_buff* skb,
     arg->service_map = ev->wmi_service_bitmap;
     arg->service_map_len = sizeof(ev->wmi_service_bitmap);
 
-    n = min_t(size_t, arg->num_mem_reqs,
+    n = MIN_T(size_t, arg->num_mem_reqs,
               countof(arg->mem_reqs));
     for (i = 0; i < n; i++) {
         arg->mem_reqs[i] = &ev->mem_reqs[i];
@@ -6002,7 +6002,7 @@ ath10k_wmi_start_scan_tlvs_len(const struct wmi_start_scan_arg* arg) {
 
     if (arg->ie_len) {
         len += sizeof(struct wmi_ie_data);
-        len += roundup(arg->ie_len, 4);
+        len += ROUNDUP(arg->ie_len, 4);
     }
 
     if (arg->n_channels) {
@@ -6112,7 +6112,7 @@ ath10k_wmi_put_start_scan_tlvs(struct wmi_start_scan_tlvs* tlvs,
         memcpy(ie->ie_data, arg->ie, arg->ie_len);
 
         ptr += sizeof(*ie);
-        ptr += roundup(arg->ie_len, 4);
+        ptr += ROUNDUP(arg->ie_len, 4);
     }
 }
 

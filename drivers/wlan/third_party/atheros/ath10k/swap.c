@@ -108,7 +108,7 @@ ath10k_swap_code_seg_alloc(struct ath10k* ar, size_t swap_bin_len) {
     zx_paddr_t paddr;
     zx_status_t ret;
 
-    swap_bin_len = roundup(swap_bin_len, 2);
+    swap_bin_len = ROUNDUP(swap_bin_len, 2);
     if (swap_bin_len > ATH10K_SWAP_CODE_SEG_BIN_LEN_MAX) {
         ath10k_err("refusing code swap bin because it is too big %zu > %d\n",
                    swap_bin_len, ATH10K_SWAP_CODE_SEG_BIN_LEN_MAX);

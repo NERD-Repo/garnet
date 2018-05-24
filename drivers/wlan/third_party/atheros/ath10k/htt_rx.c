@@ -47,7 +47,7 @@ static_assert(IS_POW2(HTT_RX_BUF_HTABLE_SZ),
 
 static struct ath10k_msg_buf*
 ath10k_htt_rx_find_msg_buf_paddr(struct ath10k* ar, uint32_t paddr) {
-    uint32_t hash = fnv1a_tiny(paddr, roundup_log2(HTT_RX_BUF_HTABLE_SZ));
+    uint32_t hash = fnv1a_tiny(paddr, ROUNDUP_LOG2(HTT_RX_BUF_HTABLE_SZ));
     ZX_DEBUG_ASSERT(hash < HTT_RX_BUF_HTABLE_SZ);
     list_node_t* candidate_list = &ar->htt.rx_ring.buf_hash[hash];
     struct ath10k_msg_buf* entry;
@@ -121,7 +121,7 @@ static zx_status_t __ath10k_htt_rx_ring_fill_n(struct ath10k_htt* htt, int num) 
         htt->rx_ring.fill_cnt++;
 
         if (htt->rx_ring.in_ord_rx == ATH10K_HTT_IN_ORD_RX_YES) {
-            uint32_t hash = fnv1a_tiny(buf->paddr, roundup_log2(HTT_RX_BUF_HTABLE_SZ));
+            uint32_t hash = fnv1a_tiny(buf->paddr, ROUNDUP_LOG2(HTT_RX_BUF_HTABLE_SZ));
             ZX_DEBUG_ASSERT(hash < HTT_RX_BUF_HTABLE_SZ);
             list_node_t* bucket = &htt->rx_ring.buf_hash[hash];
             list_add_tail(bucket, &buf->listnode);
@@ -283,7 +283,7 @@ static int ath10k_htt_rx_amsdu_pop(struct ath10k_htt* htt,
         }
 
         skb_trim(msdu, 0);
-        skb_put(msdu, min(msdu_len, HTT_RX_MSDU_SIZE));
+        skb_put(msdu, MIN(msdu_len, HTT_RX_MSDU_SIZE));
         msdu_len -= msdu->len;
 
         /* Note: Chained buffers do not contain rx descriptor */
@@ -296,7 +296,7 @@ static int ath10k_htt_rx_amsdu_pop(struct ath10k_htt* htt,
 
             __skb_queue_tail(amsdu, msdu);
             skb_trim(msdu, 0);
-            skb_put(msdu, min(msdu_len, HTT_RX_BUF_SIZE));
+            skb_put(msdu, MIN(msdu_len, HTT_RX_BUF_SIZE));
             msdu_len -= msdu->len;
             msdu_chaining = 1;
         }
@@ -934,7 +934,7 @@ static int ath10k_htt_rx_nwifi_hdrlen(struct ath10k* ar,
 
     if (!test_bit(ATH10K_FW_FEATURE_NO_NWIFI_DECAP_4ADDR_PADDING,
                   ar->running_fw->fw_file.fw_features)) {
-        len = round_up(len, 4);
+        len = ROUNDUP(len, 4);
     }
 
     return len;
@@ -1093,8 +1093,8 @@ static void* ath10k_htt_rx_h_find_rfc1042(struct ath10k* ar,
         hdr_len = ieee80211_hdrlen(hdr->frame_control);
         crypto_len = ath10k_htt_rx_crypto_param_len(ar, enctype);
 
-        rfc1042 += round_up(hdr_len, bytes_aligned) +
-                   round_up(crypto_len, bytes_aligned);
+        rfc1042 += ROUNDUP(hdr_len, bytes_aligned) +
+                   ROUNDUP(crypto_len, bytes_aligned);
     }
 
     if (is_amsdu) {

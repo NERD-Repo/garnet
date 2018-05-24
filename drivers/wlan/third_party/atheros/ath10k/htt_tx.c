@@ -362,7 +362,7 @@ static int ath10k_htt_tx_alloc_txdone_fifo(struct ath10k_htt* htt) {
     int ret;
     size_t size;
 
-    size = roundup_pow_of_two(htt->max_num_pending_tx);
+    size = ROUNDUP_POW2(htt->max_num_pending_tx);
     ret = kfifo_alloc(&htt->txdone_fifo, size, GFP_KERNEL);
     return ret;
 }
@@ -873,7 +873,7 @@ ath10k_err("ath10k_htt_mgmt_tx unimplemented - dropping tx packet!\n");
     cmd->mgmt_tx.desc_id    = msdu_id;
     cmd->mgmt_tx.vdev_id    = vdev_id;
     memcpy(cmd->mgmt_tx.hdr, msdu->data,
-           min_t(int, msdu->len, HTT_MGMT_FRM_HDR_DOWNLOAD_LEN));
+           MIN_T(int, msdu->len, HTT_MGMT_FRM_HDR_DOWNLOAD_LEN));
 
     res = ath10k_htc_send(&htt->ar->htc, htt->eid, txdesc);
     if (res) {
@@ -922,8 +922,8 @@ zx_status_t ath10k_htt_tx(struct ath10k_htt* htt,
 
     uint16_t msdu_id = id;
 
-    int prefetch_len = min(htt->prefetch_len, msdu->used);
-    prefetch_len = roundup(prefetch_len, 4);
+    int prefetch_len = MIN(htt->prefetch_len, msdu->used);
+    prefetch_len = ROUNDUP(prefetch_len, 4);
 
     struct ath10k_htt_txbuf* txbuf = &htt->txbuf.vaddr[msdu_id];
     uint32_t txbuf_paddr = htt->txbuf.paddr

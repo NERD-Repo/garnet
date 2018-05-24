@@ -2338,7 +2338,7 @@ static void ath10k_peer_assoc_h_ht(struct ath10k* ar,
         }
     } else {
         arg->peer_ht_rates.num_rates = n;
-        arg->peer_num_spatial_streams = min(sta->rx_nss, max_nss);
+        arg->peer_num_spatial_streams = MIN(sta->rx_nss, max_nss);
     }
 
     ath10k_dbg(ar, ATH10K_DBG_MAC, "mac ht peer %pM mcs cnt %d nss %d\n",
@@ -2535,7 +2535,7 @@ static void ath10k_peer_assoc_h_vht(struct ath10k* ar,
             max_nss = i + 1;
         }
     }
-    arg->peer_num_spatial_streams = min(sta->rx_nss, max_nss);
+    arg->peer_num_spatial_streams = MIN(sta->rx_nss, max_nss);
     arg->peer_vht_rates.rx_max_rate =
         vht_cap->vht_mcs.rx_highest;
     arg->peer_vht_rates.rx_mcs_set =
@@ -2889,7 +2889,7 @@ static void ath10k_mac_parse_assoc_resp(const uint8_t* tagged_data,
         switch (tag) {
         case IEEE80211_ASSOC_TAG_RATES:
             {
-                size_t num_rates = min(tag_len, MAX_SUPPORTED_RATES);
+                size_t num_rates = MIN(tag_len, MAX_SUPPORTED_RATES);
                 legacy_rates_seen = assoc_arg->peer_legacy_rates.num_rates = num_rates;
                 memcpy(assoc_arg->peer_legacy_rates.rates, tagged_data, num_rates);
                 break;
@@ -2904,7 +2904,7 @@ static void ath10k_mac_parse_assoc_resp(const uint8_t* tagged_data,
             break;
         case IEEE80211_ASSOC_TAG_EXTENDED_RATES:
             {
-                size_t num_rates = min(tag_len, MAX_SUPPORTED_RATES - legacy_rates_seen);
+                size_t num_rates = MIN(tag_len, MAX_SUPPORTED_RATES - legacy_rates_seen);
                 assoc_arg->peer_legacy_rates.num_rates += num_rates;
                 memcpy(&assoc_arg->peer_legacy_rates.rates[legacy_rates_seen], tagged_data,
                        num_rates);
@@ -6040,7 +6040,7 @@ static void ath10k_sta_rc_update_wk(struct work_struct* wk) {
     mtx_lock(&ar->conf_mutex);
 
     nss = max_t(uint32_t, 1, nss);
-    nss = min(nss, max(ath10k_mac_max_ht_nss(ht_mcs_mask),
+    nss = MIN(nss, max(ath10k_mac_max_ht_nss(ht_mcs_mask),
                        ath10k_mac_max_vht_nss(vht_mcs_mask)));
 
     if (changed & IEEE80211_RC_BW_CHANGED) {
@@ -7132,7 +7132,7 @@ static int ath10k_mac_op_set_bitrate_mask(struct ieee80211_hw* hw,
         nss = single_nss;
     } else {
         rate = WMI_FIXED_RATE_NONE;
-        nss = min(ar->num_rf_chains,
+        nss = MIN(ar->num_rf_chains,
                   max(ath10k_mac_max_ht_nss(ht_mcs_mask),
                       ath10k_mac_max_vht_nss(vht_mcs_mask)));
 

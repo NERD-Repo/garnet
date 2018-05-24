@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <ddk/driver.h>
 #include <zircon/assert.h>
 
 #include <stdio.h>
@@ -41,7 +42,6 @@
 
 #define COND_WARN1(cond, filename, lineno) \
     ath10k_warn("unexpected condition %s at %s:%d\n", cond, filename, lineno)
-
 #define COND_WARN(cond)                               \
     ({                                                \
         bool result = cond;                           \
@@ -50,10 +50,8 @@
         }                                             \
         result;                                       \
     })
-
 #define WARN_ONCE() \
     ath10k_warn("code at %s:%d not expected to execute\n", __FILE__, __LINE__)
-
 #define COND_WARN_ONCE(cond)                          \
     ({                                                \
         static bool warn_next = true;                 \
@@ -74,35 +72,25 @@
 #define LOG2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
 
-#define READ32(addr) (*(volatile uint32_t*)(uintptr_t)(addr))
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#define MIN_T(t,a,b) (((t)(a) < (t)(b)) ? (t)(a) : (t)(b))
 
+#define READ32(addr) (*(volatile uint32_t*)(uintptr_t)(addr))
 #define WRITE32(addr, value)                                  \
     do {                                                      \
         (*(volatile uint32_t*)(uintptr_t)(addr)) = (value);   \
     } while (0)
 
-
-#define min(a,b) (((a) < (b)) ? (a) : (b))
-#define min_t(t,a,b) (((t)(a) < (t)(b)) ? (t)(a) : (t)(b))
-
-#define rounddown(n,m) ((n) - ((n) % (m)))
-#define roundup(n,m) (((n) % (m) == 0) ? (n) : (n) + ((m) - ((n) % (m))))
-
-// round_up only supports powers of two, so it can be implemented more efficiently, some day...
-#define round_up(n,m) roundup(n,m)
-
-#define roundup_pow_of_two(val) \
+#define ROUNDUP_POW2(val) \
     ((unsigned long) (val) == 0 ? (val) : \
              1UL << ((sizeof(unsigned long) * 8) - __builtin_clzl((val) - 1)))
-
-/* Not actually a linuxism, but closely related to the previous definition */
-#define roundup_log2(val) \
+#define ROUNDUP_LOG2(val) \
     ((unsigned long) (val) == 0 ? (val) : \
              ((sizeof(unsigned long) * 8) - __builtin_clzl((val) - 1)))
+
 
 #define scnprintf(buf, size, format, ...)                           \
     ({                                                              \
         int result = snprintf(buf, size, format, __VA_ARGS__);      \
-        min_t(int, size, result);                                   \
+        MIN_T(int, size, result);                                   \
     })
-

@@ -325,7 +325,7 @@ static ssize_t write_file_spec_scan_ctl(struct file* file,
     ssize_t len;
     int res;
 
-    len = min(count, sizeof(buf) - 1);
+    len = MIN(count, sizeof(buf) - 1);
     if (copy_from_user(buf, user_buf, len)) {
         return -EFAULT;
     }
@@ -405,7 +405,7 @@ static ssize_t write_file_spectral_count(struct file* file,
     char buf[32];
     ssize_t len;
 
-    len = min(count, sizeof(buf) - 1);
+    len = MIN(count, sizeof(buf) - 1);
     if (copy_from_user(buf, user_buf, len)) {
         return -EFAULT;
     }
@@ -462,7 +462,7 @@ static ssize_t write_file_spectral_bins(struct file* file,
     char buf[32];
     ssize_t len;
 
-    len = min(count, sizeof(buf) - 1);
+    len = MIN(count, sizeof(buf) - 1);
     if (copy_from_user(buf, user_buf, len)) {
         return -EFAULT;
     }

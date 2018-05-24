@@ -18,6 +18,8 @@
 #ifndef _HTT_H_
 #define _HTT_H_
 
+#include <ddk/driver.h>
+
 #include "htc.h"
 #include "hw.h"
 #include "rx_desc.h"
@@ -634,7 +636,7 @@ struct htt_rx_indication {
     struct fw_rx_desc_base fw_desc;
 
     /*
-     * %mpdu_ranges starts after &%prefix + roundup(%fw_rx_desc_bytes, 4)
+     * %mpdu_ranges starts after &%prefix + ROUNDUP(%fw_rx_desc_bytes, 4)
      * and has %num_mpdu_ranges elements.
      */
     struct htt_rx_indication_mpdu_range mpdu_ranges[0];
@@ -647,7 +649,7 @@ htt_rx_ind_get_mpdu_ranges(struct htt_rx_indication* rx_ind) {
     ptr += sizeof(rx_ind->hdr)
            + sizeof(rx_ind->ppdu)
            + sizeof(rx_ind->prefix)
-           + roundup(rx_ind->prefix.fw_rx_desc_bytes, 4);
+           + ROUNDUP(rx_ind->prefix.fw_rx_desc_bytes, 4);
     return ptr;
 }
 
@@ -1227,7 +1229,7 @@ struct htt_stats_conf_item {
     } __PACKED;
     uint8_t pad;
     uint16_t length;
-    uint8_t payload[0]; /* roundup(length, 4) long */
+    uint8_t payload[0]; /* ROUNDUP(length, 4) long */
 } __PACKED;
 
 struct htt_stats_conf {
@@ -1241,7 +1243,7 @@ struct htt_stats_conf {
 
 static inline struct htt_stats_conf_item* htt_stats_conf_next_item(
     const struct htt_stats_conf_item* item) {
-    return (void*)item + sizeof(*item) + roundup(item->length, 4);
+    return (void*)item + sizeof(*item) + ROUNDUP(item->length, 4);
 }
 
 /*

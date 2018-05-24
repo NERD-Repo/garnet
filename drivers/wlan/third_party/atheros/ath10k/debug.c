@@ -2136,7 +2136,7 @@ static ssize_t ath10k_write_btcoex(struct file* file,
     bool val;
     uint32_t pdev_param;
 
-    buf_size = min(count, (sizeof(buf) - 1));
+    buf_size = MIN(count, (sizeof(buf) - 1));
     if (copy_from_user(buf, ubuf, buf_size)) {
         return -EFAULT;
     }
@@ -2216,7 +2216,7 @@ static ssize_t ath10k_write_peer_stats(struct file* file,
     int ret;
     bool val;
 
-    buf_size = min(count, (sizeof(buf) - 1));
+    buf_size = MIN(count, (sizeof(buf) - 1));
     if (copy_from_user(buf, ubuf, buf_size)) {
         return -EFAULT;
     }
