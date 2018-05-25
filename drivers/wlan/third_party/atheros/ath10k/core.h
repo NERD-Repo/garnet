@@ -327,7 +327,7 @@ struct ath10k_sta {
     uint64_t rx_duration;
 #endif
 };
-#endif
+#endif // NEEDS PORTING
 
 #define ATH10K_VDEV_SETUP_TIMEOUT (ZX_SEC(5))
 
@@ -739,8 +739,6 @@ struct ath10k {
     uint32_t low_5ghz_chan;
     uint32_t high_5ghz_chan;
     bool ani_enabled;
-
-    completion_t init_complete;
 
     bool p2p;
 

@@ -2366,10 +2366,9 @@ static zx_status_t ath10k_core_register_work(void* thrd_data) {
                    zx_status_get_string(status));
         goto err_spectral_destroy;
     }
-#endif
+#endif // NEEDS PORTING
 
     BITARR_SET(ar->dev_flags, ATH10K_FLAG_CORE_REGISTERED);
-    completion_signal(&ar->init_complete);
 
     // Now that we have completed initialization, we are ready to handle calls
     // from wlanmac.
@@ -2391,8 +2390,7 @@ err:
     /* TODO: It's probably a good idea to release device from the driver
      * but calling device_release_driver() here will cause a deadlock.
      */
-    completion_signal(&ar->init_complete);
-    return 1;
+    return status;
 }
 
 zx_status_t ath10k_core_register(struct ath10k* ar, uint32_t chip_id) {
@@ -2487,8 +2485,6 @@ zx_status_t ath10k_core_create(struct ath10k** ar_ptr, size_t priv_size,
         ret = ZX_ERR_NOT_SUPPORTED;
         goto err_free_mac;
     }
-
-    ar->init_complete = COMPLETION_INIT;
 
     ar->scan.started = COMPLETION_INIT;
     ar->scan.completed = COMPLETION_INIT;
