@@ -16,10 +16,7 @@
 
 #pragma once
 
-#include <ddk/driver.h>
 #include <zircon/assert.h>
-
-#include <stdio.h>
 
 #define ASSERT_MTX_HELD(mtx) ZX_ASSERT(mtx_trylock(mtx) != thrd_success)
 
@@ -73,7 +70,7 @@
 
 #define IS_ALIGNED(a, b) (!(((uintptr_t)(a)) & (((uintptr_t)(b))-1)))
 
-#define IS_POW2(x) (((x) == 0) || (((x) & ((x) - 1)) == 0))
+#define IS_POW2(x) (((x) != 0) && (((x) & ((x) - 1)) == 0))
 
 #define LOG2(val)  \
     (((val) == 0) ? 0 : (((sizeof(unsigned long long) * 8) - 1) - __builtin_clzll(val)))
