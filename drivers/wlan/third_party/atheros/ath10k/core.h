@@ -27,6 +27,7 @@
 #include <ddk/device.h>
 #include <wlan/protocol/mac.h>
 
+#include "ieee80211.h"
 #include "macros.h"
 #include "htt.h"
 #include "htc.h"
@@ -667,8 +668,6 @@ struct ath10k_per_peer_tx_stats {
 };
 #endif // NEEDS PORTING
 
-#define MAX_SSID_LEN 32
-
 struct ath10k_vif {
     uint32_t vdev_id;
     uint16_t peer_id;
@@ -699,7 +698,7 @@ struct ath10k_vif {
             uint8_t tim_bitmap[64];
             uint8_t tim_len;
             uint32_t ssid_len;
-            uint8_t ssid[MAX_SSID_LEN];
+            uint8_t ssid[IEEE80211_SSID_LEN_MAX];
             bool hidden_ssid;
             /* P2P_IE with NoA attribute for P2P_GO case */
             uint32_t noa_len;
@@ -902,10 +901,12 @@ struct ath10k {
     enum ath10k_state state;
 
     thrd_t isr_thread;
-    thrd_t monitor_thread;
     thrd_t register_work;
     thrd_t restart_work;
     thrd_t assoc_work;
+#if DEBUG_MSG_BUF
+    thrd_t monitor_thread;
+#endif
 
 #if 0 // NEEDS PORTING
     /* cycle count is reported twice for each visited channel during scan.

@@ -3036,7 +3036,7 @@ static zx_status_t ath10k_pci_query(void* ctx, uint32_t options, wlanmac_info_t*
     // eth_info
     ethmac_info_t* eth_info = &info->eth_info;
     eth_info->features = ETHMAC_FEATURE_WLAN;
-    eth_info->mtu = IEEE_MSDU_SIZE_MAX;
+    eth_info->mtu = IEEE80211_MSDU_SIZE_MAX;
     ZX_DEBUG_ASSERT(ETH_ALEN == ETH_MAC_SIZE);
     memcpy(eth_info->mac, ar->mac_addr, ETH_MAC_SIZE);
 
