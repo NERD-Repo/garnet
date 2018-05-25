@@ -15,13 +15,23 @@
 #include <zircon/syscalls.h>
 #include <zx/handle.h>
 
+#include <memory>
+
+#include "firmware_blob.h"
+#include "registers.h"
+
 class AmlogicVideo {
  public:
   ~AmlogicVideo();
 
   zx_status_t Init(zx_device_t* parent);
 
+  zx_status_t LoadDecoderFirmware(uint8_t* data, uint32_t size);
+
  private:
+  void EnableClockGate();
+  void EnableVideoPower();
+
   zx_device_t* parent_ = nullptr;
   zx_device_t* device_ = nullptr;
   platform_device_protocol_t pdev_;
@@ -30,6 +40,13 @@ class AmlogicVideo {
   io_buffer_t mmio_hiubus_ = {};
   io_buffer_t mmio_aobus_ = {};
   io_buffer_t mmio_dmc_ = {};
+  std::unique_ptr<CbusRegisterIo> cbus_;
+  std::unique_ptr<DosRegisterIo> dosbus_;
+  std::unique_ptr<HiuRegisterIo> hiubus_;
+  std::unique_ptr<AoRegisterIo> aobus_;
+  std::unique_ptr<DmcRegisterIo> dmc_;
+
+  std::unique_ptr<FirmwareBlob> firmware_;
 
   zx::handle bti_;
 

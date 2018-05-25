@@ -5,9 +5,12 @@
 package ipcserver
 
 import (
+	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"strings"
 	"sync"
+	"time"
 
 	"fidl/bindings"
 
@@ -19,10 +22,11 @@ import (
 	"amber/source"
 
 	"syscall/zx"
+
+	tuf_data "github.com/flynn/go-tuf/data"
 )
 
 type ControlSrvr struct {
-	daemonSrc   *daemon.DaemonProvider
 	daemonGate  sync.Once
 	daemon      *daemon.Daemon
 	pinger      *source.TickGenerator
@@ -35,7 +39,7 @@ type ControlSrvr struct {
 
 const ZXSIO_DAEMON_ERROR = zx.SignalUser0
 
-func NewControlSrvr(d *daemon.DaemonProvider, r *source.TickGenerator) *ControlSrvr {
+func NewControlSrvr(d *daemon.Daemon, r *source.TickGenerator) *ControlSrvr {
 	go bindings.Serve()
 	a := make(chan string, 5)
 	c := make(chan *completeUpdateRequest, 1)
@@ -44,7 +48,7 @@ func NewControlSrvr(d *daemon.DaemonProvider, r *source.TickGenerator) *ControlS
 	go m.Do()
 
 	return &ControlSrvr{
-		daemonSrc:   d,
+		daemon:      d,
 		pinger:      r,
 		actMon:      m,
 		activations: a,
@@ -58,7 +62,39 @@ func (c *ControlSrvr) DoTest(in int32) (out string, err error) {
 	return r, nil
 }
 
-func (c *ControlSrvr) AddSrc(url string, rateLimit int32, pubKey string) (bool, error) {
+func (c *ControlSrvr) AddSrc(url string, rateLimit, ratePeriod int32, pubKey string) (bool, error) {
+	keyHex, err := hex.DecodeString(pubKey)
+	if err != nil {
+		return false, err
+	}
+
+	key := tuf_data.Key{Type: "ed25519", Value: tuf_data.KeyValue{tuf_data.HexBytes(keyHex)}}
+	dir, err := ioutil.TempDir("", "amber")
+	if err != nil {
+		return false, err
+	}
+
+	// how long we'll try to connect to the source for
+	limit := time.Now().Add(time.Second * 30)
+	tickGen := source.NewTickGenerator(func(d time.Duration) time.Duration {
+		if time.Now().After(limit) {
+			return -1
+		}
+		return source.InitBackoff(d)
+	})
+	go tickGen.Run()
+
+	client, _, err := source.InitNewTUFClient(url, dir, []*tuf_data.Key{&key}, tickGen)
+	if err != nil {
+		return false, err
+	}
+
+	src := source.TUFSource{
+		Client:   client,
+		Interval: time.Millisecond * time.Duration(ratePeriod),
+		Limit:    uint64(rateLimit),
+	}
+	c.daemon.AddSource(&src)
 	return true, nil
 }
 
@@ -92,12 +128,12 @@ func (c *ControlSrvr) getAndWaitForUpdate(name string, version, merkle *string, 
 }
 
 func (c *ControlSrvr) GetUpdateComplete(name string, version, merkle *string) (zx.Channel, error) {
+	c.initSource()
 	r, w, e := zx.NewChannel(0)
 	if e != nil {
 		lg.Log.Printf("Could not create channel")
 		return 0, e
 	}
-
 	go c.getAndWaitForUpdate(name, version, merkle, &w)
 	return r, nil
 }
@@ -132,7 +168,6 @@ func (c *ControlSrvr) downloadPkgMeta(name string, version, merkle *string) (*da
 	pkg := pkg.Package{Name: name, Version: *version, Merkle: *merkle}
 	ps.Add(&pkg)
 
-	c.initDaemon()
 	updates := c.daemon.GetUpdates(ps)
 	result, ok := updates[pkg]
 	if !ok {
@@ -148,6 +183,7 @@ func (c *ControlSrvr) downloadPkgMeta(name string, version, merkle *string) (*da
 }
 
 func (c *ControlSrvr) GetUpdate(name string, version, merkle *string) (*string, error) {
+	c.initSource()
 	result, err := c.downloadPkgMeta(name, version, merkle)
 	if err != nil {
 		return nil, err
@@ -166,7 +202,6 @@ func (c *ControlSrvr) GetBlob(merkle string) error {
 		return fmt.Errorf("Supplied merkle root is empty")
 	}
 
-	c.initDaemon()
 	return c.daemon.GetBlob(merkle)
 }
 
@@ -183,10 +218,11 @@ func (c *ControlSrvr) Bind(ch zx.Channel) error {
 	return err
 }
 
-func (c *ControlSrvr) initDaemon() {
+// initDaemon makes a single attempt per ControlSrvr instance to ping the source used by the daemon
+// to tell it to try to initialize again
+func (c *ControlSrvr) initSource() {
 	c.daemonGate.Do(func() {
 		c.pinger.GenerateTick()
-		c.daemon = c.daemonSrc.Daemon()
 		c.pinger = nil
 	})
 }

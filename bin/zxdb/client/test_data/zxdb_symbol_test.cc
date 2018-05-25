@@ -5,9 +5,7 @@
 // This file is compiled into a library and used in zxdb tests to query
 // symbol information. The actual code is not run.
 
-// Mark the symbols as exported to prevent the linker from stripping them.
-#define EXPORT __attribute__((visibility("default")))
-#define NOINLINE __attribute__ ((noinline))
+#include "garnet/bin/zxdb/client/test_data/zxdb_symbol_test.h"
 
 // DW_TAG_namespace
 //   DW_AT_name = "my_ns"
@@ -71,7 +69,7 @@ EXPORT int NamespaceFunction() {
 //
 //   (This one has no declaration nor specification attributes because there
 //   wasn't a separate declaration.)
-int MyFunction() {
+int MyFunction() {  // Must be on line # ModulSymbols::kMyFunctionLine.
   // DW_TAG_variable
   //   DW_AT_name = "my_class"
   //   DW_AT_type = <reference to MyClass DIE above>

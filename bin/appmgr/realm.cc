@@ -89,8 +89,7 @@ void PushFileDescriptor(component::FileDescriptorPtr fd, int new_fd,
 }
 
 zx::process CreateProcess(const zx::job& job, fsl::SizedVmo data,
-                          const std::string& argv0,
-                          LaunchInfo launch_info,
+                          const std::string& argv0, LaunchInfo launch_info,
                           zx::channel loader_service,
                           fdio_flat_namespace_t* flat) {
   if (!data)
@@ -262,11 +261,10 @@ HubInfo Realm::HubInfo() {
 }
 
 void Realm::CreateNestedJob(
-    zx::channel host_directory,
-    fidl::InterfaceRequest<ApplicationEnvironment> environment,
-    fidl::InterfaceRequest<ApplicationEnvironmentController> controller_request,
+    zx::channel host_directory, fidl::InterfaceRequest<Environment> environment,
+    fidl::InterfaceRequest<EnvironmentController> controller_request,
     fidl::StringPtr label) {
-  auto controller = std::make_unique<ApplicationEnvironmentControllerImpl>(
+  auto controller = std::make_unique<EnvironmentControllerImpl>(
       std::move(controller_request),
       std::make_unique<Realm>(this, std::move(host_directory), label));
   Realm* child = controller->realm();
@@ -339,8 +337,7 @@ void Realm::CreateApplication(
       }));
 }
 
-std::unique_ptr<ApplicationEnvironmentControllerImpl> Realm::ExtractChild(
-    Realm* child) {
+std::unique_ptr<EnvironmentControllerImpl> Realm::ExtractChild(Realm* child) {
   auto it = children_.find(child);
   if (it == children_.end()) {
     return nullptr;
@@ -369,8 +366,7 @@ std::unique_ptr<ApplicationControllerImpl> Realm::ExtractApplication(
   return application;
 }
 
-void Realm::AddBinding(
-    fidl::InterfaceRequest<ApplicationEnvironment> environment) {
+void Realm::AddBinding(fidl::InterfaceRequest<Environment> environment) {
   default_namespace_->AddBinding(std::move(environment));
 }
 
@@ -547,13 +543,13 @@ void Realm::CreateApplicationFromPackage(
                      << launch_info.url;
       return;
     }
-    runner->StartApplication(std::move(inner_package), std::move(startup_info),
-                             std::move(pkg_fs), std::move(ns),
-                             std::move(controller));
+    runner->StartComponent(std::move(inner_package), std::move(startup_info),
+                           std::move(pkg_fs), std::move(ns),
+                           std::move(controller));
   }
 }
 
-ApplicationRunnerHolder* Realm::GetOrCreateRunner(const std::string& runner) {
+RunnerHolder* Realm::GetOrCreateRunner(const std::string& runner) {
   // We create the entry in |runners_| before calling ourselves
   // recursively to detect cycles.
   auto result = runners_.emplace(runner, nullptr);
@@ -569,7 +565,7 @@ ApplicationRunnerHolder* Realm::GetOrCreateRunner(const std::string& runner) {
     runner_controller.set_error_handler(
         [this, runner] { runners_.erase(runner); });
 
-    result.first->second = std::make_unique<ApplicationRunnerHolder>(
+    result.first->second = std::make_unique<RunnerHolder>(
         std::move(runner_services), std::move(runner_controller));
   } else if (!result.first->second) {
     // There was a cycle in the runner graph.

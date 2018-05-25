@@ -18,14 +18,16 @@
 #include <zircon/errors.h>
 #include <zircon/syscalls.h>
 
+#include <chrono>
 #include <memory>
+#include <thread>
+
+#include "macros.h"
+#include "registers.h"
 
 extern "C" {
 zx_status_t amlogic_video_bind(void* ctx, zx_device_t* parent);
 }
-
-#define DECODE_ERROR(fmt, ...) \
-  zxlogf(ERROR, "[%s %d]" fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 static zx_status_t amlogic_video_ioctl(void* ctx, uint32_t op,
                                        const void* in_buf, size_t in_len,
@@ -38,6 +40,9 @@ static zx_protocol_device_t amlogic_video_device_ops = {
     DEVICE_OPS_VERSION,
     .ioctl = amlogic_video_ioctl,
 };
+
+// Most buffers should be 64-kbyte aligned.
+const uint32_t kBufferAlignShift = 4 + 12;
 
 // These match the regions exported when the bus device was added.
 enum MmioRegion {
@@ -62,6 +67,89 @@ AmlogicVideo::~AmlogicVideo() {
   io_buffer_release(&mmio_hiubus_);
   io_buffer_release(&mmio_aobus_);
   io_buffer_release(&mmio_dmc_);
+}
+
+void AmlogicVideo::EnableClockGate() {
+  HhiGclkMpeg0::Get()
+      .ReadFrom(hiubus_.get())
+      .set_dos(true)
+      .WriteTo(hiubus_.get());
+  HhiGclkMpeg1::Get()
+      .ReadFrom(hiubus_.get())
+      .set_u_parser_top(true)
+      .set_aiu(0xff)
+      .set_demux(true)
+      .set_audio_in(true)
+      .WriteTo(hiubus_.get());
+  HhiGclkMpeg2::Get()
+      .ReadFrom(hiubus_.get())
+      .set_vpu_interrupt(true)
+      .WriteTo(hiubus_.get());
+}
+
+void AmlogicVideo::EnableVideoPower() {
+  {
+    auto temp = AoRtiGenPwrSleep0::Get().ReadFrom(aobus_.get());
+    temp.set_reg_value(temp.reg_value() & ~0xc);
+    temp.WriteTo(aobus_.get());
+  }
+  zx_nanosleep(zx_deadline_after(ZX_USEC(10)));
+
+  DosSwReset0::Get().FromValue(0xfffffffc).WriteTo(dosbus_.get());
+  DosSwReset0::Get().FromValue(0).WriteTo(dosbus_.get());
+
+  EnableClockGate();
+
+  HhiVdecClkCntl::Get().FromValue(0).set_vdec_en(true).set_vdec_sel(3).WriteTo(
+      hiubus_.get());
+  DosGclkEn::Get().FromValue(0x3ff).WriteTo(dosbus_.get());
+  DosMemPdVdec::Get().FromValue(0).WriteTo(dosbus_.get());
+  {
+    auto temp = AoRtiGenPwrIso0::Get().ReadFrom(aobus_.get());
+    temp.set_reg_value(temp.reg_value() & ~0xc0);
+    temp.WriteTo(aobus_.get());
+  }
+  DosVdecMcrccStallCtrl::Get().FromValue(0).WriteTo(dosbus_.get());
+  DmcReqCtrl::Get().ReadFrom(dmc_.get()).set_vdec(true).WriteTo(dmc_.get());
+}
+
+zx_status_t AmlogicVideo::LoadDecoderFirmware(uint8_t* data, uint32_t size) {
+  Mpsr::Get().FromValue(0).WriteTo(dosbus_.get());
+  Cpsr::Get().FromValue(0).WriteTo(dosbus_.get());
+  io_buffer_t firmware_buffer;
+  const uint32_t kFirmwareSize = 4 * 4096;
+  zx_status_t status = io_buffer_init_aligned(&firmware_buffer, bti_.get(),
+                                              kFirmwareSize, kBufferAlignShift,
+                                              IO_BUFFER_RW | IO_BUFFER_CONTIG);
+  if (status != ZX_OK) {
+    DECODE_ERROR("Failed to make firmware buffer");
+    return status;
+  }
+
+  memcpy(io_buffer_virt(&firmware_buffer), data, std::min(size, kFirmwareSize));
+  io_buffer_cache_flush(&firmware_buffer, 0, kFirmwareSize);
+
+  ImemDmaAdr::Get()
+      .FromValue(static_cast<uint32_t>(io_buffer_phys(&firmware_buffer)))
+      .WriteTo(dosbus_.get());
+  ImemDmaCount::Get()
+      .FromValue(kFirmwareSize / sizeof(uint32_t))
+      .WriteTo(dosbus_.get());
+  ImemDmaCtrl::Get().FromValue(0x8000 | (7 << 16)).WriteTo(dosbus_.get());
+  auto start = std::chrono::high_resolution_clock::now();
+  auto timeout =
+      std::chrono::duration_cast<std::chrono::high_resolution_clock::duration>(
+          std::chrono::seconds(1));
+  while (ImemDmaCtrl::Get().ReadFrom(dosbus_.get()).reg_value() & 0x8000) {
+    if (std::chrono::high_resolution_clock::now() - start >= timeout) {
+      DECODE_ERROR("Failed to load microcode.");
+      return ZX_ERR_TIMED_OUT;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  io_buffer_release(&firmware_buffer);
+  return ZX_OK;
 }
 
 zx_status_t AmlogicVideo::Init(zx_device_t* parent) {
@@ -120,7 +208,34 @@ zx_status_t AmlogicVideo::Init(zx_device_t* parent) {
     DECODE_ERROR("Failed get bti");
     return ZX_ERR_NO_MEMORY;
   }
+  cbus_ = std::make_unique<CbusRegisterIo>(io_buffer_virt(&mmio_cbus_));
+  dosbus_ = std::make_unique<DosRegisterIo>(io_buffer_virt(&mmio_dosbus_));
+  hiubus_ = std::make_unique<HiuRegisterIo>(io_buffer_virt(&mmio_hiubus_));
+  aobus_ = std::make_unique<AoRegisterIo>(io_buffer_virt(&mmio_aobus_));
+  dmc_ = std::make_unique<DmcRegisterIo>(io_buffer_virt(&mmio_dmc_));
 
+  firmware_ = std::make_unique<FirmwareBlob>();
+  status = firmware_->LoadFirmware(parent_);
+  if (status != ZX_OK) {
+    DECODE_ERROR("Failed load firmware\n");
+    return status;
+  }
+
+  EnableVideoPower();
+
+  {
+    uint8_t* firmware_data;
+    uint32_t firmware_size;
+    status = firmware_->GetFirmwareData(FirmwareBlob::FirmwareType::kMPEG12,
+                                        &firmware_data, &firmware_size);
+    if (status != ZX_OK) {
+      DECODE_ERROR("Failed load firmware\n");
+      return status;
+    }
+    status = LoadDecoderFirmware(firmware_data, firmware_size);
+    if (status != ZX_OK)
+      return status;
+  }
   device_add_args_t vc_video_args = {};
   vc_video_args.version = DEVICE_ADD_ARGS_VERSION;
   vc_video_args.name = "amlogic_video";
