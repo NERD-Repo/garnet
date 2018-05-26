@@ -2905,7 +2905,7 @@ struct wmi_ssid_arg {
 };
 
 struct wmi_bssid_arg {
-    const char* bssid;
+    const uint8_t* bssid;
 };
 
 struct wmi_start_scan_arg {
@@ -6116,10 +6116,8 @@ enum wmi_sta_keepalive_method {
 
 /* note: ip4 addresses are in network byte order, i.e. big endian */
 struct wmi_sta_keepalive_arp_resp {
-#if 0 // NEEDS PORTING
-    __be32 src_ip4_addr;
-    __be32 dest_ip4_addr;
-#endif // NEEDS PORTING
+    uint8_t src_ip4_addr[4];  // network byte order
+    uint8_t dest_ip4_addr[4]; // network byte order
     struct wmi_mac_addr dest_mac_addr;
 } __PACKED;
 
@@ -6136,10 +6134,8 @@ struct wmi_sta_keepalive_arg {
     uint32_t enabled;
     uint32_t method;
     uint32_t interval;
-#if 0 // NEEDS PORTING
-    __be32 src_ip4_addr;
-    __be32 dest_ip4_addr;
-#endif // NEEDS PORTING
+    uint8_t src_ip4_addr[4];  // network byte order
+    uint8_t dest_ip4_addr[4]; // network byte order
     const uint8_t dest_mac_addr[ETH_ALEN];
 };
 
@@ -6635,9 +6631,9 @@ void ath10k_wmi_event_echo(struct ath10k* ar, struct ath10k_msg_buf* buf);
 #if 0 // NEEDS PORTING
 int ath10k_wmi_event_debug_mesg(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_update_stats(struct ath10k* ar, struct sk_buff* skb);
-#endif
+#endif // NEEDS PORTING
 void ath10k_wmi_event_vdev_start_resp(struct ath10k* ar, struct ath10k_msg_buf* buf);
-#if 0
+#if 0 // NEEDS PORTING
 void ath10k_wmi_event_vdev_stopped(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_peer_sta_kickout(struct ath10k* ar, struct sk_buff* skb);
 void ath10k_wmi_event_host_swba(struct ath10k* ar, struct sk_buff* skb);

@@ -15,6 +15,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <ddk/driver.h>
+
 #include "core.h"
 #include "htc.h"
 #include "debug.h"
@@ -1892,6 +1894,12 @@ static void ath10k_wmi_event_scan_started(struct ath10k* ar) {
     case ATH10K_SCAN_STARTING:
         ar->scan.state = ATH10K_SCAN_RUNNING;
 
+#if 0 // NEEDS PORTING
+        if (ar->scan.is_roc) {
+            ieee80211_ready_on_channel(ar->hw);
+        }
+#endif // NEEDS PORTING
+
         completion_signal(&ar->scan.started);
         break;
     }
@@ -1970,6 +1978,13 @@ static void ath10k_wmi_event_scan_foreign_chan(struct ath10k* ar, uint32_t freq)
     case ATH10K_SCAN_RUNNING:
     case ATH10K_SCAN_ABORTING:
         ath10k_err("TODO: received foreign chan event\n");
+#if 0 // NEEDS PORTING
+        ar->scan_channel = ieee80211_get_channel(ar->hw->wiphy, freq);
+
+        if (ar->scan.is_roc && ar->scan.roc_freq == freq) {
+            completion_signal(&ar->scan.on_channel);
+        }
+#endif // NEEDS PORTING
         break;
     }
 }
@@ -2251,7 +2266,7 @@ static bool ath10k_wmi_rx_is_decrypted(struct ath10k* ar,
 
     return true;
 }
-#endif
+#endif // NEEDS PORTING
 
 zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* buf) {
     struct wmi_mgmt_rx_ev_arg arg = {};
@@ -2285,7 +2300,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
         return ZX_OK;
     }
 
-#if 0
+#if 0 // NEEDS PORTING
     if (rx_status & WMI_RX_STATUS_ERR_MIC) {
         status->flag |= RX_FLAG_MMIC_ERROR;
     }
@@ -2321,12 +2336,12 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
     status->freq = ieee80211_channel_to_frequency(channel, status->band);
     status->signal = snr + ATH10K_DEFAULT_NOISE_FLOOR;
     status->rate_idx = ath10k_mac_bitrate_to_idx(sband, rate / 100);
-#endif
+#endif // NEEDS PORTING
 
     struct ieee80211_frame_header* hdr = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
     uint16_t fc = hdr->frame_ctrl;
 
-#if 0
+#if 0 // NEEDS PORTING
     /* Firmware is guaranteed to report all essential management frames via
      * WMI while it can deliver some extra via HTT. Since there can be
      * duplicates split the reporting wrt monitor/sniffing.
@@ -2346,19 +2361,17 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
             hdr->frame_control = fc & ~IEEE80211_FCTL_PROTECTED;
         }
     }
-#endif
+
+    if (ieee80211_is_beacon(hdr->frame_control)) {
+        ath10k_mac_handle_beacon(ar, skb);
+    }
+#endif // NEEDS PORTING
 
     ath10k_dbg(ar, ATH10K_DBG_MGMT,
                "event mgmt rx buf %pK len %d ftype %02x stype %02x\n",
                buf, buf->used,
                fc & IEEE80211_FRAME_TYPE_MASK, fc & IEEE80211_FRAME_SUBTYPE_MASK);
 
-#if 0
-    ath10k_dbg(ar, ATH10K_DBG_MGMT,
-               "event mgmt rx freq %d band %d snr %d, rate_idx %d\n",
-               status->freq, status->band, status->signal,
-               status->rate_idx);
-#endif
 
     void* data = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
 
@@ -2381,7 +2394,7 @@ done:
     return ret;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static int freq_to_idx(struct ath10k* ar, int freq) {
     struct ieee80211_supported_band* sband;
     int band, ch, idx = 0;
@@ -3113,7 +3126,7 @@ ath10k_wmi_op_pull_vdev_start_ev(struct ath10k* ar, struct sk_buff* skb,
 
     return 0;
 }
-#endif
+#endif // NEEDS PORTING
 
 void ath10k_wmi_event_vdev_start_resp(struct ath10k* ar, struct ath10k_msg_buf* buf) {
     struct wmi_vdev_start_ev_arg arg = {};
@@ -3134,7 +3147,7 @@ void ath10k_wmi_event_vdev_start_resp(struct ath10k* ar, struct ath10k_msg_buf* 
     completion_signal(&ar->vdev_setup_done);
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 void ath10k_wmi_event_vdev_stopped(struct ath10k* ar, struct sk_buff* skb) {
     ath10k_dbg(ar, ATH10K_DBG_WMI, "WMI_VDEV_STOPPED_EVENTID\n");
     completion_signal(&ar->vdev_setup_done);
@@ -5995,7 +6008,7 @@ zx_status_t ath10k_wmi_start_scan_verify(const struct wmi_start_scan_arg* arg) {
     return ZX_OK;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static size_t
 ath10k_wmi_start_scan_tlvs_len(const struct wmi_start_scan_arg* arg) {
     int len = 0;
@@ -6022,7 +6035,7 @@ ath10k_wmi_start_scan_tlvs_len(const struct wmi_start_scan_arg* arg) {
 
     return len;
 }
-#endif
+#endif // NEEDS PORTING
 
 void ath10k_wmi_put_start_scan_common(struct wmi_start_scan_common* cmn,
                                       const struct wmi_start_scan_arg* arg) {
@@ -6173,7 +6186,7 @@ ath10k_wmi_10x_op_gen_start_scan(struct ath10k* ar,
     ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi 10x start scan\n");
     return skb;
 }
-#endif
+#endif // NEEDS PORTING
 
 void ath10k_wmi_start_scan_init(struct ath10k* ar,
                                 struct wmi_start_scan_arg* arg) {
@@ -6198,10 +6211,11 @@ void ath10k_wmi_start_scan_init(struct ath10k* ar,
     arg->scan_ctrl_flags |= WMI_SCAN_CHAN_STAT_EVENT;
     arg->n_bssids = 1;
 
-    arg->bssids[0].bssid = "\xFF\xFF\xFF\xFF\xFF\xFF";
+    static uint8_t null_bssid[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    arg->bssids[0].bssid = null_bssid;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_op_gen_stop_scan(struct ath10k* ar,
                             const struct wmi_stop_scan_arg* arg) {
@@ -6991,7 +7005,7 @@ ath10k_wmi_op_gen_beacon_dma(struct ath10k* ar, uint32_t vdev_id, const void* bc
 
     return skb;
 }
-#endif
+#endif // NEEDS PORTING
 
 void ath10k_wmi_set_wmm_param(struct wmi_wmm_params* params,
                               const struct wmi_wmm_params_arg* arg) {
@@ -7003,7 +7017,7 @@ void ath10k_wmi_set_wmm_param(struct wmi_wmm_params* params,
     params->no_ack = arg->no_ack;
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static struct sk_buff*
 ath10k_wmi_op_gen_pdev_set_wmm(struct ath10k* ar,
                                const struct wmi_wmm_params_all_arg* arg) {
