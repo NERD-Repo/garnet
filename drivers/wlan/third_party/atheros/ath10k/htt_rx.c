@@ -18,6 +18,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include <ddk/driver.h>
 #include <hw/arch_ops.h>
 #include <zircon/misc/fnv1hash.h>
 
