@@ -453,7 +453,7 @@ static void __ath10k_pci_sleep(struct ath10k* ar) {
             PCIE_SOC_WAKE_RESET);
     ar_pci->ps_awake = false;
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t ath10k_pci_wake_wait(struct ath10k* ar) {
     int tot_delay = 0;
@@ -515,7 +515,7 @@ static void ath10k_pci_force_sleep(struct ath10k* ar) {
 
     mtx_unlock(&ar_pci->ps_lock);
 }
-#endif
+#endif // NEEDS PORTING
 
 static zx_status_t ath10k_pci_wake(struct ath10k* ar) {
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
@@ -961,7 +961,7 @@ static zx_status_t ath10k_pci_diag_read32(struct ath10k* ar, uint32_t address, u
     return ath10k_pci_diag_read_mem(ar, address, value, sizeof(*value));
 }
 
-#if 0 // TODO
+#if 0 // NEEDS PORTING
 static zx_status_t __ath10k_pci_diag_read_hi(struct ath10k* ar, void* dest,
                                              uint32_t src, uint32_t len) {
     uint32_t host_addr, addr;
@@ -988,7 +988,7 @@ static zx_status_t __ath10k_pci_diag_read_hi(struct ath10k* ar, void* dest,
 
 #define ath10k_pci_diag_read_hi(ar, dest, src, len)             \
         __ath10k_pci_diag_read_hi(ar, dest, HI_ITEM(src), len)
-#endif // TODO
+#endif // NEEDS PORTING
 
 zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
                                       const void* data, int nbytes) {
@@ -1163,10 +1163,6 @@ static void ath10k_pci_process_rx_cb(struct ath10k_ce_pipe* ce_state,
                                          &nbytes) == ZX_OK) {
         buf = transfer_context;
         max_nbytes = buf->capacity;
-#if 0 // NEEDS PORTING
-        dma_unmap_single(ar->dev, ATH10K_SKB_RXCB(skb)->paddr,
-                         max_nbytes, DMA_FROM_DEVICE);
-#endif
 
         if (unlikely(max_nbytes < nbytes)) {
             ath10k_warn("rxed more than expected (nbytes %d, max %d)",
@@ -1190,7 +1186,7 @@ static void ath10k_pci_process_htt_rx_cb(struct ath10k_ce_pipe* ce_state,
                                          void (*callback)(struct ath10k* ar,
                                                struct ath10k_msg_buf* msg_buf)) {
     ZX_DEBUG_ASSERT_MSG(0, "ath10k_pci_process_htt_rx_cb not implemented\n");
-#if 0
+#if 0 // NEEDS PORTING
     struct ath10k* ar = ce_state->ar;
     struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     struct ath10k_pci_pipe* pipe_info =  &ar_pci->pipe_info[ce_state->id];
@@ -1242,7 +1238,7 @@ static void ath10k_pci_process_htt_rx_cb(struct ath10k_ce_pipe* ce_state,
                                    DMA_FROM_DEVICE);
     }
     ath10k_ce_rx_update_write_idx(ce_pipe, nentries);
-#endif
+#endif // NEEDS PORTING
 }
 
 /* Called by lower (CE) layer when data is received from the Target. */
@@ -1381,7 +1377,7 @@ uint16_t ath10k_pci_hif_get_free_queue_number(struct ath10k* ar, uint8_t pipe) {
     return ath10k_ce_num_free_src_entries(ar_pci->pipe_info[pipe].ce_hdl);
 }
 
-#if 0
+#if 0 // NEEDS PORTING
 static void ath10k_pci_dump_registers(struct ath10k* ar,
                                       struct ath10k_fw_crash_data* crash_data) {
     uint32_t reg_dump_values[REG_DUMP_COUNT_QCA988X] = {};
@@ -1417,10 +1413,10 @@ static void ath10k_pci_dump_registers(struct ath10k* ar,
         crash_data->registers[i] = reg_dump_values[i];
     }
 }
-#endif // TODO
+#endif // NEEDS PORTING
 
 static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     struct ath10k_fw_crash_data* crash_data;
     char uuid[50];
 
@@ -1444,7 +1440,7 @@ static void ath10k_pci_fw_crashed_dump(struct ath10k* ar) {
     mtx_unlock(&ar->data_lock);
 
     queue_work(ar->workqueue, &ar->restart_work);
-#endif // TODO
+#endif // NEEDS PORTING
 }
 
 void ath10k_pci_hif_send_complete_check(struct ath10k* ar, uint8_t pipe,
@@ -2426,6 +2422,7 @@ static zx_status_t ath10k_pci_hif_power_up(struct ath10k* ar) {
 
 #if 0 // TODO - get PCI express capability offset with kPciCapIdPciExpress and then
     //        read capability at offset + PCI_EXP_LNKCTL */
+    struct ath10k_pci* ar_pci = ath10k_pci_priv(ar);
     pcie_capability_read_word(ar_pci->pdev, PCI_EXP_LNKCTL,
                               &ar_pci->link_ctl);
     pcie_capability_write_word(ar_pci->pdev, PCI_EXP_LNKCTL,
@@ -2689,7 +2686,7 @@ static const struct ath10k_hif_ops ath10k_pci_hif_ops = {
     .suspend                = ath10k_pci_hif_suspend,
     .resume                 = ath10k_pci_hif_resume,
 #endif
-    .fetch_cal_eeprom   = ath10k_pci_hif_fetch_cal_eeprom,
+    .fetch_cal_eeprom       = ath10k_pci_hif_fetch_cal_eeprom,
 };
 
 static void ath10k_pci_interrupt_poll(struct ath10k* ar) {
@@ -2972,6 +2969,9 @@ zx_status_t ath10k_pci_setup_resource(struct ath10k* ar) {
     zx_status_t ret;
 
     mtx_init(&ar_pci->ce_lock, mtx_plain);
+#if 0 // NEEDS PORTING
+    mtx_init(&ar_pci->ps_lock, mtx_plain);
+#endif // NEEDS PORTING
 
     if (QCA_REV_6174(ar) || QCA_REV_9377(ar)) {
         ath10k_pci_override_ce_config(ar);
@@ -3380,9 +3380,9 @@ err_deinit_irq:
     ath10k_pci_deinit_irq(ar);
 
 err_sleep:
-#if 0 // TODO
+#if 0 // NEEDS PORTING
     ath10k_pci_sleep_sync(ar);
-#endif // TODO
+#endif // NEEDS PORTING
     ath10k_pci_release(ar);
 
 err_free_pipes:

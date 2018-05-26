@@ -247,6 +247,14 @@ struct ath10k_pci {
      * space to CE address space
      */
     zx_status_t (*targ_cpu_to_ce_addr)(struct ath10k* ar, uint32_t addr, uint32_t* ce_addr);
+
+#if 0 // NEEDS PORTING
+    /* Keep this entry in the last, memory for struct ath10k_ahb is
+     * allocated (ahb support enabled case) in the continuation of
+     * this struct.
+     */
+    struct ath10k_ahb ahb[0];
+#endif // NEEDS PORTING
 };
 
 static inline struct ath10k_pci* ath10k_pci_priv(struct ath10k* ar) {
