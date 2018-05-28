@@ -2275,7 +2275,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
     zx_status_t ret = ath10k_wmi_pull_mgmt_rx(ar, buf, &arg);
     if (ret != ZX_OK) {
         ath10k_warn("failed to parse mgmt rx event: %s\n", zx_status_get_string(ret));
-        goto done;
+        goto free_buf;
     }
 
     wlan_rx_info_t rx_info = {};
@@ -2296,8 +2296,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
     if ((BITARR_TEST(ar->dev_flags, ATH10K_CAC_RUNNING)) ||
             (rx_status & (WMI_RX_STATUS_ERR_DECRYPT |
                           WMI_RX_STATUS_ERR_KEY_CACHE_MISS | WMI_RX_STATUS_ERR_CRC))) {
-        ath10k_msg_buf_free(buf);
-        return ZX_OK;
+        goto free_buf;
     }
 
 #if 0 // NEEDS PORTING
@@ -2373,12 +2372,13 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
                fc & IEEE80211_FRAME_TYPE_MASK, fc & IEEE80211_FRAME_SUBTYPE_MASK);
 
 
-    void* data = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
+    void* frame_data = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
 
-    ar->wlanmac.ifc->recv(ar->wlanmac.cookie, 0, data, arg.buf_len, &rx_info);
+    ar->wlanmac.ifc->recv(ar->wlanmac.cookie, 0, frame_data, arg.buf_len, &rx_info);
 
     // There's no wlan event for assocation, so we have to look for the association
     // response ourselves and send the associate command to the firmware.
+    // TODO: NET-821
     if ((ieee80211_get_frame_type(hdr) == IEEE80211_FRAME_TYPE_MGMT)
         && ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_ASSOC_RESP) {
         thrd_create_with_name(&ar->assoc_work, ath10k_mac_bss_assoc, buf,
@@ -2387,9 +2387,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
         return ZX_OK;
     }
 
-    ret = ZX_OK;
-
-done:
+free_buf:
     ath10k_msg_buf_free(buf);
     return ret;
 }
@@ -4508,24 +4506,24 @@ void ath10k_wmi_event_vdev_resume_req(struct ath10k* ar, struct sk_buff* skb) {
 }
 #endif // NEEDS PORTING
 
-static int ath10k_wmi_alloc_chunk(struct ath10k* ar, uint32_t req_id,
-                                  uint32_t num_units, uint32_t unit_len) {
+static zx_status_t ath10k_wmi_alloc_host_mem(struct ath10k* ar, uint32_t req_id,
+                                             uint32_t num_units, uint32_t unit_len) {
     uint32_t pool_size;
-    zx_status_t status;
+    zx_status_t ret;
     unsigned int idx = ar->wmi.num_mem_chunks;
     ZX_ASSERT(idx < countof(ar->wmi.mem_chunks));
 
     zx_handle_t bti_handle;
-    status = ath10k_hif_get_bti_handle(ar, &bti_handle);
-    if (status != ZX_OK) {
-        return -1;
+    ret = ath10k_hif_get_bti_handle(ar, &bti_handle);
+    if (ret != ZX_OK) {
+        return ret;
     }
     pool_size = num_units * ROUNDUP(unit_len, 4);
-    status = io_buffer_init(&ar->wmi.mem_chunks[idx].handle, bti_handle, pool_size,
-                            IO_BUFFER_RW | IO_BUFFER_CONTIG);
+    ret = io_buffer_init(&ar->wmi.mem_chunks[idx].handle, bti_handle, pool_size,
+                         IO_BUFFER_RW | IO_BUFFER_CONTIG);
 
-    if (status != ZX_OK) {
-        return -1;
+    if (ret != ZX_OK) {
+        return ret;
     }
 
     struct ath10k_mem_chunk* chunk = &ar->wmi.mem_chunks[idx];
@@ -4538,23 +4536,7 @@ static int ath10k_wmi_alloc_chunk(struct ath10k* ar, uint32_t req_id,
 
     ar->wmi.num_mem_chunks++;
 
-    return num_units;
-}
-
-static int ath10k_wmi_alloc_host_mem(struct ath10k* ar, uint32_t req_id,
-                                     uint32_t num_units, uint32_t unit_len) {
-    int ret;
-
-    while (num_units) {
-        ret = ath10k_wmi_alloc_chunk(ar, req_id, num_units, unit_len);
-        if (ret < 0) {
-            return ret;
-        }
-
-        num_units -= ret;
-    }
-
-    return 0;
+    return ZX_OK;
 }
 
 static bool
@@ -6211,8 +6193,8 @@ void ath10k_wmi_start_scan_init(struct ath10k* ar,
     arg->scan_ctrl_flags |= WMI_SCAN_CHAN_STAT_EVENT;
     arg->n_bssids = 1;
 
-    static uint8_t null_bssid[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-    arg->bssids[0].bssid = null_bssid;
+    static uint8_t wildcard_bssid[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+    arg->bssids[0].bssid = wildcard_bssid;
 }
 
 #if 0 // NEEDS PORTING
