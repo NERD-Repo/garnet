@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![deny(warnings)]
+//#![deny(warnings)]
 
 extern crate failure;
 extern crate fdio;
 extern crate fidl;
 extern crate fidl_bluetooth;
+extern crate fidl_bluetooth_bonder;
 extern crate fidl_bluetooth_control;
 extern crate fidl_bluetooth_gatt;
 extern crate fidl_bluetooth_host;
@@ -31,6 +32,7 @@ use bt::util;
 use failure::{Error, ResultExt};
 use fidl::endpoints2::{ServerEnd, ServiceMarker};
 use fidl_bluetooth_control::ControlMarker;
+use fidl_bluetooth_bonder::BonderMarker;
 use fidl_bluetooth_gatt::Server_Marker;
 use fidl_bluetooth_low_energy::{CentralMarker, PeripheralMarker};
 use futures::FutureExt;
@@ -39,6 +41,7 @@ use std::sync::Arc;
 
 mod control_service;
 mod host_device;
+mod bonder_service;
 mod host_dispatcher;
 mod logger;
 
@@ -56,7 +59,7 @@ fn main() -> Result<(), Error> {
     let mut executor = async::Executor::new().context("Error creating executor")?;
     let hd = Arc::new(RwLock::new(HostDispatcher::new()));
 
-    make_clones!(hd => host_hd, control_hd, central_hd, peripheral_hd, gatt_hd);
+    make_clones!(hd => host_hd, bonder_hd, control_hd, central_hd, peripheral_hd, gatt_hd);
 
     let host_watcher = watch_hosts(host_hd);
 
@@ -65,6 +68,13 @@ fn main() -> Result<(), Error> {
             trace!("Spawning Control Service");
             async::spawn(control_service::make_control_service(
                 control_hd.clone(),
+                chan,
+            ))
+        }))
+        .add_service((BonderMarker::NAME, move |chan: async::Channel| {
+            trace!("Spawning Bonding Service");
+            async::spawn(bonder_service::make_bonder_service(
+                bonder_hd.clone(),
                 chan,
             ))
         }))

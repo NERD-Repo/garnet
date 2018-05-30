@@ -63,7 +63,7 @@ pub fn run(
 ) -> impl Future<Item = HostEventStream, Error = fidl::Error> {
     make_clones!(host => host_stream, host);
     let stream = host_stream.read().host.take_event_stream();
-    stream 
+    stream
         .for_each(move |evt| {
             match evt {
                 HostEvent::OnAdapterStateChanged { ref state } => {

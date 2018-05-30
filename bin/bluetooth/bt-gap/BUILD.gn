@@ -13,6 +13,7 @@ rustc_binary("bin") {
     "//garnet/lib/rust/crates/fuchsia-bluetooth",
     "//garnet/public/lib/bluetooth/fidl:bluetooth-rustc",
     "//garnet/public/lib/bluetooth/fidl:bluetooth_control-rustc",
+    "//garnet/public/lib/bluetooth/fidl:bluetooth_bonder-rustc",
     "//garnet/public/lib/bluetooth/fidl:bluetooth_gatt-rustc",
     "//garnet/public/lib/bluetooth/fidl:bluetooth_low_energy-rustc",
     "//garnet/public/lib/fidl/rust/fidl",
