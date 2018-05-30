@@ -14,10 +14,16 @@ group("fidl") {
 }
 
 fidl("bluetooth") {
-
   sources = [
     "common.fidl",
   ]
+}
+
+fidl("bluetooth_bonder") {
+  sources = [
+    "bonder.fidl",
+  ]
+  public_deps = [ ":bluetooth", ]
 }
 
 fidl("bluetooth_control") {
