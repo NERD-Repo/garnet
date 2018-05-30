@@ -2383,6 +2383,8 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
         mtx_lock(&ar->assoc_lock);
         if (ar->assoc_frame == NULL) {
             ar->assoc_frame = buf;
+            // This path is critical. If we don't tell the firmware to associate before
+            // the first key packet is received, it will gladly deauthenticate us.
             if (zx_object_signal(ar->assoc_signal, 0, ZX_USER_SIGNAL_0) != ZX_OK) {
                 mtx_unlock(&ar->assoc_lock);
                 goto maybe_free_buf;
