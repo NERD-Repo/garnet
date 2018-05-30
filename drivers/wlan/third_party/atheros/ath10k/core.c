@@ -2523,6 +2523,14 @@ zx_status_t ath10k_core_create(struct ath10k** ar_ptr, size_t priv_size,
         goto err_free_mac;
     }
 
+    mtx_init(&ar->assoc_lock, mtx_plain);
+    ret = zx_event_create(0, &ar->assoc_signal);
+    if (ret != ZX_OK) {
+        goto err_free_mac;
+    }
+    thrd_create_with_name(&ar->assoc_work, ath10k_mac_bss_assoc, ar, "ath10k_assoc_work");
+    thrd_detach(ar->assoc_work);
+
 #if 0 // NEEDS PORTING
     init_waitqueue_head(&ar->peer_mapping_wq);
     init_waitqueue_head(&ar->htt.empty_tx_wq);

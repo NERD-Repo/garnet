@@ -906,6 +906,10 @@ struct ath10k {
     thrd_t monitor_thread;
 #endif
 
+    mtx_t assoc_lock;
+    zx_handle_t assoc_signal;
+    struct ath10k_msg_buf* assoc_frame;
+
 #if 0 // NEEDS PORTING
     /* cycle count is reported twice for each visited channel during scan.
      * access protected by data_lock

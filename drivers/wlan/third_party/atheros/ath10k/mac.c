@@ -102,7 +102,6 @@ static const struct ath10k_channel ath10k_5ghz_channels[] = {
 static const struct ath10k_band ath10k_supported_bands[] = {
     {
         .name = "2.4 Ghz",
-        .mode = MODE_11G,
         // FIXME: NET-817
         .ht_caps = { .ht_capability_info = 0x01fe,
                      .ampdu_params = 0x00,
@@ -122,7 +121,6 @@ static const struct ath10k_band ath10k_supported_bands[] = {
 
     {
         .name = "5 Ghz",
-        .mode = MODE_11A,
         // FIXME: NET-817
         .ht_caps = { .ht_capability_info = 0x01fe,
                      .ampdu_params = 0x00,
@@ -505,10 +503,10 @@ static int ath10k_clear_vdev_key(struct ath10k_vif* arvif,
 /*********************/
 
 static inline enum wmi_phy_mode
-chan_to_phymode(wlan_channel_t* wlan_chan, const struct ath10k_channel* primary_chan) {
+chan_to_phymode(wlan_channel_t* wlan_chan) {
     enum wmi_phy_mode phymode = MODE_UNKNOWN;
 
-    if (primary_chan->hw_value <= 14) {
+    if (wlan_chan->primary <= 14) {
         switch(wlan_chan->cbw) {
         case CBW20:
             phymode = MODE_11NG_HT20;
@@ -1428,7 +1426,7 @@ static zx_status_t ath10k_vdev_start_restart(struct ath10k_vif* arvif,
         return ZX_ERR_INVALID_ARGS;
     }
 
-    arg.channel.mode = chan_to_phymode(chandef, primary_chan);
+    arg.channel.mode = chan_to_phymode(chandef);
 
     arg.channel.min_power = 0;
     arg.channel.max_power = primary_chan->max_power * 2;
@@ -2235,8 +2233,7 @@ ath10k_peer_assoc_h_vht_masked(const uint16_t vht_mcs_mask[NL80211_VHT_NSS_MAX])
 }
 
 static void ath10k_peer_assoc_h_ht(struct ath10k* ar,
-                                   struct ieee80211_vif* vif,
-                                   struct ieee80211_sta* sta,
+                                   void* assoc_resp_frame,
                                    struct wmi_peer_assoc_complete_arg* arg) {
     const struct ieee80211_sta_ht_cap* ht_cap = &sta->ht_cap;
     struct ath10k_vif* arvif = (void*)vif->drv_priv;
@@ -2835,32 +2832,6 @@ static void ethaddr_sprintf(char* str, uint8_t* addr) {
     }
 }
 
-static void ath10k_mac_parse_ht_caps(uint16_t response_ht_caps, uint32_t* arg_ht_caps) {
-    *arg_ht_caps |= WMI_HT_CAP_ENABLED;
-    if (response_ht_caps & IEEE80211_HT_CAPS_LDPC) {
-        *arg_ht_caps |= WMI_HT_CAP_LDPC;
-    }
-    if ((response_ht_caps & IEEE80211_HT_CAPS_SMPS) == 0x4) {
-        *arg_ht_caps |= WMI_HT_CAP_DYNAMIC_SMPS;
-    }
-    if (response_ht_caps & IEEE80211_HT_CAPS_20_SGI) {
-        *arg_ht_caps |= WMI_HT_CAP_HT20_SGI;
-    }
-    if (response_ht_caps & IEEE80211_HT_CAPS_40_SGI) {
-        *arg_ht_caps |= WMI_HT_CAP_HT40_SGI;
-    }
-    if (response_ht_caps & IEEE80211_HT_CAPS_TX_STBC) {
-        *arg_ht_caps |= WMI_HT_CAP_TX_STBC;
-    }
-    *arg_ht_caps |= (((response_ht_caps & IEEE80211_HT_CAPS_RX_STBC)
-                      >> IEEE80211_HT_CAPS_RX_STBC_SHIFT)
-                      << WMI_HT_CAP_RX_STBC_MASK_SHIFT);
-    if (response_ht_caps & IEEE80211_HT_CAPS_L_SIG_TXOP_PROT) {
-        *arg_ht_caps |= WMI_HT_CAP_L_SIG_TXOP_PROT;
-    }
-
-}
-
 static void ath10k_mac_parse_a_mpdu(uint8_t response_a_mpdu,
                                     struct wmi_peer_assoc_complete_arg* assoc_arg) {
     assoc_arg->peer_max_mpdu = response_a_mpdu & IEEE80211_A_MPDU_MAX_RX_LEN;
@@ -2868,7 +2839,8 @@ static void ath10k_mac_parse_a_mpdu(uint8_t response_a_mpdu,
                                    IEEE80211_A_MPDU_DENSITY_SHIFT;
 }
 
-static void ath10k_mac_parse_assoc_resp(const uint8_t* tagged_data,
+static void ath10k_mac_parse_assoc_resp(struct ath10k* ar,
+                                        const uint8_t* tagged_data,
                                         size_t data_len,
                                         struct wmi_peer_assoc_complete_arg* assoc_arg) {
     size_t legacy_rates_seen = 0;
@@ -2898,9 +2870,70 @@ static void ath10k_mac_parse_assoc_resp(const uint8_t* tagged_data,
             if (tag_len != 26) {
                 goto invalid_data;
             }
+            assoc_arg->peer_flags |= ar->wmi.peer_flags->ht;
             uint16_t ht_caps = tagged_data[0] | ((uint16_t)tagged_data[1] << 8);
-            ath10k_mac_parse_ht_caps(ht_caps, &assoc_arg->peer_ht_caps);
+            assoc_arg->peer_ht_caps = ht_caps;
+            assoc_arg->peer_rate_caps |= WMI_RC_HT_FLAG;
+            if (ht_caps & IEEE80211_HT_CAPS_40MHZ) {
+                assoc_arg->peer_flags |= ar->wmi.peer_flags->bw40;
+                assoc_arg->peer_rate_caps |= WMI_RC_CW40_FLAG;
+            }
+            if ((ht_caps & IEEE80211_HT_CAPS_20_SGI) ||
+                (ht_caps & IEEE80211_HT_CAPS_40_SGI)) {
+                assoc_arg->peer_rate_caps |= WMI_RC_SGI_FLAG;
+            }
+            if (ht_caps & IEEE80211_HT_CAPS_LDPC) {
+                assoc_arg->peer_flags |= ar->wmi.peer_flags->ldbc;
+            }
+            if (ht_caps & IEEE80211_HT_CAPS_TX_STBC) {
+                assoc_arg->peer_rate_caps |= WMI_RC_TX_STBC_FLAG;
+                assoc_arg->peer_flags |= ar->wmi.peer_flags->stbc;
+            }
+            if (ht_caps & IEEE80211_HT_CAPS_RX_STBC) {
+                uint16_t stbc = ht_caps & IEEE80211_HT_CAPS_RX_STBC;
+                stbc >>= IEEE80211_HT_CAPS_RX_STBC_SHIFT;
+                stbc <<= WMI_RC_RX_STBC_FLAG_S;
+                assoc_arg->peer_rate_caps |= stbc;
+                assoc_arg->peer_flags |= ar->wmi.peer_flags->stbc;
+            }
             ath10k_mac_parse_a_mpdu(tagged_data[2], assoc_arg);
+            break;
+        case IEEE80211_ASSOC_TAG_HT_INFO:
+            if (tag_len != 22) {
+                goto invalid_data;
+            }
+#if 0
+            struct ieee80211_ht_info* ht_info = (void*)tagged_data;
+            unsigned i, n, max_nss;
+            for (i = 0, n = 0, max_nss = 0; i < (10 * 8); i++) {
+                if ((ht_info->rx_mcs[i / 8] & (1U << (i % 8))) &&
+                    (ht_mcs_mask[i / 8] & (1U << (i % 8)))) {
+                    max_nss = (i / 8) + 1;
+                    arg->peer_ht_rates.rates[n++] = i;
+                }
+            }
+            /*
+             * This is a workaround for HT-enabled STAs which break the spec
+             * and have no HT capabilities RX mask (no HT RX MCS map).
+             *
+             * As per spec, in section 20.3.5 Modulation and coding scheme (MCS),
+             * MCS 0 through 7 are mandatory in 20MHz with 800 ns GI at all STAs.
+             *
+             * Firmware asserts if such situation occurs.
+             */
+            if (n == 0) {
+#endif
+                unsigned i;
+                assoc_arg->peer_ht_rates.num_rates = 8;
+                for (i = 0; i < assoc_arg->peer_ht_rates.num_rates; i++) {
+                    assoc_arg->peer_ht_rates.rates[i] = i;
+                }
+#if 0
+            } else {
+                arg->peer_ht_rates.num_rates = n;
+                arg->peer_num_spatial_streams = MIN(sta->rx_nss, max_nss);
+            }
+#endif
             break;
         case IEEE80211_ASSOC_TAG_EXTENDED_RATES:
             {
@@ -2926,129 +2959,133 @@ invalid_data:
 }
 
 int ath10k_mac_bss_assoc(void* thrd_data) {
-    struct ath10k_msg_buf* buf = thrd_data;
-    struct ath10k* ar = buf->state->ar;
-    mtx_lock(&ar->conf_mutex);
-    struct ath10k_vif* arvif = &ar->arvif;
-    struct wmi_peer_assoc_complete_arg assoc_arg;
-    struct ieee80211_frame_header* frame_hdr;
-    struct ieee80211_assoc_resp* assoc_resp;
+    struct ath10k* ar = thrd_data;
     zx_status_t status;
-    int result = 0; // success
 
-    if (arvif->is_up) {
-        // TODO -- figure out why we can't disassociate
-        return 0;
+    while(zx_object_wait_one(ar->assoc_signal, ZX_USER_SIGNAL_0,
+                             ZX_TIME_INFINITE, NULL) == ZX_OK) {
+        mtx_lock(&ar->assoc_lock);
+        status = zx_object_signal(ar->assoc_signal, ZX_USER_SIGNAL_0, 0);
+        ZX_DEBUG_ASSERT(status == ZX_OK);
+        struct ath10k_msg_buf* buf = ar->assoc_frame;
+        mtx_unlock(&ar->assoc_lock);
+
+        mtx_lock(&ar->conf_mutex);
+        struct ath10k_vif* arvif = &ar->arvif;
+        struct wmi_peer_assoc_complete_arg assoc_arg;
+        struct ieee80211_frame_header* frame_hdr;
+        struct ieee80211_assoc_resp* assoc_resp;
+
+        if (arvif->is_up) {
+            // TODO -- figure out why we can't disassociate
+            goto done;
 #if 0
-        ath10k_info("disassociating from bss\n");
-        status = ath10k_wmi_vdev_down(ar, arvif->vdev_id);
-        if (status != ZX_OK) {
-            ath10k_err("failed to disassociate from bss: %s\n", zx_status_get_string(status));
-            return status;
+            ath10k_info("disassociating from bss\n");
+            status = ath10k_wmi_vdev_down(ar, arvif->vdev_id);
+            if (status != ZX_OK) {
+                ath10k_err("failed to disassociate from bss: %s\n", zx_status_get_string(status));
+                return status;
+            }
+            arvif->is_up = false;
+#endif
         }
-        arvif->is_up = false;
-#endif
-    }
 
-    void* frame_ptr = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
-    frame_hdr = frame_ptr;
-    assoc_resp = frame_ptr + sizeof(*frame_hdr);
-    arvif->aid = (assoc_resp->assoc_id & 0x3fff);
+        void* frame_ptr = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
+        frame_hdr = frame_ptr;
+        assoc_resp = frame_ptr + sizeof(*frame_hdr);
+        arvif->aid = (assoc_resp->assoc_id & 0x3fff);
 
-    status = ath10k_wmi_peer_create(ar, arvif->vdev_id, frame_hdr->addr3, WMI_PEER_TYPE_BSS);
-    if (status != ZX_OK) {
-        ath10k_warn("failed to create peer: %s\n", zx_status_get_string(status));
-        result = 1;
-        goto done;
-    }
+        status = ath10k_wmi_peer_create(ar, arvif->vdev_id, ieee80211_get_bssid(frame_hdr),
+                                        WMI_PEER_TYPE_BSS);
+        if (status != ZX_OK) {
+            ath10k_warn("failed to create peer: %s\n", zx_status_get_string(status));
+            goto done;
+        }
 
-    size_t total_size = buf->rx.frame_size;
-    size_t rate_info_size = total_size - (sizeof(*frame_hdr) + sizeof(*assoc_resp));
+        size_t total_size = buf->rx.frame_size;
+        size_t rate_info_size = total_size - (sizeof(*frame_hdr) + sizeof(*assoc_resp));
 
-    if (assoc_resp->status != 0) {
-        result = 1;
-        goto done;
-    }
+        if (assoc_resp->status != 0) {
+            goto done;
+        }
 
-    memset(&assoc_arg, 0, sizeof(assoc_arg));
-    uint8_t* bssid = ieee80211_get_bssid(frame_hdr);
-    if (memcmp(bssid, arvif->bssid, ETH_ALEN)) {
-        char bssid_expected[ETH_ALEN * 3];
-        char bssid_actual[ETH_ALEN * 3];
-        ethaddr_sprintf(bssid_expected, arvif->bssid);
-        ethaddr_sprintf(bssid_actual, bssid);
-        ath10k_warn("expected to associate with %s but got response from %s - ignoring\n",
-                    bssid_expected, bssid_actual);
-        result = 1;
-        goto done;
-    }
-    memcpy(assoc_arg.addr, bssid, ETH_ALEN);
+        memset(&assoc_arg, 0, sizeof(assoc_arg));
+        uint8_t* bssid = ieee80211_get_bssid(frame_hdr);
+        if (memcmp(bssid, arvif->bssid, ETH_ALEN)) {
+            char bssid_expected[ETH_ALEN * 3];
+            char bssid_actual[ETH_ALEN * 3];
+            ethaddr_sprintf(bssid_expected, arvif->bssid);
+            ethaddr_sprintf(bssid_actual, bssid);
+            ath10k_warn("expected to associate with %s but got response from %s - ignoring\n",
+                        bssid_expected, bssid_actual);
+            goto done;
+        }
+        memcpy(assoc_arg.addr, bssid, ETH_ALEN);
 
-    assoc_arg.vdev_id = arvif->vdev_id;
-    assoc_arg.peer_reassoc = false;
-    assoc_arg.peer_aid = arvif->aid;
-    assoc_arg.peer_flags |= ar->wmi.peer_flags->auth;
-    assoc_arg.peer_listen_intval = 1;
-    assoc_arg.peer_num_spatial_streams = 1;
-    assoc_arg.peer_caps = assoc_resp->capabilities;
+        assoc_arg.vdev_id = arvif->vdev_id;
+        assoc_arg.peer_reassoc = false;
+        assoc_arg.peer_aid = arvif->aid;
+        assoc_arg.peer_flags |= ar->wmi.peer_flags->auth | ar->wmi.peer_flags->qos;
+        assoc_arg.peer_listen_intval = 1;
+        assoc_arg.peer_num_spatial_streams = 1;
+        assoc_arg.peer_caps = assoc_resp->capabilities;
 
-    ath10k_mac_parse_assoc_resp(assoc_resp->info, rate_info_size, &assoc_arg);
+        ath10k_mac_parse_assoc_resp(ar, assoc_resp->info, rate_info_size, &assoc_arg);
 
-    // TODO: Ideally we should look this up
-    assoc_arg.peer_phymode = ar->rx_channel.primary <= 14 ? MODE_11G : MODE_11A;
+        assoc_arg.peer_phymode = chan_to_phymode(&ar->rx_channel);
 
-    // TODO: set crypto flags (as per ath10k_peer_assoc_h_crypto
-
-#if 0 // TODO: HT
-    assoc_arg.peer_rate_caps
-    assoc_arg.peer_ht_rates
-#endif
+        // TODO: set crypto flags (as per ath10k_peer_assoc_h_crypto)
 
 #if 0 // TODO: VHT
-    assoc_arg.peer_vht_caps
-    assoc_arg.peer_vht_rates
-    assoc_arg.peer_bw_rxnss_override
+        assoc_arg.peer_vht_caps
+        assoc_arg.peer_vht_rates
+        assoc_arg.peer_bw_rxnss_override
 #endif
 
-    char bssid_str[ETH_ALEN * 3];
-    ethaddr_sprintf(bssid_str, arvif->bssid);
+        char bssid_str[ETH_ALEN * 3];
+        ethaddr_sprintf(bssid_str, arvif->bssid);
 
-    status = ath10k_wmi_peer_assoc(ar, &assoc_arg);
-    if (status != ZX_OK) {
-        ath10k_warn("failed to run peer assoc for %pM vdev %i: %s\n",
-                    arvif->bssid, arvif->vdev_id, zx_status_get_string(status));
-        goto done;
-    }
+        status = ath10k_wmi_peer_assoc(ar, &assoc_arg);
+        if (status != ZX_OK) {
+            ath10k_warn("failed to run peer assoc for %pM vdev %i: %s\n",
+                        arvif->bssid, arvif->vdev_id, zx_status_get_string(status));
+            goto done;
+        }
 
-    ath10k_dbg(ar, ATH10K_DBG_MAC, "mac vdev %d up (associated) bssid %pM aid %d\n",
-               arvif->vdev_id, arvif->bssid, arvif->aid);
+        ath10k_dbg(ar, ATH10K_DBG_MAC, "mac vdev %d up (associated) bssid %pM aid %d\n",
+                   arvif->vdev_id, arvif->bssid, arvif->aid);
 
-    status = ath10k_wmi_vdev_up(ar, arvif->vdev_id, arvif->aid, arvif->bssid);
-    if (status != ZX_OK) {
-        ath10k_warn("failed to bring vdev %d up with aid: %d bssid: %s (%s)\n",
-                    arvif->vdev_id, arvif->aid, bssid_str, zx_status_get_string(status));
-    }
+        status = ath10k_wmi_vdev_up(ar, arvif->vdev_id, arvif->aid, arvif->bssid);
+        if (status != ZX_OK) {
+            ath10k_warn("failed to bring vdev %d up with aid: %d bssid: %s (%s)\n",
+                        arvif->vdev_id, arvif->aid, bssid_str, zx_status_get_string(status));
+        }
 
-    arvif->is_up = true;
+        arvif->is_up = true;
 
-    ath10k_info("successfully associated with bssid %s\n", bssid_str);
+        ath10k_info("successfully associated with bssid %s\n", bssid_str);
 
-    /* Workaround: Some firmware revisions (tested with qca6174
-     * WLAN.RM.2.0-00073) have buggy powersave state machine and must be
-     * poked with peer param command.
-     */
-    status = ath10k_wmi_peer_set_param(ar, arvif->vdev_id, arvif->bssid,
-                                       WMI_PEER_DUMMY_VAR, 1);
-    if (status != ZX_OK) {
-        ath10k_warn("failed to poke peer %pM param for ps workaround on vdev %i: %s\n",
-                    arvif->bssid, arvif->vdev_id, zx_status_get_string(status));
-        goto done;
-    }
+        /* Workaround: Some firmware revisions (tested with qca6174
+         * WLAN.RM.2.0-00073) have buggy powersave state machine and must be
+         * poked with peer param command.
+         */
+        status = ath10k_wmi_peer_set_param(ar, arvif->vdev_id, arvif->bssid,
+                                           WMI_PEER_DUMMY_VAR, 1);
+        if (status != ZX_OK) {
+            ath10k_warn("failed to poke peer %pM param for ps workaround on vdev %i: %s\n",
+                        arvif->bssid, arvif->vdev_id, zx_status_get_string(status));
+            goto done;
+        }
 
 done:
-    mtx_unlock(&ar->conf_mutex);
-    ath10k_msg_buf_free(buf);
-    return result;
+        mtx_unlock(&ar->conf_mutex);
+
+        mtx_lock(&ar->assoc_lock);
+        ath10k_msg_buf_free(buf);
+        ar->assoc_frame = NULL;
+        mtx_unlock(&ar->assoc_lock);
+    }
+    return 1; // We should never exit...
 }
 
 #if 0
@@ -3278,6 +3315,7 @@ static int ath10k_station_disassoc(struct ath10k* ar,
 /* Regulatory */
 /**************/
 
+#if 0
 static zx_status_t ath10k_update_channel_list(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
@@ -3360,6 +3398,7 @@ static zx_status_t ath10k_update_channel_list(struct ath10k* ar) {
 
     return ret;
 }
+#endif
 
 #if 0 // NEEDS PORTING
 static enum wmi_dfs_region
@@ -3379,7 +3418,7 @@ ath10k_mac_get_dfs_region(enum nl80211_dfs_regions dfs_region) {
 #endif // NEEDS PORTING
 
 static void ath10k_regd_update(struct ath10k* ar) {
-    zx_status_t ret;
+//    zx_status_t ret;
 #if 0 // NEEDS PORTING
     struct reg_dmn_pair_mapping* regpair;
     enum wmi_dfs_region wmi_dfs_reg;
@@ -3388,10 +3427,12 @@ static void ath10k_regd_update(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
 
+#if 0
     ret = ath10k_update_channel_list(ar);
     if (ret != ZX_OK) {
         ath10k_warn("failed to update channel list: %s\n", zx_status_get_string(ret));
     }
+#endif
 
 #if 0 // NEEDS PORTING
     regpair = ar->ath_common.regulatory.regpair;

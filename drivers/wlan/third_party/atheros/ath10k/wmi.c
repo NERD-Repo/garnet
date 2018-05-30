@@ -2271,11 +2271,12 @@ static bool ath10k_wmi_rx_is_decrypted(struct ath10k* ar,
 zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* buf) {
     struct wmi_mgmt_rx_ev_arg arg = {};
     uint32_t rx_status;
+    bool free_buf = true;
 
     zx_status_t ret = ath10k_wmi_pull_mgmt_rx(ar, buf, &arg);
     if (ret != ZX_OK) {
         ath10k_warn("failed to parse mgmt rx event: %s\n", zx_status_get_string(ret));
-        goto free_buf;
+        goto maybe_free_buf;
     }
 
     wlan_rx_info_t rx_info = {};
@@ -2296,7 +2297,7 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
     if ((BITARR_TEST(ar->dev_flags, ATH10K_CAC_RUNNING)) ||
             (rx_status & (WMI_RX_STATUS_ERR_DECRYPT |
                           WMI_RX_STATUS_ERR_KEY_CACHE_MISS | WMI_RX_STATUS_ERR_CRC))) {
-        goto free_buf;
+        goto maybe_free_buf;
     }
 
 #if 0 // NEEDS PORTING
@@ -2374,21 +2375,36 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
 
     void* frame_data = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
 
-    ar->wlanmac.ifc->recv(ar->wlanmac.cookie, 0, frame_data, arg.buf_len, &rx_info);
-
     // There's no wlan event for assocation, so we have to look for the association
     // response ourselves and send the associate command to the firmware.
     // TODO: NET-821
     if ((ieee80211_get_frame_type(hdr) == IEEE80211_FRAME_TYPE_MGMT)
         && ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_ASSOC_RESP) {
-        thrd_create_with_name(&ar->assoc_work, ath10k_mac_bss_assoc, buf,
-                              "ath10k_mac_assoc_work");
-        // mac_bss_assoc owns the buffer now
-        return ZX_OK;
+        mtx_lock(&ar->assoc_lock);
+        if (ar->assoc_frame == NULL) {
+            ar->assoc_frame = buf;
+            if (zx_object_signal(ar->assoc_signal, 0, ZX_USER_SIGNAL_0) != ZX_OK) {
+                mtx_unlock(&ar->assoc_lock);
+                goto maybe_free_buf;
+            }
+            // mac_bss_assoc owns the buffer now
+            free_buf = false;
+        } else {
+            // In general the lock should prevent us from getting here, but if by some
+            // chance we get back-to-back packets and no progress has been made on the
+            // assoc thread, drop this one.
+            mtx_unlock(&ar->assoc_lock);
+            goto maybe_free_buf;
+        }
+        mtx_unlock(&ar->assoc_lock);
     }
 
-free_buf:
-    ath10k_msg_buf_free(buf);
+    ar->wlanmac.ifc->recv(ar->wlanmac.cookie, 0, frame_data, arg.buf_len, &rx_info);
+
+maybe_free_buf:
+    if (free_buf) {
+        ath10k_msg_buf_free(buf);
+    }
     return ret;
 }
 
