@@ -41,6 +41,13 @@ struct ieee80211_assoc_resp {
     uint8_t info[0];
 } __PACKED;
 
+// IEEE Std 802.11-2016, 9.4.2.57
+struct ieee80211_ht_info {
+    uint8_t primary_channel;
+    uint8_t ht_operation_info[5];
+    uint8_t rx_mcs[10];
+} __PACKED;
+
 // IEEE Std 802.11-2016, 9.2.4.1.3
 enum ieee80211_frame_type {
     IEEE80211_FRAME_TYPE_MGMT = 0x0,
@@ -103,11 +110,12 @@ enum ieee80211_assoc_tags {
     IEEE80211_ASSOC_TAG_RATES = 1,
     IEEE80211_ASSOC_TAG_HT_CAPS = 45,
     IEEE80211_ASSOC_TAG_EXTENDED_RATES = 50,
+    IEEE80211_ASSOC_TAG_HT_INFO = 61,
 };
 
 enum ieee80211_ht_caps {
     IEEE80211_HT_CAPS_LDPC              = 0x0001,
-    IEEE80211_HT_CAPS_20MHZ_ONLY        = 0x0002,
+    IEEE80211_HT_CAPS_40MHZ             = 0x0002,
     IEEE80211_HT_CAPS_SMPS              = 0x000c,
     IEEE80211_HT_CAPS_GF                = 0x0010,
     IEEE80211_HT_CAPS_20_SGI            = 0x0020,
