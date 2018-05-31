@@ -13,18 +13,23 @@ extern crate fuchsia_zircon as zircon;
 
 use failure::Error;
 use rand::Rng;
-use std::fs::{File, OpenOptions};
-use std::path::Path;
+use std::fs::{read_dir, File, OpenOptions};
+use std::path::{Path, PathBuf};
 
 use bluetooth::hci;
 use zircon::Channel;
 
 fn usage(appname: &str) -> (){
-    eprintln!("usage: {} [add|rm]", appname);
+    eprintln!("usage: {} [add|rm|list]", appname);
 }
 
 fn open_rdwr<P: AsRef<Path>>(path: P) -> Result<File, Error> {
     OpenOptions::new().read(true).write(true).open(path).map_err(|e| e.into())
+}
+
+fn get_devices() -> Vec<PathBuf> {
+    let path = Path::new(hci::DEV_TEST);
+    read_dir(path).unwrap().map(|e| e.unwrap().path()).collect()
 }
 
 fn rm_device(dev_name: &str) -> Result<(), Error> {
@@ -42,13 +47,18 @@ fn main() {
         usage(appname);
         return;
     }
-    // TODO(bwb) better arg parsing
+    // TODO(bwb): better arg parsing
     let command = &args[1];
 
     match command.as_str() {
         "add" => {
             if let Ok((_, id)) = hci::create_and_bind_device() {
                 println!("fake device added: {}", id);
+            }
+        }
+        "list" => {
+            for device in get_devices() {
+                println!("{}", device.to_string_lossy());
             }
         }
         "rm" => {
