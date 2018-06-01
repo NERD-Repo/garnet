@@ -46,7 +46,11 @@ interface Host {
   // Sets whether this host should be discoverable.
   109: SetDiscoverable(bool enabled) -> (bluetooth.Status @status);
 
+  // Adds existing bonded devices to the host on startup
+  110: AddBondedDevices(vector<bluetooth_bonder.BondingData> bonds) -> (bluetooth.Status @status);
+
   // Events
   101000: -> OnAdapterStateChanged(bluetooth_control.AdapterState state);
   101001: -> OnDeviceDiscovered(bluetooth_control.RemoteDevice device);
+  101002: -> OnNewBondingData(bluetooth_bonder.BondingData data);
 };

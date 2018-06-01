@@ -6,6 +6,7 @@ use fidl;
 use fidl_bluetooth::Status;
 use fidl_bluetooth_control::AdapterInfo;
 use fidl_bluetooth_host::{HostEvent, HostEventStream, HostProxy};
+use fidl_bluetooth_bonder::{BondingData};
 use futures::{FutureExt, StreamExt};
 use futures::Future;
 use futures::future::ok as fok;
@@ -29,6 +30,10 @@ impl HostDevice {
 
     pub fn get_host(&self) -> &HostProxy {
         &self.host
+    }
+
+    pub fn bond(&self, mut bonds: Vec<BondingData>) -> impl Future<Item = Status, Error = fidl::Error> {
+        self.host.add_bonded_devices(&mut bonds.iter_mut())
     }
 
     pub fn get_info(&self) -> &AdapterInfo {
@@ -74,6 +79,13 @@ pub fn run(
                         let _res = events
                             .send_on_device_updated(&mut device)
                             .map_err(|e| error!("Failed to send device discovery event: {:?}", e));
+                    }
+                }
+                HostEvent::OnNewBondingData { data } => {
+                    if let Some(ref events) = hd.write().events {
+                        //let _res = events
+                        //    .send_on_device_updated(&mut device)
+                        //    .map_err(|e| error!("Failed to send device discovery event: {:?}", e));
                     }
                 }
             };

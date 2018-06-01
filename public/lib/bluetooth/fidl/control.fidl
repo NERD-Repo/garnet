@@ -255,4 +255,9 @@ interface Control {
 
   // Sent when a Host Device is removed
   10701: -> OnDeviceRemoved(string identifier);
+
+  // Sent when requseting new Bond has been made
+  // 10702: -> StoreBond(string identifier);
+
+
 };

@@ -85,6 +85,11 @@ class HostServer : public AdapterServerBase<::bluetooth_host::Host> {
   std::unique_ptr<::btlib::gap::BrEdrDiscoverableSession>
       bredr_discoverable_session_;
 
+    void AddBondedDevices(::fidl::VectorPtr<bluetooth_bonder::BondingData> bonds,
+                        AddBondedDevicesCallback callback) override;
+    // called by |TODO| when new bonds are made
+    void OnBondData();
+
   // All active FIDL interface servers.
   // NOTE: Each key is a raw pointer that is owned by the corresponding value.
   // This allows us to create a set of managed objects that can be looked up via

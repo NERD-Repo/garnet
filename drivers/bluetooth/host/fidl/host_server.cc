@@ -156,6 +156,23 @@ void HostServer::SetConnectable(bool connectable,
       });
 }
 
+void HostServer::AddBondedDevices(::fidl::VectorPtr<bluetooth_bonder::BondingData> bonds,
+                                    AddBondedDevicesCallback callback) {
+    //callback(fidl_helpers::StatusToFidl(status, "BWB: Not Implemented in HostServer"));
+    callback(Status());
+}
+
+void HostServer::OnBondData() {
+  //auto fidl_device = fidl_helpers::NewRemoteDevice(remote_device);
+  //if (!fidl_device) {
+  //  FXL_VLOG(1) << "Ignoring malformed discovery result";
+  //  return;
+  //}
+
+  //this->binding()->events().OnDeviceDiscovered(std::move(*fidl_device));
+}
+
+
 void HostServer::SetDiscoverable(bool discoverable,
                                  SetDiscoverableCallback callback) {
   FXL_VLOG(1) << "Adapter SetDiscoverable(" << discoverable << ")";
