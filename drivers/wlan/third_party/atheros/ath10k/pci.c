@@ -1072,10 +1072,8 @@ zx_status_t ath10k_pci_diag_write_mem(struct ath10k* ar, uint32_t address,
         }
 
         i = 0;
-        while (ath10k_ce_completed_recv_next_nolock(ce_diag,
-                (void**)&buf,
-                &completed_nbytes)
-                != ZX_OK) {
+        while (ath10k_ce_completed_recv_next_nolock(ce_diag, (void**)&buf,
+                                                    &completed_nbytes) != ZX_OK) {
             zx_nanosleep(zx_deadline_after(ZX_MSEC(1)));
 
             if (i++ > DIAG_ACCESS_CE_TIMEOUT_MS) {
