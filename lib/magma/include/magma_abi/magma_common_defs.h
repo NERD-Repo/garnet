@@ -16,9 +16,6 @@ extern "C" {
 #define MAGMA_QUERY_DEVICE_ID 1
 #define MAGMA_QUERY_VENDOR_PARAM_0 10000
 
-#define MAGMA_DOMAIN_CPU 0x00000001
-#define MAGMA_DOMAIN_GTT 0x00000040
-
 // possible values for magma_status_t
 #define MAGMA_STATUS_OK (0)
 #define MAGMA_STATUS_INTERNAL_ERROR (-1)
@@ -30,10 +27,6 @@ extern "C" {
 #define MAGMA_STATUS_TIMED_OUT (-7)
 #define MAGMA_STATUS_UNIMPLEMENTED (-8)
 
-// possible values for magma_image_tiling_t
-#define MAGMA_IMAGE_TILING_OPTIMAL 0
-#define MAGMA_IMAGE_TILING_LINEAR 1
-
 // possible values for magma_cache_operation_t
 #define MAGMA_CACHE_OPERATION_CLEAN 0
 #define MAGMA_CACHE_OPERATION_CLEAN_INVALIDATE 1
@@ -44,8 +37,6 @@ extern "C" {
 #define MAGMA_CACHE_POLICY_UNCACHED 2
 
 typedef int32_t magma_status_t;
-
-typedef uint32_t magma_image_tiling_t;
 
 typedef uint32_t magma_cache_operation_t;
 
@@ -66,8 +57,6 @@ struct magma_system_relocation_entry {
     uint32_t offset;                 // offset in the batch buffer
     uint32_t target_resource_index;  // resource index of the buffer to be relocated
     uint32_t target_offset;          // offset in the target buffer
-    uint32_t read_domains_bitfield;  // memory domains in which the target is readable
-    uint32_t write_domains_bitfield; // memory domains in which the target is writable
 };
 
 // a buffer plus its associated relocations referenced by a command buffer

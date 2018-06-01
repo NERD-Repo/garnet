@@ -8,7 +8,8 @@
 
 #include "third_party/rapidjson/rapidjson/document.h"
 
-namespace component {
+namespace fuchsia {
+namespace sys {
 namespace {
 
 template <typename Value>
@@ -78,4 +79,9 @@ bool SandboxMetadata::HasFeature(const std::string& feature) {
          features_.end();
 }
 
-}  // namespace component
+void SandboxMetadata::AddFeature(std::string feature) {
+  features_.push_back(std::move(feature));
+}
+
+}  // namespace sys
+}  // namespace fuchsia

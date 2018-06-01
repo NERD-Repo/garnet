@@ -13,8 +13,8 @@
 #include <string>
 #include <unordered_map>
 
-#include <component/cpp/fidl.h>
-#include "garnet/bin/appmgr/application_controller_impl.h"
+#include <fuchsia/sys/cpp/fidl.h>
+#include "garnet/bin/appmgr/component_controller_impl.h"
 #include "garnet/bin/appmgr/environment_controller_impl.h"
 #include "garnet/bin/appmgr/hub/hub_info.h"
 #include "garnet/bin/appmgr/hub/realm_hub.h"
@@ -26,7 +26,8 @@
 #include "lib/fxl/strings/string_view.h"
 #include "lib/svc/cpp/service_provider_bridge.h"
 
-namespace component {
+namespace fuchsia {
+namespace sys {
 
 class Realm {
  public:
@@ -46,9 +47,8 @@ class Realm {
                        fidl::InterfaceRequest<EnvironmentController> controller,
                        fidl::StringPtr label);
 
-  void CreateApplication(
-      LaunchInfo launch_info,
-      fidl::InterfaceRequest<ApplicationController> controller);
+  void CreateComponent(LaunchInfo launch_info,
+                       fidl::InterfaceRequest<ComponentController> controller);
 
   // Removes the child realm from this realm and returns the owning
   // reference to the child's controller. The caller of this function typically
@@ -60,25 +60,26 @@ class Realm {
   // reference to the application's controller. The caller of this function
   // typically destroys the controller (and hence the application) shortly after
   // calling this function.
-  std::unique_ptr<ApplicationControllerImpl> ExtractApplication(
-      ApplicationControllerImpl* controller);
+  std::unique_ptr<ComponentControllerImpl> ExtractApplication(
+      ComponentControllerImpl* controller);
 
   void AddBinding(fidl::InterfaceRequest<Environment> environment);
 
   zx_status_t BindSvc(zx::channel channel);
+  void CreateShell(const std::string& path);
 
  private:
   static uint32_t next_numbered_label_;
 
   RunnerHolder* GetOrCreateRunner(const std::string& runner);
 
-  void CreateApplicationWithProcess(
+  void CreateComponentWithProcess(
       PackagePtr package, LaunchInfo launch_info,
-      fidl::InterfaceRequest<ApplicationController> controller,
+      fidl::InterfaceRequest<ComponentController> controller,
       fxl::RefPtr<Namespace> ns);
-  void CreateApplicationFromPackage(
+  void CreateComponentFromPackage(
       PackagePtr package, LaunchInfo launch_info,
-      fidl::InterfaceRequest<ApplicationController> controller,
+      fidl::InterfaceRequest<ComponentController> controller,
       fxl::RefPtr<Namespace> ns);
 
   zx::channel OpenRootInfoDir();
@@ -99,8 +100,8 @@ class Realm {
   std::unordered_map<Realm*, std::unique_ptr<EnvironmentControllerImpl>>
       children_;
 
-  std::unordered_map<ApplicationControllerImpl*,
-                     std::unique_ptr<ApplicationControllerImpl>>
+  std::unordered_map<ComponentControllerImpl*,
+                     std::unique_ptr<ComponentControllerImpl>>
       applications_;
 
   std::unordered_map<std::string, std::unique_ptr<RunnerHolder>> runners_;
@@ -111,6 +112,7 @@ class Realm {
   FXL_DISALLOW_COPY_AND_ASSIGN(Realm);
 };
 
-}  // namespace component
+}  // namespace sys
+}  // namespace fuchsia
 
 #endif  // GARNET_BIN_APPMGR_REALM_H_

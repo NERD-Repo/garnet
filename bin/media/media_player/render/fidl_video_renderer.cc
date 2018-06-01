@@ -34,6 +34,7 @@ const char* FidlVideoRenderer::label() const { return "video_renderer"; }
 void FidlVideoRenderer::Dump(std::ostream& os) const {
   Renderer::Dump(os);
 
+  os << indent;
   os << newl << "priming:               " << !!prime_callback_;
   os << newl << "flushed:               " << flushed_;
   os << newl << "presentation time:     " << AsNs(pts_ns_);
@@ -73,7 +74,7 @@ void FidlVideoRenderer::Dump(std::ostream& os) const {
     os << newl << "scenic frame rate: " << indent << frame_rate_ << outdent;
   }
 
-  stage()->Dump(os);
+  os << outdent;
 }
 
 void FidlVideoRenderer::FlushInput(bool hold_frame, size_t input_index,
@@ -91,6 +92,10 @@ void FidlVideoRenderer::FlushInput(bool hold_frame, size_t input_index,
     while (!packet_queue_.empty()) {
       packet_queue_.pop_front();
     }
+  }
+
+  if (!hold_frame) {
+    held_packet_.reset();
   }
 
   SetEndOfStreamPts(media::kUnspecifiedTime);
@@ -192,8 +197,8 @@ void FidlVideoRenderer::SetGeometryUpdateCallback(fxl::Closure callback) {
 }
 
 void FidlVideoRenderer::CreateView(
-    fidl::InterfacePtr<views_v1::ViewManager> view_manager,
-    fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request) {
+    fidl::InterfacePtr<::fuchsia::ui::views_v1::ViewManager> view_manager,
+    fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner> view_owner_request) {
   auto view =
       std::make_unique<View>(std::move(view_manager),
                              std::move(view_owner_request), shared_from_this());
@@ -212,8 +217,8 @@ void FidlVideoRenderer::AdvanceReferenceTime(int64_t reference_time) {
   DiscardOldPackets();
 }
 
-void FidlVideoRenderer::GetRgbaFrame(uint8_t* rgba_buffer,
-                                     const fuchsia::math::Size& rgba_buffer_size) {
+void FidlVideoRenderer::GetRgbaFrame(
+    uint8_t* rgba_buffer, const fuchsia::math::Size& rgba_buffer_size) {
   if (held_packet_) {
     converter_.ConvertFrame(rgba_buffer, rgba_buffer_size.width,
                             rgba_buffer_size.height, held_packet_->payload(),
@@ -290,8 +295,8 @@ void FidlVideoRenderer::OnSceneInvalidated(int64_t reference_time) {
 }
 
 FidlVideoRenderer::View::View(
-    views_v1::ViewManagerPtr view_manager,
-    fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
+    ::fuchsia::ui::views_v1::ViewManagerPtr view_manager,
+    fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner> view_owner_request,
     std::shared_ptr<FidlVideoRenderer> renderer)
     : mozart::BaseView(std::move(view_manager), std::move(view_owner_request),
                        "Video Renderer"),

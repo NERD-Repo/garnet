@@ -9,7 +9,7 @@
 #include <vector>
 
 #include <fuchsia/ui/input/cpp/fidl.h>
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/macros.h"
@@ -26,14 +26,16 @@ class App : public fuchsia::ui::input::ImeService {
  private:
   // |fuchsia::ui::input::ImeService|
   void GetInputMethodEditor(
-      fuchsia::ui::input::KeyboardType keyboard_type, fuchsia::ui::input::InputMethodAction action,
+      fuchsia::ui::input::KeyboardType keyboard_type,
+      fuchsia::ui::input::InputMethodAction action,
       fuchsia::ui::input::TextInputState initial_state,
       fidl::InterfaceHandle<fuchsia::ui::input::InputMethodEditorClient> client,
-      fidl::InterfaceRequest<fuchsia::ui::input::InputMethodEditor> editor) override;
+      fidl::InterfaceRequest<fuchsia::ui::input::InputMethodEditor> editor)
+      override;
 
   void OnImeDisconnected(ImeImpl* ime);
 
-  std::unique_ptr<component::ApplicationContext> application_context_;
+  std::unique_ptr<fuchsia::sys::StartupContext> startup_context_;
   std::vector<std::unique_ptr<ImeImpl>> ime_;
   fidl::BindingSet<fuchsia::ui::input::ImeService> ime_bindings_;
 

@@ -13,7 +13,6 @@
 
 #include <bluetooth_control/cpp/fidl.h>
 #include <bluetooth_low_energy/cpp/fidl.h>
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/functional/auto_call.h"
 #include "lib/fxl/logging.h"
 #include "lib/fxl/strings/split_string.h"
@@ -31,8 +30,9 @@ char* date_string() {
 
 namespace bt_beacon_reader {
 
-App::App(bool just_tilts)
-    : context_(component::ApplicationContext::CreateFromStartupInfo()),
+App::App(async::Loop* loop, bool just_tilts)
+    : loop_(loop),
+      context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
       central_delegate_(this),
       just_tilts_(just_tilts) {
   FXL_DCHECK(context_);
@@ -41,9 +41,9 @@ App::App(bool just_tilts)
       context_->ConnectToEnvironmentService<bluetooth_low_energy::Central>();
   FXL_DCHECK(central_);
 
-  central_.set_error_handler([] {
+  central_.set_error_handler([this] {
     printf("Central disconnected\n");
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    loop_->Quit();
   });
 
   // Register with the Control as its delegate.

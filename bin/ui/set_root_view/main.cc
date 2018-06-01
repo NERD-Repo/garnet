@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <lib/async-loop/cpp/loop.h>
 #include <lib/zx/channel.h>
 
+#include <fuchsia/ui/views_v1/cpp/fidl.h>
 #include <presentation/cpp/fidl.h>
-#include <views_v1/cpp/fidl.h>
-#include "lib/app/cpp/application_context.h"
-#include "lib/fsl/tasks/message_loop.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/log_settings_command_line.h"
 #include "lib/fxl/logging.h"
@@ -37,34 +37,33 @@ int main(int argc, const char** argv) {
     return 1;
   }
 
-  fsl::MessageLoop loop;
-  auto application_context_ =
-      component::ApplicationContext::CreateFromStartupInfo();
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
+  auto startup_context_ = fuchsia::sys::StartupContext::CreateFromStartupInfo();
 
   // Launch application.
-  component::Services services;
-  component::LaunchInfo launch_info;
+  fuchsia::sys::Services services;
+  fuchsia::sys::LaunchInfo launch_info;
   launch_info.url = positional_args[0];
   for (size_t i = 1; i < positional_args.size(); ++i)
     launch_info.arguments.push_back(positional_args[i]);
   launch_info.directory_request = services.NewRequest();
-  component::ApplicationControllerPtr controller;
-  application_context_->launcher()->CreateApplication(std::move(launch_info),
-                                                      controller.NewRequest());
+  fuchsia::sys::ComponentControllerPtr controller;
+  startup_context_->launcher()->CreateComponent(std::move(launch_info),
+                                                controller.NewRequest());
   controller.set_error_handler([&loop] {
     FXL_LOG(INFO) << "Launched application terminated.";
-    loop.PostQuitTask();
+    loop.Quit();
   });
 
   // Create the view.
-  fidl::InterfacePtr<views_v1::ViewProvider> view_provider;
+  fidl::InterfacePtr<::fuchsia::ui::views_v1::ViewProvider> view_provider;
   services.ConnectToService(view_provider.NewRequest());
-  fidl::InterfaceHandle<views_v1_token::ViewOwner> view_owner;
+  fidl::InterfaceHandle<::fuchsia::ui::views_v1_token::ViewOwner> view_owner;
   view_provider->CreateView(view_owner.NewRequest(), nullptr);
 
   // Ask the presenter to display it.
-  auto presenter = application_context_
-                       ->ConnectToEnvironmentService<presentation::Presenter>();
+  auto presenter =
+      startup_context_->ConnectToEnvironmentService<presentation::Presenter>();
   presenter->Present(std::move(view_owner), nullptr);
 
   // Done!

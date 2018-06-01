@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <lib/async-loop/cpp/loop.h>
 #include <lib/zx/channel.h>
 
+#include <fuchsia/ui/views_v1/cpp/fidl.h>
 #include <presentation/cpp/fidl.h>
-#include <views_v1/cpp/fidl.h>
 #include "garnet/bin/ui/root_presenter/renderer_params.h"
-#include "lib/app/cpp/application_context.h"
-#include "lib/fsl/tasks/message_loop.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/log_settings_command_line.h"
 #include "lib/fxl/logging.h"
@@ -44,18 +44,17 @@ int main(int argc, const char** argv) {
     renderer_params.push_back(std::move(param));
   }
 
-  fsl::MessageLoop loop;
-  auto application_context_ =
-      component::ApplicationContext::CreateFromStartupInfo();
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
+  auto startup_context_ = fuchsia::sys::StartupContext::CreateFromStartupInfo();
 
   // Ask the presenter to change renderer params.
-  auto presenter = application_context_
-                       ->ConnectToEnvironmentService<presentation::Presenter>();
+  auto presenter =
+      startup_context_->ConnectToEnvironmentService<presentation::Presenter>();
   presenter->HACK_SetRendererParams(clipping_enabled,
                                     std::move(renderer_params));
 
   // Done!
-  loop.PostQuitTask();
+  async::PostTask(loop.async(), [&loop] { loop.Quit(); });
   loop.Run();
   return 0;
 }

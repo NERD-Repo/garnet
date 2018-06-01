@@ -35,11 +35,12 @@ const port = 8083
 
 var (
 	// TODO(jmatt) replace hard-coded values with something better/more flexible
-	usage = "usage: amber [-k=<path>] [-s=<path>] [-u=<url>]"
-	store = flag.String("s", "/data/amber/tuf", "The path to the local file store")
-	addr  = flag.String("u", fmt.Sprintf("%s:%d", lhIP, port), "The URL (including port if not using port 80)  of the update server.")
-	keys  = flag.String("k", "/pkg/data/keys", "Path to use to initialize the client's keys. This is only needed the first time the command is run.")
-	delay = flag.Duration("d", 0*time.Second, "Set a delay before Amber does its work")
+	usage      = "usage: amber [-k=<path>] [-s=<path>] [-u=<url>]"
+	store      = flag.String("s", "/data/amber/tuf", "The path to the local file store")
+	addr       = flag.String("u", fmt.Sprintf("%s:%d", lhIP, port), "The URL (including port if not using port 80)  of the update server.")
+	keys       = flag.String("k", "/pkg/data/keys", "Path to use to initialize the client's keys. This is only needed the first time the command is run.")
+	delay      = flag.Duration("d", 0*time.Second, "Set a delay before Amber does its work")
+	autoUpdate = flag.Bool("a", false, "Automatically update and restart the system as updates become available")
 
 	needsPath = "/pkgfs/needs"
 )
@@ -57,64 +58,53 @@ func main() {
 
 	srvUrl, err := url.Parse(*addr)
 	if err != nil {
-		log.Fatal("amber: bad address for update server %s\n", err)
+		log.Fatalf("bad address for update server %s", err)
 	}
 
 	keys, err := source.LoadKeys(*keys)
 	if err != nil {
-		log.Printf("loading root keys failed %s\n", err)
-		return
+		log.Fatalf("loading root keys failed %s", err)
 	}
 
-	ticker := source.NewTickGenerator(source.InitBackoff)
-	go ticker.Run()
+	d := startupDaemon(srvUrl, *store, keys)
+	if *autoUpdate {
+		go func() {
+			supMon := daemon.NewSystemUpdateMonitor(d)
+			supMon.Start()
+			log.Println("system update monitor exited")
+		}()
+	}
 
-	daemon := startupDaemon(srvUrl, *store, keys, ticker)
-	startFIDLSvr(daemon, ticker)
-	defer daemon.CancelAll()
+	startFIDLSvr(d)
+
+	defer d.CancelAll()
 
 	//block forever
 	select {}
 }
 
-func startFIDLSvr(d *daemon.Daemon, t *source.TickGenerator) {
+func startFIDLSvr(d *daemon.Daemon) {
 	cxt := context.CreateFromStartupInfo()
-	apiSrvr := ipcserver.NewControlSrvr(d, t)
+	apiSrvr := ipcserver.NewControlSrvr(d)
 	cxt.OutgoingService.AddService(amber_fidl.ControlName, func(c zx.Channel) error {
 		return apiSrvr.Bind(c)
 	})
 	cxt.Serve()
 }
 
-func startupDaemon(srvURL *url.URL, store string, keys []*tuf_data.Key,
-	ticker *source.TickGenerator) *daemon.Daemon {
+func startupDaemon(srvURL *url.URL, store string, keys []*tuf_data.Key) *daemon.Daemon {
 
 	reqSet := newPackageSet([]string{"/pkg/bin/app"})
 
-	checker := daemon.NewDaemon(reqSet, daemon.ProcessPackage, []source.Source{})
+	tufSrc := source.NewTUFSource(srvURL.String(), store, keys, 0, 0)
+
+	checker := daemon.NewDaemon(reqSet, daemon.ProcessPackage, []source.Source{tufSrc})
 
 	blobURL := *srvURL
 	blobURL.Path = filepath.Join(blobURL.Path, "blobs")
 	checker.AddBlobRepo(daemon.BlobRepo{Address: blobURL.String(), Interval: time.Second * 5})
 
-	log.Println("amber: monitoring for updates")
-
-	go func() {
-		client, _, err := source.InitNewTUFClient(srvURL.String(), store, keys, ticker)
-		if err != nil {
-			log.Printf("client initialization failed: %s\n", err)
-			return
-		}
-
-		// create source with an average 10qps over 5 seconds and a possible burst
-		// of up to 50 queries
-		fetcher := &source.TUFSource{
-			Client:   client,
-			Interval: time.Second * 5,
-			Limit:    50,
-		}
-		checker.AddSource(fetcher)
-	}()
+	log.Println("monitoring for updates")
 	return checker
 }
 
@@ -141,13 +131,13 @@ func newPackageSet(files []string) *pkg.PackageSet {
 func digest(name string, hash hash.Hash) ([]byte, error) {
 	f, e := os.Open(name)
 	if e != nil {
-		fmt.Printf("amber: couldn't open file to fingerprint %s\n", e)
+		fmt.Printf("couldn't open file to fingerprint %s\n", e)
 		return nil, e
 	}
 	defer f.Close()
 
 	if _, err := io.Copy(hash, f); err != nil {
-		fmt.Printf("amber: file digest failed %s\n", err)
+		fmt.Printf("file digest failed %s\n", err)
 		return nil, e
 	}
 	return hash.Sum(nil), nil

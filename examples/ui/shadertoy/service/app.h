@@ -5,9 +5,11 @@
 #ifndef GARNET_EXAMPLES_UI_SHADERTOY_SERVICE_APP_H_
 #define GARNET_EXAMPLES_UI_SHADERTOY_SERVICE_APP_H_
 
-#include <shadertoy/cpp/fidl.h>
+#include <fuchsia/examples/shadertoy/cpp/fidl.h>
+#include <lib/async-loop/cpp/loop.h>
+
 #include "garnet/examples/ui/shadertoy/service/shadertoy_impl.h"
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/escher/escher.h"
 #include "lib/fidl/cpp/binding_set.h"
 
@@ -21,9 +23,10 @@ class ShadertoyState;
 // A thin wrapper that manages connections to a ShadertoyFactoryImpl singleton.
 // TODO: clean up when there are no remaining bindings to Shadertoy nor
 // ShadertoyFactory.  What is the best-practice pattern to use here?
-class App : public shadertoy::ShadertoyFactory {
+class App : public fuchsia::examples::shadertoy::ShadertoyFactory {
  public:
-  App(component::ApplicationContext* app_context, escher::Escher* escher);
+  App(async::Loop* loop, fuchsia::sys::StartupContext* app_context,
+      escher::Escher* escher);
   ~App();
 
   escher::Escher* escher() const { return escher_; }
@@ -40,17 +43,22 @@ class App : public shadertoy::ShadertoyFactory {
 
   // |ShadertoyFactory|
   void NewImagePipeShadertoy(
-      ::fidl::InterfaceRequest<shadertoy::Shadertoy> toy_request,
+      ::fidl::InterfaceRequest<fuchsia::examples::shadertoy::Shadertoy>
+          toy_request,
       ::fidl::InterfaceHandle<fuchsia::images::ImagePipe> image_pipe) override;
 
   // |ShadertoyFactory|
   void NewViewShadertoy(
-      ::fidl::InterfaceRequest<shadertoy::Shadertoy> toy_request,
-      ::fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
+      ::fidl::InterfaceRequest<fuchsia::examples::shadertoy::Shadertoy>
+          toy_request,
+      ::fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+          view_owner_request,
       bool handle_input_events) override;
 
-  fidl::BindingSet<shadertoy::ShadertoyFactory> factory_bindings_;
-  fidl::BindingSet<shadertoy::Shadertoy, std::unique_ptr<ShadertoyImpl>>
+  fidl::BindingSet<fuchsia::examples::shadertoy::ShadertoyFactory>
+      factory_bindings_;
+  fidl::BindingSet<fuchsia::examples::shadertoy::Shadertoy,
+                   std::unique_ptr<ShadertoyImpl>>
       shadertoy_bindings_;
 
   escher::Escher* const escher_;

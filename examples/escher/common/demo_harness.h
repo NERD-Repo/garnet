@@ -6,6 +6,7 @@
 #define GARNET_EXAMPLES_ESCHER_COMMON_DEMO_HARNESS_H_
 
 #include <cstdint>
+
 #include <vulkan/vulkan.hpp>
 
 #include "lib/escher/resources/resource_manager.h"

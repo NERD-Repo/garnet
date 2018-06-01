@@ -9,18 +9,19 @@
 #include <string>
 #include <unordered_map>
 
-#include <component/cpp/fidl.h>
+#include <fuchsia/sys/cpp/fidl.h>
 #include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_counted.h"
 #include "lib/fxl/strings/string_view.h"
 #include "lib/svc/cpp/service_provider_bridge.h"
 
-namespace component {
+namespace fuchsia {
+namespace sys {
 class Realm;
 
 class Namespace : public Environment,
-                  public ApplicationLauncher,
+                  public Launcher,
                   public fxl::RefCountedThreadSafe<Namespace> {
  public:
   ServiceProviderBridge& services() { return services_; }
@@ -35,18 +36,17 @@ class Namespace : public Environment,
       fidl::InterfaceRequest<EnvironmentController> controller,
       fidl::StringPtr label) override;
 
-  void GetApplicationLauncher(
-      fidl::InterfaceRequest<ApplicationLauncher> launcher) override;
+  void GetLauncher(fidl::InterfaceRequest<Launcher> launcher) override;
 
   void GetServices(fidl::InterfaceRequest<ServiceProvider> services) override;
 
   void GetDirectory(zx::channel directory_request) override;
 
-  // ApplicationLauncher implementation:
+  // Launcher implementation:
 
-  void CreateApplication(
+  void CreateComponent(
       LaunchInfo launch_info,
-      fidl::InterfaceRequest<ApplicationController> controller) override;
+      fidl::InterfaceRequest<ComponentController> controller) override;
 
  private:
   FRIEND_MAKE_REF_COUNTED(Namespace);
@@ -57,7 +57,7 @@ class Namespace : public Environment,
   ~Namespace() override;
 
   fidl::BindingSet<Environment> environment_bindings_;
-  fidl::BindingSet<ApplicationLauncher> launcher_bindings_;
+  fidl::BindingSet<Launcher> launcher_bindings_;
 
   ServiceProviderBridge services_;
 
@@ -69,6 +69,7 @@ class Namespace : public Environment,
   FXL_DISALLOW_COPY_AND_ASSIGN(Namespace);
 };
 
-}  // namespace component
+}  // namespace sys
+}  // namespace fuchsia
 
 #endif  // GARNET_BIN_APPMGR_NAMESPACE_H_

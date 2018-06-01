@@ -12,9 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"fidl/bindings"
-
 	"fidl/amber"
+	"fidl/bindings"
 
 	"amber/daemon"
 	"amber/lg"
@@ -29,7 +28,6 @@ import (
 type ControlSrvr struct {
 	daemonGate  sync.Once
 	daemon      *daemon.Daemon
-	pinger      *source.TickGenerator
 	bs          bindings.BindingSet
 	actMon      *ActivationMonitor
 	activations chan<- string
@@ -39,7 +37,7 @@ type ControlSrvr struct {
 
 const ZXSIO_DAEMON_ERROR = zx.SignalUser0
 
-func NewControlSrvr(d *daemon.Daemon, r *source.TickGenerator) *ControlSrvr {
+func NewControlSrvr(d *daemon.Daemon) *ControlSrvr {
 	go bindings.Serve()
 	a := make(chan string, 5)
 	c := make(chan *completeUpdateRequest, 1)
@@ -49,7 +47,6 @@ func NewControlSrvr(d *daemon.Daemon, r *source.TickGenerator) *ControlSrvr {
 
 	return &ControlSrvr{
 		daemon:      d,
-		pinger:      r,
 		actMon:      m,
 		activations: a,
 		compReqs:    c,
@@ -62,39 +59,34 @@ func (c *ControlSrvr) DoTest(in int32) (out string, err error) {
 	return r, nil
 }
 
-func (c *ControlSrvr) AddSrc(url string, rateLimit, ratePeriod int32, pubKey string) (bool, error) {
-	keyHex, err := hex.DecodeString(pubKey)
-	if err != nil {
-		return false, err
+func (c *ControlSrvr) AddSrc(cfg amber.SourceConfig) (bool, error) {
+	keys := make([]*tuf_data.Key, len(cfg.RootKeys))
+
+	for i, key := range cfg.RootKeys {
+		if key.Type != "ed25519" {
+			return false, fmt.Errorf("Unsupported key type %s", key.Type)
+		}
+
+		keyHex, err := hex.DecodeString(key.Value)
+		if err != nil {
+			return false, err
+		}
+
+		keys[i] = &tuf_data.Key{
+			Type:  key.Type,
+			Value: tuf_data.KeyValue{tuf_data.HexBytes(keyHex)},
+		}
 	}
 
-	key := tuf_data.Key{Type: "ed25519", Value: tuf_data.KeyValue{tuf_data.HexBytes(keyHex)}}
 	dir, err := ioutil.TempDir("", "amber")
 	if err != nil {
 		return false, err
 	}
 
-	// how long we'll try to connect to the source for
-	limit := time.Now().Add(time.Second * 30)
-	tickGen := source.NewTickGenerator(func(d time.Duration) time.Duration {
-		if time.Now().After(limit) {
-			return -1
-		}
-		return source.InitBackoff(d)
-	})
-	go tickGen.Run()
+	tufSource := source.NewTUFSource(cfg.RequestUrl, dir, keys,
+		time.Millisecond*time.Duration(cfg.RatePeriod), uint64(cfg.RateLimit))
+	c.daemon.AddSource(tufSource)
 
-	client, _, err := source.InitNewTUFClient(url, dir, []*tuf_data.Key{&key}, tickGen)
-	if err != nil {
-		return false, err
-	}
-
-	src := source.TUFSource{
-		Client:   client,
-		Interval: time.Millisecond * time.Duration(ratePeriod),
-		Limit:    uint64(rateLimit),
-	}
-	c.daemon.AddSource(&src)
 	return true, nil
 }
 
@@ -106,8 +98,8 @@ func (c *ControlSrvr) Check() (bool, error) {
 	return true, nil
 }
 
-func (c *ControlSrvr) ListSrcs() ([]string, error) {
-	return []string{}, nil
+func (c *ControlSrvr) ListSrcs() ([]amber.SourceConfig, error) {
+	return []amber.SourceConfig{}, nil
 }
 
 func (c *ControlSrvr) getAndWaitForUpdate(name string, version, merkle *string, ch *zx.Channel) {
@@ -128,7 +120,6 @@ func (c *ControlSrvr) getAndWaitForUpdate(name string, version, merkle *string, 
 }
 
 func (c *ControlSrvr) GetUpdateComplete(name string, version, merkle *string) (zx.Channel, error) {
-	c.initSource()
 	r, w, e := zx.NewChannel(0)
 	if e != nil {
 		lg.Log.Printf("Could not create channel")
@@ -183,7 +174,6 @@ func (c *ControlSrvr) downloadPkgMeta(name string, version, merkle *string) (*da
 }
 
 func (c *ControlSrvr) GetUpdate(name string, version, merkle *string) (*string, error) {
-	c.initSource()
 	result, err := c.downloadPkgMeta(name, version, merkle)
 	if err != nil {
 		return nil, err
@@ -216,13 +206,4 @@ func (c *ControlSrvr) Bind(ch zx.Channel) error {
 	s := amber.ControlStub{Impl: c}
 	_, err := c.bs.Add(&s, ch, nil)
 	return err
-}
-
-// initDaemon makes a single attempt per ControlSrvr instance to ping the source used by the daemon
-// to tell it to try to initialize again
-func (c *ControlSrvr) initSource() {
-	c.daemonGate.Do(func() {
-		c.pinger.GenerateTick()
-		c.pinger = nil
-	})
 }

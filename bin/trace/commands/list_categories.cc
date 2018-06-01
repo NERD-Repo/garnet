@@ -6,13 +6,12 @@
 
 #include "garnet/bin/trace/commands/list_categories.h"
 
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/logging.h"
 
 namespace tracing {
 
 Command::Info ListCategories::Describe() {
-  return Command::Info{[](component::ApplicationContext* context) {
+  return Command::Info{[](fuchsia::sys::StartupContext* context) {
                          return std::make_unique<ListCategories>(context);
                        },
                        "list-categories",
@@ -20,7 +19,7 @@ Command::Info ListCategories::Describe() {
                        {}};
 }
 
-ListCategories::ListCategories(component::ApplicationContext* context)
+ListCategories::ListCategories(fuchsia::sys::StartupContext* context)
     : CommandWithTraceController(context) {}
 
 void ListCategories::Start(const fxl::CommandLine& command_line) {

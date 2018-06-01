@@ -4,16 +4,21 @@
 
 #include "garnet/bin/appmgr/namespace.h"
 
+#include <fdio/util.h>
+#include <fuchsia/process/cpp/fidl.h>
+
 #include <utility>
 
 #include "garnet/bin/appmgr/realm.h"
+#include "lib/app/cpp/environment_services.h"
 
-namespace component {
+namespace fuchsia {
+namespace sys {
 
 Namespace::Namespace(fxl::RefPtr<Namespace> parent, Realm* realm,
                      ServiceListPtr service_list)
     : parent_(parent), realm_(realm) {
-  component::ServiceProviderPtr services_backend;
+  fuchsia::sys::ServiceProviderPtr services_backend;
   if (parent_) {
     parent_->services().AddBinding(services_backend.NewRequest());
   }
@@ -23,9 +28,13 @@ Namespace::Namespace(fxl::RefPtr<Namespace> parent, Realm* realm,
       [this](fidl::InterfaceRequest<Environment> request) {
         environment_bindings_.AddBinding(this, std::move(request));
       });
-  services_.AddService<ApplicationLauncher>(
-      [this](fidl::InterfaceRequest<ApplicationLauncher> request) {
+  services_.AddService<Launcher>(
+      [this](fidl::InterfaceRequest<Launcher> request) {
         launcher_bindings_.AddBinding(this, std::move(request));
+      });
+  services_.AddService<fuchsia::process::Launcher>(
+      [this](fidl::InterfaceRequest<fuchsia::process::Launcher> request) {
+        ConnectToEnvironmentService(std::move(request));
       });
 
   if (service_list) {
@@ -55,8 +64,7 @@ void Namespace::CreateNestedEnvironment(
                           std::move(controller), label);
 }
 
-void Namespace::GetApplicationLauncher(
-    fidl::InterfaceRequest<ApplicationLauncher> launcher) {
+void Namespace::GetLauncher(fidl::InterfaceRequest<Launcher> launcher) {
   launcher_bindings_.AddBinding(this, std::move(launcher));
 }
 
@@ -68,10 +76,11 @@ void Namespace::GetDirectory(zx::channel directory_request) {
   services_.ServeDirectory(std::move(directory_request));
 }
 
-void Namespace::CreateApplication(
+void Namespace::CreateComponent(
     LaunchInfo launch_info,
-    fidl::InterfaceRequest<ApplicationController> controller) {
-  realm_->CreateApplication(std::move(launch_info), std::move(controller));
+    fidl::InterfaceRequest<ComponentController> controller) {
+  realm_->CreateComponent(std::move(launch_info), std::move(controller));
 }
 
-}  // namespace component
+}  // namespace sys
+}  // namespace fuchsia

@@ -20,13 +20,11 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#include "garnet/lib/ui/gfx/tests/util.h"
 #include "lib/app/cpp/connect.h"
 #include "lib/escher/util/image_utils.h"
-
 #include "lib/fxl/functional/make_copyable.h"
 #include "lib/fxl/logging.h"
-
-#include "garnet/lib/ui/gfx/tests/util.h"
 #include "lib/ui/scenic/client/host_memory.h"
 #include "lib/ui/scenic/fidl_helpers.h"
 #include "lib/ui/scenic/types.h"
@@ -37,19 +35,19 @@ namespace hello_stereo {
 
 static constexpr float kEdgeLength = 900;
 
-App::App()
-    : application_context_(
-          component::ApplicationContext::CreateFromStartupInfo()),
-      loop_(fsl::MessageLoop::GetCurrent()) {
+App::App(async::Loop* loop)
+    : startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
+      loop_(loop) {
   // Connect to the SceneManager service.
-  scenic_ =
-      application_context_->ConnectToEnvironmentService<fuchsia::ui::scenic::Scenic>();
+  scenic_ = startup_context_
+                ->ConnectToEnvironmentService<fuchsia::ui::scenic::Scenic>();
   scenic_.set_error_handler([this] {
     FXL_LOG(INFO) << "Lost connection to Scenic service.";
-    loop_->QuitNow();
+    loop_->Quit();
   });
-  scenic_->GetDisplayInfo(
-      [this](fuchsia::ui::gfx::DisplayInfo display_info) { Init(std::move(display_info)); });
+  scenic_->GetDisplayInfo([this](fuchsia::ui::gfx::DisplayInfo display_info) {
+    Init(std::move(display_info));
+  });
 }
 
 void App::CreateExampleScene(float display_width, float display_height) {
@@ -138,14 +136,13 @@ void App::Init(fuchsia::ui::gfx::DisplayInfo display_info) {
   session_ = std::make_unique<scenic_lib::Session>(scenic_.get());
   session_->set_error_handler([this] {
     FXL_LOG(INFO) << "Session terminated.";
-    loop_->QuitNow();
+    loop_->Quit();
   });
 
   // Wait kSessionDuration seconds, and close the session.
-  constexpr int kSessionDuration = 40;
-  loop_->task_runner()->PostDelayedTask(
-      [this] { ReleaseSessionResources(); },
-      fxl::TimeDelta::FromSeconds(kSessionDuration));
+  constexpr zx::duration kSessionDuration = zx::sec(40);
+  async::PostDelayedTask(loop_->async(), [this] { ReleaseSessionResources(); },
+                         kSessionDuration);
 
   // Set up initial scene.
   const float display_width = static_cast<float>(display_info.width_in_px);

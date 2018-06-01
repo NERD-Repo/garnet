@@ -9,28 +9,29 @@
 #include <map>
 #include <memory>
 
-#include "garnet/bin/zxdb/client/symbols_impl.h"
+#include "garnet/bin/zxdb/client/symbols/process_symbols_impl.h"
 #include "garnet/public/lib/fxl/macros.h"
 #include "garnet/public/lib/fxl/memory/weak_ptr.h"
 
 namespace zxdb {
 
-class SymbolsImpl;
 class TargetImpl;
 class ThreadImpl;
 
-class ProcessImpl : public Process {
+class ProcessImpl : public Process, public ProcessSymbolsImpl::Notifications {
  public:
   ProcessImpl(TargetImpl* target, uint64_t koid, const std::string& name);
   ~ProcessImpl() override;
 
   ThreadImpl* GetThreadImplFromKoid(uint64_t koid);
 
+  TargetImpl* target() const { return target_; }
+
   // Process implementation:
   Target* GetTarget() const override;
   uint64_t GetKoid() const override;
   const std::string& GetName() const override;
-  Symbols* GetSymbols() override;
+  ProcessSymbols* GetSymbols() override;
   void GetModules(
       std::function<void(const Err&, std::vector<debug_ipc::Module>)>) override;
   void GetAspace(
@@ -55,14 +56,19 @@ class ProcessImpl : public Process {
   // Syncs the threads_ list to the new list of threads passed in .
   void UpdateThreads(const std::vector<debug_ipc::ThreadRecord>& new_threads);
 
-  Target* const target_;  // The target owns |this|.
+  // ProcessSymbolsImpl::Notifications implementation:
+  void DidLoadModuleSymbols(LoadedModuleSymbols* module) override;
+  void WillUnloadModuleSymbols(LoadedModuleSymbols* module) override;
+  void OnSymbolLoadFailure(const Err& err) override;
+
+  TargetImpl* const target_;  // The target owns |this|.
   const uint64_t koid_;
   std::string name_;
 
   // Threads indexed by their thread koid.
   std::map<uint64_t, std::unique_ptr<ThreadImpl>> threads_;
 
-  SymbolsImpl symbols_;
+  ProcessSymbolsImpl symbols_;
 
   fxl::WeakPtrFactory<ProcessImpl> weak_factory_;
 

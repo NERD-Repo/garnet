@@ -56,7 +56,7 @@ MediaPlayerNetProxy::MediaPlayerNetProxy(
   message_relay_.SetChannel(std::move(local));
 
   // Pass the remote end to NetConnector.
-  component::ServiceProviderPtr device_service_provider;
+  fuchsia::sys::ServiceProviderPtr device_service_provider;
   connector->GetDeviceServiceProvider(device_name,
                                       device_service_provider.NewRequest());
 
@@ -106,8 +106,8 @@ void MediaPlayerNetProxy::SetGain(float gain) {
 }
 
 void MediaPlayerNetProxy::CreateView(
-    fidl::InterfaceHandle<views_v1::ViewManager> view_manager,
-    fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request) {
+    fidl::InterfaceHandle<::fuchsia::ui::views_v1::ViewManager> view_manager,
+    fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner> view_owner_request) {
   FXL_LOG(ERROR) << "CreateView called on MediaPlayer proxy - not supported.";
   UnbindAndReleaseFromOwner();
 }

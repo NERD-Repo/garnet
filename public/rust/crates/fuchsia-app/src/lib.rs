@@ -16,12 +16,12 @@ extern crate fidl;
 extern crate futures;
 
 // Generated FIDL bindings
-extern crate fidl_component;
+extern crate fidl_fuchsia_sys;
 
-use fidl_component::{
-    ApplicationControllerProxy,
-    ApplicationLauncherMarker,
-    ApplicationLauncherProxy,
+use fidl_fuchsia_sys::{
+    ComponentControllerProxy,
+    LauncherMarker,
+    LauncherProxy,
     LaunchInfo,
 };
 #[allow(unused_imports)]
@@ -52,15 +52,15 @@ pub mod client {
 
     /// Launcher launches Fuchsia applications.
     pub struct Launcher {
-        app_launcher: ApplicationLauncherProxy,
+        launcher: LauncherProxy,
     }
 
     impl Launcher {
         #[inline]
         /// Create a new application launcher.
         pub fn new() -> Result<Self, Error> {
-            let app_launcher = connect_to_service::<ApplicationLauncherMarker>()?;
-            Ok(Launcher { app_launcher })
+            let launcher = connect_to_service::<LauncherMarker>()?;
+            Ok(Launcher { launcher })
         }
 
         /// Launch an application at the specified URL.
@@ -71,7 +71,7 @@ pub mod client {
         ) -> Result<App, Error>
         {
 
-            let (app_controller, controller_server_end) = zx::Channel::create()?;
+            let (controller, controller_server_end) = zx::Channel::create()?;
             let (directory_request, directory_server_chan) = zx::Channel::create()?;
 
             let mut launch_info = LaunchInfo {
@@ -85,14 +85,14 @@ pub mod client {
             };
 
 
-            self.app_launcher
-                .create_application(&mut launch_info, Some(controller_server_end.into()))
+            self.launcher
+                .create_component(&mut launch_info, Some(controller_server_end.into()))
                 .context("Failed to start a new Fuchsia application.")?;
 
-            let app_controller = async::Channel::from_channel(app_controller)?;
-            let app_controller = ApplicationControllerProxy::new(app_controller);
+            let controller = async::Channel::from_channel(controller)?;
+            let controller = ComponentControllerProxy::new(controller);
 
-            Ok(App { directory_request, app_controller })
+            Ok(App { directory_request, controller })
         }
     }
 
@@ -103,7 +103,7 @@ pub mod client {
 
         // TODO: use somehow?
         #[allow(dead_code)]
-        app_controller: ApplicationControllerProxy,
+        controller: ComponentControllerProxy,
     }
 
     impl App {

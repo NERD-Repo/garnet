@@ -4,10 +4,10 @@
 
 #include "garnet/bin/guest/cli/launch.h"
 
-#include <component/cpp/fidl.h>
+#include <fuchsia/sys/cpp/fidl.h>
 #include <fuchsia/guest/cpp/fidl.h>
 #include <presentation/cpp/fidl.h>
-#include <views_v1/cpp/fidl.h>
+#include <fuchsia/ui/views_v1/cpp/fidl.h>
 
 #include "garnet/bin/guest/cli/serial.h"
 #include "lib/app/cpp/environment_services.h"
@@ -18,7 +18,7 @@ void handle_launch(int argc, const char* argv[]) {
 
   // Create environment.
   fuchsia::guest::GuestManagerSyncPtr guestmgr;
-  component::ConnectToEnvironmentService(guestmgr.NewRequest());
+  fuchsia::sys::ConnectToEnvironmentService(guestmgr.NewRequest());
   fuchsia::guest::GuestEnvironmentSyncPtr guest_env;
   guestmgr->CreateEnvironment(argv[0], guest_env.NewRequest());
 
@@ -35,14 +35,14 @@ void handle_launch(int argc, const char* argv[]) {
   guest_controller.set_error_handler([&loop] { loop.Shutdown(); });
 
   // Create the framebuffer view.
-  views_v1::ViewProviderSyncPtr view_provider;
+  ::fuchsia::ui::views_v1::ViewProviderSyncPtr view_provider;
   guest_controller->GetViewProvider(view_provider.NewRequest());
-  fidl::InterfaceHandle<views_v1_token::ViewOwner> view_owner;
+  fidl::InterfaceHandle<::fuchsia::ui::views_v1_token::ViewOwner> view_owner;
   view_provider->CreateView(view_owner.NewRequest(), nullptr);
 
   // Ask the presenter to display it.
   presentation::PresenterSyncPtr presenter;
-  component::ConnectToEnvironmentService(presenter.NewRequest());
+  fuchsia::sys::ConnectToEnvironmentService(presenter.NewRequest());
   presenter->Present(std::move(view_owner), nullptr);
 
   // Open the serial service of the guest and process IO.

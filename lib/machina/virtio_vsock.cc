@@ -17,14 +17,14 @@ VirtioVsock::Connection::~Connection() {
 template <VirtioVsock::StreamFunc F>
 VirtioVsock::Stream<F>::Stream(async_t* async, VirtioQueue* queue,
                                VirtioVsock* vsock)
-    : waiter_(async, queue, fbl::BindMember(vsock, F)) {}
+    : waiter_(async, queue, fit::bind_member(vsock, F)) {}
 
 template <VirtioVsock::StreamFunc F>
 zx_status_t VirtioVsock::Stream<F>::WaitOnQueue() {
   return waiter_.Begin();
 }
 
-VirtioVsock::VirtioVsock(component::ApplicationContext* context,
+VirtioVsock::VirtioVsock(fuchsia::sys::StartupContext* context,
                          const PhysMem& phys_mem, async_t* async)
     : VirtioDeviceBase(phys_mem),
       async_(async),

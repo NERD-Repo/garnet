@@ -2207,10 +2207,10 @@ void ath10k_core_stop(struct ath10k* ar) {
     ath10k_wmi_detach(ar);
 }
 
-/* mac80211 manages fw/hw initialization through start/stop hooks. However in
- * order to know what hw capabilities should be advertised to mac80211 it is
- * necessary to load the firmware (and tear it down immediately since start
- * hook will try to init it again) before registering
+/* In order to know what hw capabilities should be advertised, we have to load the
+ * firmware. Rather than tear it down immediately and re-load it when wlanmac's
+ * start() is invoked, we just keep it running. Note that this behavior is subject
+ * to change in the future (see NET-919).
  */
 static zx_status_t ath10k_core_probe_fw(struct ath10k* ar) {
     struct bmi_target_info target_info;
@@ -2444,7 +2444,6 @@ zx_status_t ath10k_core_create(struct ath10k** ar_ptr, size_t priv_size,
         return ZX_ERR_NO_MEMORY;
     }
 
-    ar->ath_common.priv = ar;
     ar->zxdev = dev;
     ar->hw_rev = hw_rev;
     ar->hif.ops = hif_ops;

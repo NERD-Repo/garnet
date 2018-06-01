@@ -2,29 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_EXAMPLES_UI_VIDEO_DISPLAY_VIEW_H_
+#define GARNET_EXAMPLES_UI_VIDEO_DISPLAY_VIEW_H_
 
 #include <deque>
 #include <list>
 
 #include <fbl/vector.h>
+#include <lib/app/cpp/startup_context.h>
+#include <lib/async-loop/cpp/loop.h>
+#include <lib/fxl/macros.h>
+#include <lib/ui/scenic/client/resources.h>
+#include <lib/ui/view_framework/base_view.h>
+
 #include <garnet/examples/ui/video_display/camera_client.h>
 #include <garnet/examples/ui/video_display/fake_camera_source.h>
 #include <garnet/examples/ui/video_display/fenced_buffer.h>
 #include <garnet/examples/ui/video_display/frame_scheduler.h>
-#include <lib/app/cpp/application_context.h>
-#include <lib/fsl/tasks/message_loop.h>
-#include <lib/fxl/macros.h>
-#include <lib/ui/scenic/client/resources.h>
-#include <lib/ui/view_framework/base_view.h>
 
 namespace video_display {
 
 class View : public mozart::BaseView {
  public:
-  View(component::ApplicationContext* application_context,
-       views_v1::ViewManagerPtr view_manager,
-       fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
+  View(async::Loop* loop, fuchsia::sys::StartupContext* startup_context,
+       ::fuchsia::ui::views_v1::ViewManagerPtr view_manager,
+       fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+           view_owner_request,
        bool use_fake_camera);
 
   ~View() override;
@@ -55,7 +58,8 @@ class View : public mozart::BaseView {
   // From mozart::BaseView. Called when the scene is "invalidated".
   // Invalidation should happen when the surfaces change, but not
   // necessarily when a texture changes.
-  void OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) override;
+  void OnSceneInvalidated(
+      fuchsia::images::PresentationInfo presentation_info) override;
 
   // Creates a new buffer and registers an image with scenic.  If the buffer
   // already exists, returns a pointer to that buffer.  Buffer is not required
@@ -63,15 +67,14 @@ class View : public mozart::BaseView {
   // that buffer is now available.
   // TODO(garratt): There is currently no way to detect overlapping or unused
   // frames to remove them.
-  zx_status_t FindOrCreateBuffer(uint32_t frame_size,
-                                 uint64_t vmo_offset,
+  zx_status_t FindOrCreateBuffer(uint32_t frame_size, uint64_t vmo_offset,
                                  FencedBuffer** buffer,
                                  const camera_video_format_t& format);
 
   // The currently selected format.
   camera_video_format_t format_;
 
-  fsl::MessageLoop* loop_;
+  async::Loop* const loop_;
   // The number of buffers to allocate while setting up the camera stream.
   // This number has to be at least 2, since scenic will hold onto one buffer
   // at all times.
@@ -93,3 +96,5 @@ class View : public mozart::BaseView {
 };
 
 }  // namespace video_display
+
+#endif  // GARNET_EXAMPLES_UI_VIDEO_DISPLAY_VIEW_H_

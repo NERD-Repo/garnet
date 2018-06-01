@@ -6,7 +6,7 @@
 
 #include <fdio/util.h>
 
-#include <views_v1/cpp/fidl.h>
+#include <fuchsia/ui/views_v1/cpp/fidl.h>
 #include "lib/fidl/cpp/optional.h"
 #include "lib/fxl/logging.h"
 #include "lib/svc/cpp/services.h"
@@ -15,12 +15,12 @@
 namespace examples {
 
 TileView::TileView(
-    views_v1::ViewManagerPtr view_manager,
-    fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
-    component::ApplicationContext* application_context,
-    const TileParams& params)
+    ::fuchsia::ui::views_v1::ViewManagerPtr view_manager,
+    fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+        view_owner_request,
+    fuchsia::sys::StartupContext* startup_context, const TileParams& params)
     : BaseView(std::move(view_manager), std::move(view_owner_request), "Tile"),
-      application_context_(application_context),
+      startup_context_(startup_context),
       params_(params),
       container_node_(session()) {
   parent_node().AddChild(container_node_);
@@ -32,7 +32,8 @@ TileView::TileView(
 TileView::~TileView() {}
 
 void TileView::Present(
-    fidl::InterfaceHandle<views_v1_token::ViewOwner> child_view_owner,
+    fidl::InterfaceHandle<::fuchsia::ui::views_v1_token::ViewOwner>
+        child_view_owner,
     fidl::InterfaceRequest<presentation::Presentation> presentation) {
   const std::string empty_url;
   AddChildView(std::move(child_view_owner), empty_url, nullptr);
@@ -40,21 +41,23 @@ void TileView::Present(
 
 void TileView::ConnectViews() {
   for (const auto& url : params_.view_urls) {
-    component::Services services;
-    component::ApplicationControllerPtr controller;
+    fuchsia::sys::Services services;
+    fuchsia::sys::ComponentControllerPtr controller;
 
-    component::LaunchInfo launch_info;
+    fuchsia::sys::LaunchInfo launch_info;
     launch_info.url = url;
     launch_info.directory_request = services.NewRequest();
 
     // |env_launcher_| launches the app with our nested environment.
-    env_launcher_->CreateApplication(std::move(launch_info),
-                                     controller.NewRequest());
+    env_launcher_->CreateComponent(std::move(launch_info),
+                                   controller.NewRequest());
 
     // Get the view provider back from the launched app.
-    auto view_provider = services.ConnectToService<views_v1::ViewProvider>();
+    auto view_provider =
+        services.ConnectToService<::fuchsia::ui::views_v1::ViewProvider>();
 
-    fidl::InterfaceHandle<views_v1_token::ViewOwner> child_view_owner;
+    fidl::InterfaceHandle<::fuchsia::ui::views_v1_token::ViewOwner>
+        child_view_owner;
     view_provider->CreateView(child_view_owner.NewRequest(), nullptr);
 
     // Add the view, which increments child_key_.
@@ -63,10 +66,10 @@ void TileView::ConnectViews() {
 }
 
 void TileView::CreateNestedEnvironment() {
-  application_context_->environment()->CreateNestedEnvironment(
+  startup_context_->environment()->CreateNestedEnvironment(
       service_provider_bridge_.OpenAsDirectory(), env_.NewRequest(),
       env_controller_.NewRequest(), "tile");
-  env_->GetApplicationLauncher(env_launcher_.NewRequest());
+  env_->GetLauncher(env_launcher_.NewRequest());
 
   // Add a binding for the presenter service
   service_provider_bridge_.AddService<presentation::Presenter>(
@@ -76,12 +79,12 @@ void TileView::CreateNestedEnvironment() {
 
   zx::channel h1, h2;
   if (zx::channel::create(0, &h1, &h2) < 0)
-    return application_context_->environment()->GetDirectory(std::move(h1));
+    return startup_context_->environment()->GetDirectory(std::move(h1));
   service_provider_bridge_.set_backing_dir(std::move(h2));
 }
 
-void TileView::OnChildAttached(uint32_t child_key,
-                               views_v1::ViewInfo child_view_info) {
+void TileView::OnChildAttached(
+    uint32_t child_key, ::fuchsia::ui::views_v1::ViewInfo child_view_info) {
   auto it = views_.find(child_key);
   FXL_DCHECK(it != views_.end());
 
@@ -95,13 +98,13 @@ void TileView::OnChildUnavailable(uint32_t child_key) {
 }
 
 void TileView::AddChildView(
-    fidl::InterfaceHandle<views_v1_token::ViewOwner> child_view_owner,
-    const std::string& url,
-    component::ApplicationControllerPtr app_controller) {
+    fidl::InterfaceHandle<::fuchsia::ui::views_v1_token::ViewOwner>
+        child_view_owner,
+    const std::string& url, fuchsia::sys::ComponentControllerPtr controller) {
   const uint32_t view_key = next_child_view_key_++;
 
-  auto view_data = std::make_unique<ViewData>(
-      url, view_key, std::move(app_controller), session());
+  auto view_data = std::make_unique<ViewData>(url, view_key,
+                                              std::move(controller), session());
 
   zx::eventpair host_import_token;
   view_data->host_node.ExportAsRequest(&host_import_token);
@@ -124,7 +127,8 @@ void TileView::RemoveChildView(uint32_t child_key) {
   InvalidateScene();
 }
 
-void TileView::OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) {
+void TileView::OnSceneInvalidated(
+    fuchsia::images::PresentationInfo presentation_info) {
   if (!has_logical_size() || views_.empty())
     return;
 
@@ -161,13 +165,13 @@ void TileView::OnSceneInvalidated(fuchsia::images::PresentationInfo presentation
     }
     offset += extent;
 
-    views_v1::ViewProperties view_properties;
-    view_properties.view_layout = views_v1::ViewLayout::New();
+    ::fuchsia::ui::views_v1::ViewProperties view_properties;
+    view_properties.view_layout = ::fuchsia::ui::views_v1::ViewLayout::New();
     view_properties.view_layout->size.width = layout_bounds.width;
     view_properties.view_layout->size.height = layout_bounds.height;
 
     if (view_data->view_properties != view_properties) {
-      views_v1::ViewProperties view_properties_clone;
+      ::fuchsia::ui::views_v1::ViewProperties view_properties_clone;
       view_properties.Clone(&view_properties_clone);
       view_data->view_properties = std::move(view_properties_clone);
       GetViewContainer()->SetChildProperties(
@@ -179,7 +183,7 @@ void TileView::OnSceneInvalidated(fuchsia::images::PresentationInfo presentation
 }
 
 TileView::ViewData::ViewData(const std::string& url, uint32_t key,
-                             component::ApplicationControllerPtr controller,
+                             fuchsia::sys::ComponentControllerPtr controller,
                              scenic_lib::Session* session)
     : url(url),
       key(key),

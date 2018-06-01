@@ -4,13 +4,14 @@
 
 #include "garnet/lib/ui/scenic/scenic.h"
 
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fxl/functional/make_copyable.h"
 
 namespace scenic {
 
-Scenic::Scenic(component::ApplicationContext* app_context)
-    : app_context_(app_context) {
+Scenic::Scenic(fuchsia::sys::StartupContext* app_context,
+               fit::closure quit_callback)
+    : app_context_(app_context), quit_callback_(std::move(quit_callback)) {
   FXL_DCHECK(app_context_);
 
   app_context->outgoing().AddPublicService<fuchsia::ui::scenic::Scenic>(
@@ -90,12 +91,11 @@ void Scenic::GetDisplayInfo(
 }
 
 void Scenic::TakeScreenshot(
-    fidl::StringPtr filename,
     fuchsia::ui::scenic::Scenic::TakeScreenshotCallback callback) {
   FXL_DCHECK(systems_[System::kGfx]);
   TempSystemDelegate* delegate =
       reinterpret_cast<TempSystemDelegate*>(systems_[System::kGfx].get());
-  delegate->TakeScreenshot(filename, callback);
+  delegate->TakeScreenshot(callback);
 }
 
 void Scenic::GetOwnershipEvent(

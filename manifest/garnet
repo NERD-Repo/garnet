@@ -6,14 +6,14 @@
     <import remote="https://fuchsia.googlesource.com/build"
             manifest="manifest/build"
             name="build"
-            revision="1567ddf6e3b0cf660e19a8d7e3f0ecd0fccc77ff"/>
+            revision="10b1fa91ebdb5169f9f1fa5fa5b66c5ada7285fc"/>
     <import remote="https://fuchsia.googlesource.com/scripts"
             manifest="manifest/scripts"
             name="scripts"
-            revision="11635e4954d3e886f15e66c5eae7aaf295892b4d"/>
+            revision="d43f9c3cdfb98cb4c0ad9dd9226f99288d6ab8ac"/>
     <import remote="https://fuchsia.googlesource.com/zircon"
             manifest="manifest/zircon"
             name="zircon"
-            revision="6a06a745ff16d758ee5e5ad3afbcbb59dcce5de4"/>
+            revision="8752afeea257bb446799c0deefaa67ffd8356789"/>
     </imports>
 </manifest>

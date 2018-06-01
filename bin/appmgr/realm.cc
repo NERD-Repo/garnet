@@ -35,7 +35,8 @@
 #include "lib/fxl/strings/string_printf.h"
 #include "lib/svc/cpp/services.h"
 
-namespace component {
+namespace fuchsia {
+namespace sys {
 namespace {
 
 constexpr zx_rights_t kChildJobRights = ZX_RIGHTS_BASIC | ZX_RIGHTS_IO;
@@ -69,7 +70,7 @@ std::string GetLabelFromURL(const std::string& url) {
   return url.substr(last_slash + 1);
 }
 
-void PushFileDescriptor(component::FileDescriptorPtr fd, int new_fd,
+void PushFileDescriptor(fuchsia::sys::FileDescriptorPtr fd, int new_fd,
                         std::vector<uint32_t>* ids,
                         std::vector<zx_handle_t>* handles) {
   if (!fd)
@@ -224,7 +225,7 @@ Realm::Realm(Realm* parent, zx::channel host_directory, fidl::StringPtr label)
   if (label->size() == 0)
     label_ = fxl::StringPrintf(kNumberedLabelFormat, next_numbered_label_++);
   else
-    label_ = label.get().substr(0, component::kLabelMaxLength);
+    label_ = label.get().substr(0, fuchsia::sys::kLabelMaxLength);
 
   fsl::SetObjectName(job_.get(), label_);
   hub_.SetName(label_);
@@ -257,7 +258,7 @@ zx::channel Realm::OpenRootInfoDir() {
 }
 
 HubInfo Realm::HubInfo() {
-  return component::HubInfo(label_, koid_, hub_.dir());
+  return fuchsia::sys::HubInfo(label_, koid_, hub_.dir());
 }
 
 void Realm::CreateNestedJob(
@@ -281,11 +282,17 @@ void Realm::CreateNestedJob(
   }
   child->default_namespace_->services().ServeDirectory(
       std::move(root_realm->svc_channel_server_));
+
+  if (!parent()) {
+    child->CreateShell("/boot/bin/run-vc");
+    child->CreateShell("/boot/bin/run-vc");
+    child->CreateShell("/boot/bin/run-vc");
+  }
 }
 
-void Realm::CreateApplication(
+void Realm::CreateComponent(
     LaunchInfo launch_info,
-    fidl::InterfaceRequest<ApplicationController> controller) {
+    fidl::InterfaceRequest<ComponentController> controller) {
   if (launch_info.url.get().empty()) {
     FXL_LOG(ERROR) << "Cannot create application because launch_info contains"
                       " an empty url";
@@ -318,23 +325,46 @@ void Realm::CreateApplication(
             LaunchType type = Classify(package->data->vmo, &runner);
             switch (type) {
               case LaunchType::kProcess:
-                CreateApplicationWithProcess(
+                CreateComponentWithProcess(
                     std::move(package), std::move(launch_info),
                     std::move(controller), std::move(ns));
                 break;
               case LaunchType::kArchive:
-                CreateApplicationFromPackage(
+                CreateComponentFromPackage(
                     std::move(package), std::move(launch_info),
                     std::move(controller), std::move(ns));
                 break;
             }
           } else if (package->directory) {
-            CreateApplicationFromPackage(std::move(package),
-                                         std::move(launch_info),
-                                         std::move(controller), std::move(ns));
+            CreateComponentFromPackage(std::move(package),
+                                       std::move(launch_info),
+                                       std::move(controller), std::move(ns));
           }
         }
       }));
+}
+
+void Realm::CreateShell(const std::string& path) {
+  zx::channel svc = default_namespace_->services().OpenAsDirectory();
+  if (!svc)
+    return;
+
+  SandboxMetadata sandbox;
+  sandbox.AddFeature("shell");
+
+  NamespaceBuilder builder;
+  builder.AddServices(std::move(svc));
+  builder.AddSandbox(sandbox, [this] { return OpenRootInfoDir(); });
+
+  fsl::SizedVmo executable;
+  if (!fsl::VmoFromFilename(path, &executable))
+    return;
+
+  LaunchInfo launch_info;
+  launch_info.url = path;
+  zx::process process =
+      CreateProcess(job_for_child_, std::move(executable), path,
+                    std::move(launch_info), zx::channel(), builder.Build());
 }
 
 std::unique_ptr<EnvironmentControllerImpl> Realm::ExtractChild(Realm* child) {
@@ -351,8 +381,8 @@ std::unique_ptr<EnvironmentControllerImpl> Realm::ExtractChild(Realm* child) {
   return controller;
 }
 
-std::unique_ptr<ApplicationControllerImpl> Realm::ExtractApplication(
-    ApplicationControllerImpl* controller) {
+std::unique_ptr<ComponentControllerImpl> Realm::ExtractApplication(
+    ComponentControllerImpl* controller) {
   auto it = applications_.find(controller);
   if (it == applications_.end()) {
     return nullptr;
@@ -370,9 +400,9 @@ void Realm::AddBinding(fidl::InterfaceRequest<Environment> environment) {
   default_namespace_->AddBinding(std::move(environment));
 }
 
-void Realm::CreateApplicationWithProcess(
+void Realm::CreateComponentWithProcess(
     PackagePtr package, LaunchInfo launch_info,
-    fidl::InterfaceRequest<ApplicationController> controller,
+    fidl::InterfaceRequest<ComponentController> controller,
     fxl::RefPtr<Namespace> ns) {
   zx::channel svc = ns->services().OpenAsDirectory();
   if (!svc)
@@ -403,21 +433,21 @@ void Realm::CreateApplicationWithProcess(
                     std::move(launch_info), zx::channel(), builder.Build());
 
   if (process) {
-    auto application = std::make_unique<ApplicationControllerImpl>(
+    auto application = std::make_unique<ComponentControllerImpl>(
         std::move(controller), this, nullptr, std::move(process), url,
         std::move(args), GetLabelFromURL(url), std::move(ns),
         ExportedDirType::kPublicDebugCtrlLayout,
         std::move(channels.exported_dir), std::move(channels.client_request));
     // update hub
     hub_.AddComponent(application->HubInfo());
-    ApplicationControllerImpl* key = application.get();
+    ComponentControllerImpl* key = application.get();
     applications_.emplace(key, std::move(application));
   }
 }
 
-void Realm::CreateApplicationFromPackage(
+void Realm::CreateComponentFromPackage(
     PackagePtr package, LaunchInfo launch_info,
-    fidl::InterfaceRequest<ApplicationController> controller,
+    fidl::InterfaceRequest<ComponentController> controller,
     fxl::RefPtr<Namespace> ns) {
   zx::channel svc = ns->services().OpenAsDirectory();
   if (!svc)
@@ -512,14 +542,14 @@ void Realm::CreateApplicationFromPackage(
         std::move(loader_service), builder.Build());
 
     if (process) {
-      auto application = std::make_unique<ApplicationControllerImpl>(
+      auto application = std::make_unique<ComponentControllerImpl>(
           std::move(controller), this, std::move(pkg_fs), std::move(process),
           url, std::move(args), GetLabelFromURL(url), std::move(ns),
           exported_dir_layout, std::move(channels.exported_dir),
           std::move(channels.client_request));
       // update hub
       hub_.AddComponent(application->HubInfo());
-      ApplicationControllerImpl* key = application.get();
+      ComponentControllerImpl* key = application.get();
       applications_.emplace(key, std::move(application));
     }
   } else {
@@ -555,12 +585,12 @@ RunnerHolder* Realm::GetOrCreateRunner(const std::string& runner) {
   auto result = runners_.emplace(runner, nullptr);
   if (result.second) {
     Services runner_services;
-    ApplicationControllerPtr runner_controller;
+    ComponentControllerPtr runner_controller;
     LaunchInfo runner_launch_info;
     runner_launch_info.url = runner;
     runner_launch_info.directory_request = runner_services.NewRequest();
-    CreateApplication(std::move(runner_launch_info),
-                      runner_controller.NewRequest());
+    CreateComponent(std::move(runner_launch_info),
+                    runner_controller.NewRequest());
 
     runner_controller.set_error_handler(
         [this, runner] { runners_.erase(runner); });
@@ -586,4 +616,5 @@ zx_status_t Realm::BindSvc(zx::channel channel) {
                                channel.release());
 }
 
-}  // namespace component
+}  // namespace sys
+}  // namespace fuchsia

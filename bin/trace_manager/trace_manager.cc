@@ -21,7 +21,7 @@ static constexpr uint32_t kMaxBufferSizeMegabytes = 64;
 
 }  // namespace
 
-TraceManager::TraceManager(component::ApplicationContext* context,
+TraceManager::TraceManager(fuchsia::sys::StartupContext* context,
                            const Config& config)
     : context_(context), config_(config) {
   // TODO(jeffbrown): We should do this in StartTracing() and take care
@@ -119,10 +119,10 @@ void TraceManager::LaunchConfiguredProviders() {
       }
       FXL_VLOG(2) << "Args:" << args;
     }
-    component::LaunchInfo launch_info;
+    fuchsia::sys::LaunchInfo launch_info;
     launch_info.url = pair.second->url;
     fidl::Clone(pair.second->arguments, &launch_info.arguments);
-    context_->launcher()->CreateApplication(std::move(launch_info), nullptr);
+    context_->launcher()->CreateComponent(std::move(launch_info), nullptr);
   }
 }
 

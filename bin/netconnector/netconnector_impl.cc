@@ -29,23 +29,21 @@ NetConnectorImpl::NetConnectorImpl(NetConnectorParams* params,
                                    fxl::Closure quit_callback)
     : params_(params),
       quit_callback_(quit_callback),
-      application_context_(
-          component::ApplicationContext::CreateFromStartupInfo()),
+      startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
       // TODO(dalesat): Create a new RespondingServiceHost per user.
       // Requestors should provide user credentials allowing a ServiceAgent
       // to obtain a user environment. A RespondingServiceHost should be
       // created with that environment so that responding services are
       // launched in the correct environment.
-      responding_service_host_(application_context_->environment()) {
+      responding_service_host_(startup_context_->environment()) {
   FXL_DCHECK(quit_callback_);
 
   if (!params->listen()) {
     // Start the listener.
     NetConnectorSyncPtr net_connector;
-    application_context_->ConnectToEnvironmentService(
-        net_connector.NewRequest());
+    startup_context_->ConnectToEnvironmentService(net_connector.NewRequest());
     mdns::MdnsServicePtr mdns_service =
-        application_context_->ConnectToEnvironmentService<mdns::MdnsService>();
+        startup_context_->ConnectToEnvironmentService<mdns::MdnsService>();
 
     if (params_->mdns_verbose()) {
       mdns_service->SetVerbose(true);
@@ -71,7 +69,7 @@ NetConnectorImpl::NetConnectorImpl(NetConnectorParams* params,
   }
 
   // Running as listener.
-  application_context_->outgoing().AddPublicService<NetConnector>(
+  startup_context_->outgoing().AddPublicService<NetConnector>(
       [this](fidl::InterfaceRequest<NetConnector> request) {
         bindings_.AddBinding(this, std::move(request));
       });
@@ -111,7 +109,7 @@ void NetConnectorImpl::StartListener() {
   });
 
   mdns_service_ =
-      application_context_->ConnectToEnvironmentService<mdns::MdnsService>();
+      startup_context_->ConnectToEnvironmentService<mdns::MdnsService>();
 
   host_name_ = GetHostName();
 
@@ -189,7 +187,7 @@ void NetConnectorImpl::ReleaseServiceAgent(ServiceAgent* service_agent) {
 
 void NetConnectorImpl::GetDeviceServiceProvider(
     fidl::StringPtr device_name,
-    fidl::InterfaceRequest<component::ServiceProvider> request) {
+    fidl::InterfaceRequest<fuchsia::sys::ServiceProvider> request) {
   if (device_name == host_name_ || device_name == kLocalDeviceName) {
     responding_service_host_.AddBinding(std::move(request));
     return;
@@ -207,14 +205,13 @@ void NetConnectorImpl::GetDeviceServiceProvider(
 }
 
 void NetConnectorImpl::GetKnownDeviceNames(
-    uint64_t version_last_seen,
-    GetKnownDeviceNamesCallback callback) {
+    uint64_t version_last_seen, GetKnownDeviceNamesCallback callback) {
   device_names_publisher_.Get(version_last_seen, callback);
 }
 
 void NetConnectorImpl::RegisterServiceProvider(
     fidl::StringPtr name,
-    fidl::InterfaceHandle<component::ServiceProvider> handle) {
+    fidl::InterfaceHandle<fuchsia::sys::ServiceProvider> handle) {
   FXL_LOG(INFO) << "Service '" << name << "' provider registered.";
   responding_service_host_.RegisterProvider(name, std::move(handle));
 }

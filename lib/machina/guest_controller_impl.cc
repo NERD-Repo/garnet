@@ -20,17 +20,15 @@ static T duplicate(const T& handle, zx_rights_t rights) {
 namespace machina {
 
 GuestControllerImpl::GuestControllerImpl(
-    component::ApplicationContext* application_context, const PhysMem& phys_mem)
+    fuchsia::sys::StartupContext* startup_context, const PhysMem& phys_mem)
     : vmo_(duplicate(phys_mem.vmo(), kVmoRights)) {
   zx_status_t status = zx::socket::create(0, &server_socket_, &client_socket_);
   FXL_CHECK(status == ZX_OK) << "Failed to create socket";
 
-  application_context->outgoing()
-      .AddPublicService<fuchsia::guest::GuestController>(
-          [this](
-              fidl::InterfaceRequest<fuchsia::guest::GuestController> request) {
-            bindings_.AddBinding(this, std::move(request));
-          });
+  startup_context->outgoing().AddPublicService<fuchsia::guest::GuestController>(
+      [this](fidl::InterfaceRequest<fuchsia::guest::GuestController> request) {
+        bindings_.AddBinding(this, std::move(request));
+      });
 }
 
 void GuestControllerImpl::GetPhysicalMemory(
@@ -43,7 +41,7 @@ void GuestControllerImpl::GetSerial(GetSerialCallback callback) {
 }
 
 void GuestControllerImpl::GetViewProvider(
-    fidl::InterfaceRequest<views_v1::ViewProvider> request) {
+    fidl::InterfaceRequest<::fuchsia::ui::views_v1::ViewProvider> request) {
   if (view_provider_ != nullptr) {
     view_provider_bindings_.AddBinding(view_provider_, std::move(request));
   }

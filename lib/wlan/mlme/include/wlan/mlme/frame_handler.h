@@ -24,34 +24,28 @@
         return methodName(msg);                                                         \
     }
 
-#define WLAN_DECL_FUNC_HANDLE_MGMT(mgmtFrameType)                                               \
-    WLAN_DECL_VIRT_FUNC_HANDLE(Handle##mgmtFrameType, const ImmutableMgmtFrame<mgmtFrameType>&, \
-                               const wlan_rx_info_t&)
+#define WLAN_DECL_FUNC_HANDLE_MGMT(mgmtFrameType) \
+    WLAN_DECL_VIRT_FUNC_HANDLE(Handle##mgmtFrameType, const MgmtFrame<mgmtFrameType>&)
 
-#define WLAN_DECL_FUNC_INTERNAL_HANDLE_MGMT(mgmtFrameType)                              \
-    zx_status_t HandleMgmtFrameInternal(const ImmutableMgmtFrame<mgmtFrameType>& frame, \
-                                        const wlan_rx_info_t& info) {                   \
-        return Handle##mgmtFrameType(frame, info);                                      \
+#define WLAN_DECL_FUNC_INTERNAL_HANDLE_MGMT(mgmtFrameType)                       \
+    zx_status_t HandleMgmtFrameInternal(const MgmtFrame<mgmtFrameType>& frame) { \
+        return Handle##mgmtFrameType(frame);                                     \
     }
 
-#define WLAN_DECL_FUNC_HANDLE_CTRL(ctrlFrameType)                                               \
-    WLAN_DECL_VIRT_FUNC_HANDLE(Handle##ctrlFrameType, const ImmutableCtrlFrame<ctrlFrameType>&, \
-                               const wlan_rx_info_t&)
+#define WLAN_DECL_FUNC_HANDLE_CTRL(ctrlFrameType) \
+    WLAN_DECL_VIRT_FUNC_HANDLE(Handle##ctrlFrameType, const CtrlFrame<ctrlFrameType>&)
 
-#define WLAN_DECL_FUNC_INTERNAL_HANDLE_CTRL(ctrlFrameType)                              \
-    zx_status_t HandleCtrlFrameInternal(const ImmutableCtrlFrame<ctrlFrameType>& frame, \
-                                        const wlan_rx_info_t& info) {                   \
-        return Handle##ctrlFrameType(frame, info);                                      \
+#define WLAN_DECL_FUNC_INTERNAL_HANDLE_CTRL(ctrlFrameType)                       \
+    zx_status_t HandleCtrlFrameInternal(const CtrlFrame<ctrlFrameType>& frame) { \
+        return Handle##ctrlFrameType(frame);                                     \
     }
 
-#define WLAN_DECL_VIRT_FUNC_HANDLE_DATA(methodName, BodyType)                           \
-    WLAN_DECL_VIRT_FUNC_HANDLE(Handle##methodName, const ImmutableDataFrame<BodyType>&, \
-                               const wlan_rx_info_t&)
+#define WLAN_DECL_VIRT_FUNC_HANDLE_DATA(methodName, BodyType) \
+    WLAN_DECL_VIRT_FUNC_HANDLE(Handle##methodName, const DataFrame<BodyType>&)
 
-#define WLAN_DECL_FUNC_INTERNAL_HANDLE_DATA(methodName, BodyType)                  \
-    zx_status_t HandleDataFrameInternal(const ImmutableDataFrame<BodyType>& frame, \
-                                        const wlan_rx_info_t& rxinfo) {            \
-        return Handle##methodName(frame, rxinfo);                                  \
+#define WLAN_DECL_FUNC_INTERNAL_HANDLE_DATA(methodName, BodyType)           \
+    zx_status_t HandleDataFrameInternal(const DataFrame<BodyType>& frame) { \
+        return Handle##methodName(frame);                                   \
     }
 
 namespace wlan {
@@ -136,9 +130,7 @@ class FrameHandler : public fbl::RefCounted<FrameHandler> {
     virtual zx_status_t HandleAnyFrame() { return ZX_OK; }
 
     // Ethernet frame handlers.
-    virtual zx_status_t HandleEthFrame(const ImmutableBaseFrame<EthernetII>& frame) {
-        return ZX_OK;
-    }
+    virtual zx_status_t HandleEthFrame(const EthFrame& frame) { return ZX_OK; }
 
     // Service Message handlers.
     virtual zx_status_t HandleMlmeMessage(uint32_t ordinal) { return ZX_OK; }
@@ -202,13 +194,11 @@ class FrameHandler : public fbl::RefCounted<FrameHandler> {
     WLAN_DECL_FUNC_INTERNAL_HANDLE_MLME(HandleMlmeStopReq, StopRequest)
 
     // Internal Management frame handlers.
-    template <typename Body>
-    zx_status_t HandleFrameInternal(const ImmutableMgmtFrame<Body>& frame,
-                                    const wlan_rx_info_t& info) {
+    template <typename Body> zx_status_t HandleFrameInternal(const MgmtFrame<Body>& frame) {
         auto status = HandleMgmtFrame(*frame.hdr());
         if (status != ZX_OK) { return status; }
 
-        return HandleMgmtFrameInternal(frame, info);
+        return HandleMgmtFrameInternal(frame);
     }
     WLAN_DECL_FUNC_INTERNAL_HANDLE_MGMT(Beacon)
     WLAN_DECL_FUNC_INTERNAL_HANDLE_MGMT(ProbeResponse)
@@ -222,18 +212,14 @@ class FrameHandler : public fbl::RefCounted<FrameHandler> {
     WLAN_DECL_FUNC_INTERNAL_HANDLE_MGMT(AddBaResponseFrame)
 
     // Internal Ethernet frame handlers.
-    zx_status_t HandleFrameInternal(const ImmutableFrame<EthernetII, NilHeader>& frame) {
-        return HandleEthFrame(frame);
-    }
+    zx_status_t HandleFrameInternal(const EthFrame& frame) { return HandleEthFrame(frame); }
 
     // Internal Data frame handlers.
-    template <typename Body>
-    zx_status_t HandleFrameInternal(const ImmutableFrame<DataFrameHeader, Body>& frame,
-                                    const wlan_rx_info_t& info) {
+    template <typename Body> zx_status_t HandleFrameInternal(const DataFrame<Body>& frame) {
         auto status = HandleDataFrame(*frame.hdr());
         if (status != ZX_OK) { return status; }
 
-        return HandleDataFrameInternal(frame, info);
+        return HandleDataFrameInternal(frame);
     }
     WLAN_DECL_FUNC_INTERNAL_HANDLE_DATA(NullDataFrame, NilHeader)
     WLAN_DECL_FUNC_INTERNAL_HANDLE_DATA(DataFrame, LlcHeader)
@@ -243,11 +229,11 @@ class FrameHandler : public fbl::RefCounted<FrameHandler> {
     // is caught.
     template <typename Header>
     typename std::enable_if<!std::is_same<Header, DataFrameHeader>::value, zx_status_t>::type
-    HandleFrameInternal(const ImmutableCtrlFrame<Header>& frame, const wlan_rx_info_t& info) {
+    HandleFrameInternal(const CtrlFrame<Header>& frame) {
         auto status = HandleCtrlFrame(frame.hdr()->fc);
         if (status != ZX_OK) { return status; }
 
-        return HandleCtrlFrameInternal(frame, info);
+        return HandleCtrlFrameInternal(frame);
     }
     WLAN_DECL_FUNC_INTERNAL_HANDLE_CTRL(PsPollFrame)
 

@@ -31,6 +31,7 @@
 
 #define RALINK_DUMP_EEPROM 0
 #define RALINK_DUMP_RX 0
+#define RALINK_DUMP_RX_UCAST_ONLY 1
 #define RALINK_DUMP_TX 0
 #define RALINK_DUMP_TXPOWER 0
 
@@ -51,9 +52,9 @@ zx_status_t sleep_for(zx::duration t) {
 }
 
 constexpr size_t kReadReqCount = 128;
-constexpr size_t kReadBufSize = 2048;
+constexpr size_t kReadBufSize = 4096;  // Reflecting max A-MSDU length for Ralink: 3839 bytes
 constexpr size_t kWriteReqCount = 128;
-constexpr size_t kWriteBufSize = 2048;  // todo: use endpt max size
+constexpr size_t kWriteBufSize = 4096;
 
 constexpr char kFirmwareFile[] = "rt2870.bin";
 
@@ -2999,7 +3000,28 @@ zx_status_t Device::BusyWait(R* reg, Predicate pred, zx::duration delay) {
 
 static void dump_rx(usb_request_t* request, RxInfo rx_info, RxDesc rx_desc, Rxwi0 rxwi0,
                     Rxwi1 rxwi1, Rxwi2 rxwi2, Rxwi3 rxwi3) {
+#if RALINK_DUMP_RX_UCAST_ONLY
+    if (rx_desc.unicast_to_me() != 1) { return; }
+#endif  // RALINK_DUMP_RX_UCAST_ONLY
+
 #if RALINK_DUMP_RX
+
+    {  // Length validation
+        // TODO(porce): If a warning takes place, it means there is room
+        // for improvement on the best understanding how the USB read chunk
+        // structure, which is experimentally learned.
+        auto len1 = request->response.actual;
+        auto len2 = rx_info.usb_dma_rx_pkt_len();
+        auto len3 = rxwi0.mpdu_total_byte_count();
+        auto len4 = rx_desc.l2pad() == 1 ? 2 : 0;
+
+        if (len1 != len2 + 8 || len1 % 4 != 0) { debugf("[ralink] USB read size incongruous)\n"); }
+        debugf(
+            "[ralink] USB read size : response.actual %zu usb_dma_rx_pkt_len "
+            "%u rx_hdr_size %zu mpdu_total_byte_count %u l2pad_len %u\n",
+            len1, len2, rx_hdr_size, len3, len4);
+    }
+
     uint8_t* data;
     usb_request_mmap(request, reinterpret_cast<void**>(&data));
     debugf("# Rxed packet: rx_len=%" PRIu64 "\n", request->response.actual);
@@ -3224,16 +3246,19 @@ void Device::HandleRxComplete(usb_request_t* request) {
 
         // Handle completed rx
         if (request->response.actual < rx_hdr_size + 4) {
-            errorf("short read\n");
+            errorf("short read: response.actual %ld rx_hdr_size %zu\n", request->response.actual,
+                   rx_hdr_size);
             return;
         }
+
         uint8_t* data;
         usb_request_mmap(request, reinterpret_cast<void**>(&data));
-
         uint32_t* data32 = reinterpret_cast<uint32_t*>(data);
         RxInfo rx_info(letoh32(data32[RxInfo::addr()]));
+
         if (request->response.actual < 4 + rx_info.usb_dma_rx_pkt_len()) {
-            errorf("short read\n");
+            errorf("short read: response.actual %ld usb_dma_rx_pkt_len %d\n",
+                   request->response.actual, rx_info.usb_dma_rx_pkt_len());
             return;
         }
 
@@ -3242,25 +3267,6 @@ void Device::HandleRxComplete(usb_request_t* request) {
         Rxwi2 rxwi2(letoh32(data32[Rxwi2::addr()]));
         Rxwi3 rxwi3(letoh32(data32[Rxwi3::addr()]));
         RxDesc rx_desc(*(uint32_t*)(data + 4 + rx_info.usb_dma_rx_pkt_len()));
-
-#if RALINK_DUMP_RX
-        {  // TODO(porce): If a warning takes place, it means there is room
-           // for improvement on the best understanding how the USB read chunk
-           // structure, which is experimentally learned.
-            auto len1 = request->response.actual;
-            auto len2 = rx_info.usb_dma_rx_pkt_len();
-            auto len3 = rxwi0.mpdu_total_byte_count();
-            auto len4 = rx_desc.l2pad() == 1 ? 2 : 0;
-            if (len1 != len2 + 8 || len1 % 4 != 0) {
-                debugf("[ralink] USB read size incongruous: response.actual %zu
-                       usb_dma_rx_pkt_len
-                       "
-                       "%u rx_hdr_size %zu mpdu_total_byte_count %u l2pad_len %u\n",
-                       len1, len2, rx_hdr_size, len3, len4);
-            }
-        }
-
-#endif  // RALINK_DUMP_RX
 
         dump_rx(request, rx_info, rx_desc, rxwi0, rxwi1, rxwi2, rxwi3);
         if (wlanmac_proxy_ != nullptr) {
@@ -3803,7 +3809,7 @@ void Device::StopInterruptPolling() {
             .key = kIntPortPktShutdown,
             .type = ZX_PKT_TYPE_USER,
         };
-        interrupt_port_.queue(&pkt, 1);
+        interrupt_port_.queue(&pkt);
         interrupt_thrd_.join();
     }
 }
@@ -3815,7 +3821,7 @@ zx_status_t Device::InterruptWorker() {
     zx_port_packet_t pkt;
     for (;;) {
         zx::time timeout = zx::deadline_after(zx::sec(5));
-        auto status = interrupt_port_.wait(timeout, &pkt, 1);
+        auto status = interrupt_port_.wait(timeout, &pkt);
         if (status == ZX_ERR_TIMED_OUT) {
             continue;
         } else if (status != ZX_OK) {

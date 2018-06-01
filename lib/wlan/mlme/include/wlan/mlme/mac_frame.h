@@ -31,17 +31,35 @@ using NilHeader = uint8_t[0];
 using UnknownBody = uint8_t;
 
 // TODO(hahnr): Remove once frame owns Packet.
-template <typename Header, typename Body> class ImmutableFrame {
+template <typename Header, typename Body = UnknownBody> class Frame {
    public:
-    ImmutableFrame(fbl::unique_ptr<Packet> pkt) : pkt_(fbl::move(pkt)) {
+    template <typename H, typename B>
+    static Frame FromOffset(size_t offset, fbl::unique_ptr<Packet> pkt) {
+        Frame<H, B> frame(fbl::move(pkt));
+        frame.data_offset_ = offset;
+        return fbl::move(frame);
+    }
+
+    explicit Frame(fbl::unique_ptr<Packet> pkt) : pkt_(fbl::move(pkt)) {
         ZX_DEBUG_ASSERT(pkt_ != nullptr);
     }
+
+    Frame() : pkt_(nullptr) {}
 
     const Header* hdr() const {
         ZX_DEBUG_ASSERT(!IsTaken());
         if (IsTaken()) { return nullptr; }
 
-        auto hdr = pkt_->field<Header>(0);
+        auto hdr = pkt_->field<Header>(data_offset_);
+        ZX_DEBUG_ASSERT(hdr != nullptr);
+        return hdr;
+    }
+
+    Header* hdr() {
+        ZX_DEBUG_ASSERT(!IsTaken());
+        if (IsTaken()) { return nullptr; }
+
+        auto hdr = pkt_->mut_field<Header>(0);
         ZX_DEBUG_ASSERT(hdr != nullptr);
         return hdr;
     }
@@ -51,6 +69,15 @@ template <typename Header, typename Body> class ImmutableFrame {
         if (IsTaken()) { return nullptr; }
 
         auto body = pkt_->field<Body>(body_offset<Header>());
+        ZX_DEBUG_ASSERT(body != nullptr);
+        return body;
+    }
+
+    Body* body() {
+        ZX_DEBUG_ASSERT(!IsTaken());
+        if (IsTaken()) { return nullptr; }
+
+        auto body = pkt_->mut_field<Body>(body_offset<Header>());
         ZX_DEBUG_ASSERT(body != nullptr);
         return body;
     }
@@ -65,11 +92,21 @@ template <typename Header, typename Body> class ImmutableFrame {
         return pkt_->len() - offset;
     }
 
+    zx_status_t set_body_len(size_t len) {
+        ZX_DEBUG_ASSERT(!IsTaken());
+        if (IsTaken()) { return ZX_ERR_NO_RESOURCES; }
+        ZX_DEBUG_ASSERT(len <= pkt_->len());
+
+        // TODO(hahnr): We might need to take padding into account at some point.
+        return pkt_->set_len(data_offset_ + hdr()->len() + len);
+    }
+
     size_t len() const {
         ZX_DEBUG_ASSERT(!IsTaken());
         if (IsTaken()) { return 0; }
 
-        return pkt_->len();
+        if (pkt_->len() < data_offset_) { return 0; }
+        return pkt_->len() - data_offset_;
     }
 
     bool has_rx_info() const {
@@ -84,7 +121,7 @@ template <typename Header, typename Body> class ImmutableFrame {
     const wlan_rx_info_t* rx_info() const {
         // Only Data, Mgmt and Ctrl frames can carry an rx_info field.
         // Throw when trying to access this data with any other frame type.
-        static_assert(CanCarryRxInfo<Header>(), "frame does not carry wlan_rx_info_t");
+        static_assert(CanCarryRxInfo<Header>(), "only MAC frame can carry rx_info");
 
         ZX_DEBUG_ASSERT(has_rx_info());
         if (IsTaken()) { return nullptr; }
@@ -92,12 +129,47 @@ template <typename Header, typename Body> class ImmutableFrame {
         return pkt_->ctrl_data<wlan_rx_info_t>();
     }
 
+    zx_status_t FillTxInfo() {
+        static_assert(CanCarryTxInfo<Header>(), "only MAC frame can carry tx_info");
+
+        wlan_tx_info_t txinfo = {
+            // Outgoing management frame
+            .tx_flags = 0x0,
+            .valid_fields = WLAN_TX_INFO_VALID_PHY | WLAN_TX_INFO_VALID_CHAN_WIDTH,
+            .phy = WLAN_PHY_OFDM,  // Always
+            .cbw = CBW20,          // Use CBW20 always
+        };
+
+        // TODO(porce): Imeplement rate selection.
+        auto fc = pkt_->field<FrameControl>(0);
+        switch (fc->subtype()) {
+        default:
+            txinfo.valid_fields |= WLAN_TX_INFO_VALID_MCS;
+            // txinfo.data_rate = 12;  // 6 Mbps, one of the basic rates.
+            txinfo.mcs = 0x3;  // TODO(NET-645): Choose an optimal MCS
+            break;
+        }
+
+        pkt_->CopyCtrlFrom(txinfo);
+        return ZX_OK;
+    }
+
     bool HasValidLen() const {
         ZX_DEBUG_ASSERT(!IsTaken());
         if (IsTaken()) { return false; }
 
-        if (pkt_->field<Header>(0) == nullptr) { return false; }
+        if (pkt_->field<Header>(data_offset_) == nullptr) { return false; }
         return pkt_->field<Body>(body_offset<Header>()) != nullptr;
+    }
+
+    // Consumes the frame and returns its body as a typed frame.
+    // By default, the current frame's Body will be the next frame's Header, and
+    // a `uint8_t[]` will be used for the next frame's body.
+    // The current frame will be considered `taken` after this call.
+    template <typename NextH = Body, typename NextB = UnknownBody>
+    Frame<NextH, NextB> NextFrame() {
+        size_t hdr_len = hdr()->len();
+        return FromOffset(hdr_len, take());
     }
 
     // Returns the Frame's underlying Packet. The Frame will no longer own the Packet and
@@ -118,6 +190,8 @@ template <typename Header, typename Body> class ImmutableFrame {
         return is_data_frame || is_mgmt_frame || is_ctrl_frame;
     }
 
+    template <typename T> static constexpr bool CanCarryTxInfo() { return CanCarryRxInfo<T>(); }
+
     // If the frame can carry wlan_rx_info_t, it might use padding. In that case, check for, and
     // account for padding when computing the body's offset.
     template <typename H>
@@ -126,46 +200,25 @@ template <typename Header, typename Body> class ImmutableFrame {
         if (has_rx_info() && rx_info()->rx_flags & WLAN_RX_INFO_FLAGS_FRAME_BODY_PADDING_4) {
             offset = align<4>(offset);
         }
-        return offset;
+        return data_offset_ + offset;
     }
 
     // If the frame cannot carry wlan_rx_info_t there won't be padding specified and the body's
     // offset can easily be computed.
     template <typename H>
     typename std::enable_if<!CanCarryRxInfo<H>(), size_t>::type body_offset() const {
-        return hdr()->len();
+        return data_offset_ + hdr()->len();
     }
 
     fbl::unique_ptr<Packet> pkt_;
-};
-
-template <typename Header, typename Body> class Frame {
-   public:
-    Frame(Header* hdr, Body* body, size_t body_len) : hdr_(hdr), body_(body), body_len_(body_len) {}
-
-    Header* hdr() { return hdr_; }
-    Body* body() { return body_; }
-    size_t body_len() const { return body_len_; }
-    void set_body_len(size_t body_len) { body_len_ = body_len; }
-
-   private:
-    Header* hdr_;
-    Body* body_;
-    size_t body_len_;
+    size_t data_offset_ = 0;
 };
 
 // Frame which contains a known header but unknown payload.
-template <typename Header> using BaseFrame = Frame<Header, NilHeader>;
-template <typename Header> using ImmutableBaseFrame = ImmutableFrame<Header, NilHeader>;
-
+using EthFrame = Frame<EthernetII>;
 template <typename T> using MgmtFrame = Frame<MgmtFrameHeader, T>;
-template <typename T> using ImmutableMgmtFrame = ImmutableFrame<MgmtFrameHeader, T>;
-
 template <typename T> using CtrlFrame = Frame<T, NilHeader>;
-template <typename T> using ImmutableCtrlFrame = ImmutableFrame<T, NilHeader>;
-
 template <typename T> using DataFrame = Frame<DataFrameHeader, T>;
-template <typename T> using ImmutableDataFrame = ImmutableFrame<DataFrameHeader, T>;
 
 // TODO(hahnr): This isn't a great location for these definitions.
 using aid_t = size_t;
@@ -174,8 +227,8 @@ static constexpr aid_t kMaxBssClients = 2008;
 static constexpr aid_t kUnknownAid = kMaxBssClients + 1;
 
 template <typename Body>
-MgmtFrame<Body> BuildMgmtFrame(fbl::unique_ptr<Packet>* packet, size_t body_payload_len = 0,
-                               bool has_ht_ctrl = false);
+zx_status_t BuildMgmtFrame(MgmtFrame<Body>* frame, size_t body_payload_len = 0,
+                           bool has_ht_ctrl = false);
 
 zx_status_t FillTxInfo(fbl::unique_ptr<Packet>* packet, const MgmtFrameHeader& hdr);
 

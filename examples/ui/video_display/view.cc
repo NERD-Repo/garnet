@@ -122,7 +122,8 @@ zx_status_t View::IncomingBufferFilled(const camera_vb_frame_notify_t& frame) {
 
 // This is a stand-in for some actual gralloc type service which would allocate
 // the right type of memory for the application and return it as a vmo.
-zx_status_t Gralloc(uint64_t buffer_size, uint32_t num_buffers, zx::vmo* buffer_vmo) {
+zx_status_t Gralloc(uint64_t buffer_size, uint32_t num_buffers,
+                    zx::vmo* buffer_vmo) {
   // In the future, some special alignment might happen here, or special
   // memory allocated...
   return zx::vmo::create(num_buffers * buffer_size, 0, buffer_vmo);
@@ -131,7 +132,8 @@ zx_status_t Gralloc(uint64_t buffer_size, uint32_t num_buffers, zx::vmo* buffer_
 // This function is a stand-in for the fact that our formats are not
 // standardized accross the platform.  This is an issue, we are tracking
 // it as (MTWN-98).
-fuchsia::images::PixelFormat ConvertFormat(camera_pixel_format_t driver_format) {
+fuchsia::images::PixelFormat ConvertFormat(
+    camera_pixel_format_t driver_format) {
   switch (driver_format) {
     case RGB32:
       return fuchsia::images::PixelFormat::BGRA_8;
@@ -143,8 +145,7 @@ fuchsia::images::PixelFormat ConvertFormat(camera_pixel_format_t driver_format) 
   return fuchsia::images::PixelFormat::BGRA_8;
 }
 
-zx_status_t View::FindOrCreateBuffer(uint32_t frame_size,
-                                     uint64_t vmo_offset,
+zx_status_t View::FindOrCreateBuffer(uint32_t frame_size, uint64_t vmo_offset,
                                      FencedBuffer** buffer,
                                      const camera_video_format_t& format) {
   if (buffer != nullptr) {
@@ -206,14 +207,14 @@ zx_status_t View::FindOrCreateBuffer(uint32_t frame_size,
   return ZX_OK;
 }
 
-View::View(component::ApplicationContext* application_context,
-           views_v1::ViewManagerPtr view_manager,
-           fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
+View::View(async::Loop* loop, fuchsia::sys::StartupContext* startup_context,
+           ::fuchsia::ui::views_v1::ViewManagerPtr view_manager,
+           fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+               view_owner_request,
            bool use_fake_camera)
-    : BaseView(std::move(view_manager),
-               std::move(view_owner_request),
+    : BaseView(std::move(view_manager), std::move(view_owner_request),
                "Video Display Example"),
-      loop_(fsl::MessageLoop::GetCurrent()),
+      loop_(loop),
       node_(session()) {
   FXL_VLOG(4) << "Creating View";
   // Create an ImagePipe and pass one end to the Session:
@@ -248,14 +249,14 @@ View::View(component::ApplicationContext* application_context,
   if (open_status != ZX_OK) {
     FXL_LOG(ERROR) << "Failed to open the camera. Quitting!";
     // TODO(garratt): This does not actually quit.
-    loop_->QuitNow();
+    loop_->Quit();
     return;
   }
   zx_status_t status = video_source_->GetSupportedFormats(
-      fbl::BindMember(this, &View::OnGetFormats));
+      fit::bind_member(this, &View::OnGetFormats));
   if (status != ZX_OK) {
     FXL_LOG(ERROR) << "Failed to get Supported Formats. Quitting!";
-    loop_->QuitNow();
+    loop_->Quit();
     return;
   }
 }
@@ -280,7 +281,7 @@ zx_status_t View::OnGetFormats(
               << format_.stride << " bbp: " << format_.bits_per_pixel
               << " format: " << format_.pixel_format;
   return video_source_->SetFormat(format_,
-                                  fbl::BindMember(this, &View::OnSetFormat));
+                                  fit::bind_member(this, &View::OnSetFormat));
 }
 
 zx_status_t View::OnSetFormat(uint64_t max_frame_size) {
@@ -296,8 +297,8 @@ zx_status_t View::OnSetFormat(uint64_t max_frame_size) {
   max_frame_size_ = max_frame_size;
   zx_status_t status = Gralloc(max_frame_size, kNumberOfBuffers, &vmo_);
   if (status != ZX_OK) {
-      FXL_LOG(ERROR) << "Failed to allocate memory for video stream!";
-      return status;
+    FXL_LOG(ERROR) << "Failed to allocate memory for video stream!";
+    return status;
   }
 
   // Tell the driver about the memory:
@@ -306,12 +307,13 @@ zx_status_t View::OnSetFormat(uint64_t max_frame_size) {
     return status;
   }
   return video_source_->Start(
-      fbl::BindMember(this, &View::IncomingBufferFilled));
+      fit::bind_member(this, &View::IncomingBufferFilled));
 }
 
 View::~View() = default;
 
-void View::OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) {
+void View::OnSceneInvalidated(
+    fuchsia::images::PresentationInfo presentation_info) {
   if (!has_logical_size()) {
     return;
   }

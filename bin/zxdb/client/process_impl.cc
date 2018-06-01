@@ -21,7 +21,7 @@ ProcessImpl::ProcessImpl(TargetImpl* target,
       target_(target),
       koid_(koid),
       name_(name),
-      symbols_(target->session()),
+      symbols_(this, target->symbols()),
       weak_factory_(this) {}
 
 ProcessImpl::~ProcessImpl() {
@@ -51,7 +51,7 @@ const std::string& ProcessImpl::GetName() const {
   return name_;
 }
 
-Symbols* ProcessImpl::GetSymbols() {
+ProcessSymbols* ProcessImpl::GetSymbols() {
   return &symbols_;
 }
 
@@ -198,6 +198,21 @@ void ProcessImpl::UpdateThreads(
       OnThreadExiting(record);
     }
   }
+}
+
+void ProcessImpl::DidLoadModuleSymbols(LoadedModuleSymbols* module) {
+  for (auto& observer : observers())
+    observer.DidLoadModuleSymbols(this, module);
+}
+
+void ProcessImpl::WillUnloadModuleSymbols(LoadedModuleSymbols* module) {
+  for (auto& observer : observers())
+    observer.WillUnloadModuleSymbols(this, module);
+}
+
+void ProcessImpl::OnSymbolLoadFailure(const Err& err) {
+  for (auto& observer : observers())
+    observer.OnSymbolLoadFailure(this, err);
 }
 
 }  // namespace zxdb

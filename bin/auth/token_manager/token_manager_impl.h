@@ -11,7 +11,7 @@
 
 #include "garnet/bin/auth/cache/token_cache.h"
 #include "garnet/bin/auth/store/auth_db.h"
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding_set.h"
 #include "lib/fidl/cpp/interface_request.h"
 #include "lib/fidl/cpp/string.h"
@@ -27,7 +27,7 @@ constexpr int kMaxCacheSize = 10;
 
 class TokenManagerImpl : public TokenManager {
  public:
-  TokenManagerImpl(component::ApplicationContext* context,
+  TokenManagerImpl(fuchsia::sys::StartupContext* context,
                    std::unique_ptr<store::AuthDb> auth_db,
                    fidl::VectorPtr<AuthProviderConfig> auth_provider_configs,
                    fidl::InterfaceHandle<auth::AuthenticationContextProvider>
@@ -60,7 +60,7 @@ class TokenManagerImpl : public TokenManager {
 
   auth::AuthenticationContextProviderPtr auth_context_provider_;
 
-  std::map<AuthProviderType, component::ApplicationControllerPtr>
+  std::map<AuthProviderType, fuchsia::sys::ComponentControllerPtr>
       auth_provider_controllers_;
 
   std::map<AuthProviderType, auth::AuthProviderPtr> auth_providers_;

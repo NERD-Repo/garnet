@@ -9,7 +9,7 @@
 #include <lib/zx/process.h>
 #include <zircon/processargs.h>
 
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/svc/cpp/services.h"
 
 namespace echo2 {
@@ -17,16 +17,16 @@ namespace echo2 {
 class EchoClientApp {
  public:
   EchoClientApp()
-      : context_(component::ApplicationContext::CreateFromStartupInfo()) {}
+      : context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()) {}
 
   echo2::EchoPtr& echo() { return echo_; }
 
   void Start(std::string server_url) {
-    component::LaunchInfo launch_info;
+    fuchsia::sys::LaunchInfo launch_info;
     launch_info.url = server_url;
     launch_info.directory_request = echo_provider_.NewRequest();
-    context_->launcher()->CreateApplication(std::move(launch_info),
-                                            controller_.NewRequest());
+    context_->launcher()->CreateComponent(std::move(launch_info),
+                                          controller_.NewRequest());
 
     echo_provider_.ConnectToService(echo_.NewRequest().TakeChannel(),
                                     Echo::Name_);
@@ -36,9 +36,9 @@ class EchoClientApp {
   EchoClientApp(const EchoClientApp&) = delete;
   EchoClientApp& operator=(const EchoClientApp&) = delete;
 
-  std::unique_ptr<component::ApplicationContext> context_;
-  component::Services echo_provider_;
-  component::ApplicationControllerPtr controller_;
+  std::unique_ptr<fuchsia::sys::StartupContext> context_;
+  fuchsia::sys::Services echo_provider_;
+  fuchsia::sys::ComponentControllerPtr controller_;
   echo2::EchoPtr echo_;
 };
 

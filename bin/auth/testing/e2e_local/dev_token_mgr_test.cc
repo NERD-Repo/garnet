@@ -8,18 +8,18 @@
 #include <string>
 
 #include <auth/cpp/fidl.h>
+#include <lib/async-loop/cpp/loop.h>
 
 #include "garnet/bin/auth/store/auth_db.h"
 #include "garnet/bin/auth/store/auth_db_file_impl.h"
 #include "garnet/bin/auth/token_manager/token_manager_factory_impl.h"
 #include "garnet/bin/auth/token_manager/token_manager_impl.h"
 #include "gtest/gtest.h"
-#include "lib/app/cpp/application_context.h"
 #include "lib/app/cpp/connect.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/callback/capture.h"
 #include "lib/fidl/cpp/binding.h"
 #include "lib/fidl/cpp/synchronous_interface_ptr.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/log_settings_command_line.h"
 #include "lib/fxl/logging.h"
@@ -49,8 +49,7 @@ class DevTokenManagerAppTest : public gtest::TestWithMessageLoop,
                                auth::AuthenticationContextProvider {
  public:
   DevTokenManagerAppTest()
-      : application_context_(
-            component::ApplicationContext::CreateFromStartupInfo()),
+      : startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
         auth_context_provider_binding_(this) {}
 
   ~DevTokenManagerAppTest() {}
@@ -58,8 +57,8 @@ class DevTokenManagerAppTest : public gtest::TestWithMessageLoop,
  protected:
   // ::testing::Test:
   void SetUp() override {
-    component::Services services;
-    component::LaunchInfo launch_info;
+    fuchsia::sys::Services services;
+    fuchsia::sys::LaunchInfo launch_info;
     launch_info.url = "token_manager";
     launch_info.directory_request = services.NewRequest();
     {
@@ -67,9 +66,9 @@ class DevTokenManagerAppTest : public gtest::TestWithMessageLoop,
       stream << "--verbose=" << fxl::GetVlogVerbosity();
       launch_info.arguments.push_back(stream.str());
     }
-    application_context_->launcher()->CreateApplication(
-        std::move(launch_info), app_controller_.NewRequest());
-    app_controller_.set_error_handler([] {
+    startup_context_->launcher()->CreateComponent(std::move(launch_info),
+                                                  controller_.NewRequest());
+    controller_.set_error_handler([] {
       FXL_LOG(ERROR) << "Error in connecting to TokenManagerFactory service.";
     });
 
@@ -102,8 +101,8 @@ class DevTokenManagerAppTest : public gtest::TestWithMessageLoop,
   }
 
  private:
-  std::unique_ptr<component::ApplicationContext> application_context_;
-  component::ApplicationControllerPtr app_controller_;
+  std::unique_ptr<fuchsia::sys::StartupContext> startup_context_;
+  fuchsia::sys::ComponentControllerPtr controller_;
 
  protected:
   fidl::Binding<auth::AuthenticationContextProvider>
@@ -357,9 +356,9 @@ int main(int argc, char** argv) {
   testing::UnitTest::GetInstance()->listeners().Release(&listener);
 
   {
-    fsl::MessageLoop message_loop;
+    async::Loop loop(&kAsyncLoopConfigMakeDefault);
     auto context =
-        component::ApplicationContext::CreateFromStartupInfoNotChecked();
+        fuchsia::sys::StartupContext::CreateFromStartupInfoNotChecked();
     test_runner::ReportResult(argv[0], context.get(), listener.GetResults());
   }
 

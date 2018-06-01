@@ -12,8 +12,8 @@
 #include "garnet/bin/ui/view_manager/internal/input_owner.h"
 #include "garnet/bin/ui/view_manager/internal/view_inspector.h"
 #include "lib/escher/util/type_utils.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/functional/make_copyable.h"
+#include "lib/fxl/time/time_point.h"
 #include "lib/ui/geometry/cpp/geometry_util.h"
 #include "lib/ui/input/cpp/formatting.h"
 #include "lib/ui/views/cpp/formatting.h"
@@ -89,7 +89,7 @@ int64_t InputEventTimestampNow() {
 
 InputDispatcherImpl::InputDispatcherImpl(
     ViewInspector* inspector, InputOwner* owner,
-    views_v1::ViewTreeToken view_tree_token,
+    ::fuchsia::ui::views_v1::ViewTreeToken view_tree_token,
     fidl::InterfaceRequest<fuchsia::ui::input::InputDispatcher> request)
     : inspector_(inspector),
       owner_(owner),
@@ -185,7 +185,8 @@ void InputDispatcherImpl::ProcessNextEvent() {
 }
 
 void InputDispatcherImpl::DeliverEvent(uint64_t event_path_propagation_id,
-                                       size_t index, fuchsia::ui::input::InputEvent event) {
+                                       size_t index,
+                                       fuchsia::ui::input::InputEvent event) {
   // TODO(MZ-164) when the chain is changed, we might need to cancel events
   // that have not progagated fully through the chain.
   if (index >= event_path_.size() ||
@@ -317,8 +318,10 @@ void InputDispatcherImpl::OnHitTestResult(const fuchsia::math::PointF& point,
 
           if (new_chain) {
             FXL_VLOG(1) << "Input focus gained by " << new_chain->chain.front();
-            fuchsia::ui::input::InputEvent event = fuchsia::ui::input::InputEvent();
-            fuchsia::ui::input::FocusEvent focus = fuchsia::ui::input::FocusEvent();
+            fuchsia::ui::input::InputEvent event =
+                fuchsia::ui::input::InputEvent();
+            fuchsia::ui::input::FocusEvent focus =
+                fuchsia::ui::input::FocusEvent();
             focus.event_time = InputEventTimestampNow();
             focus.focused = true;
             event.set_focus(std::move(focus));

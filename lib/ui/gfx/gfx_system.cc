@@ -10,7 +10,7 @@
 #include "garnet/lib/ui/gfx/util/vulkan_utils.h"
 #include "garnet/lib/ui/scenic/scenic.h"
 #include "garnet/public/lib/escher/util/check_vulkan_support.h"
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/escher/escher_process_init.h"
 #include "lib/fxl/functional/make_copyable.h"
 #include "public/lib/syslog/cpp/logger.h"
@@ -56,25 +56,36 @@ std::unique_ptr<escher::Escher> GfxSystem::InitializeEscher() {
   // Initialize Vulkan.
   escher::VulkanInstance::Params instance_params(
       {{},
-       {VK_EXT_DEBUG_REPORT_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_KHR_MAGMA_SURFACE_EXTENSION_NAME,
-        VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
-        VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME},
+       {
+           VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+           VK_KHR_SURFACE_EXTENSION_NAME,
+           VK_KHR_MAGMA_SURFACE_EXTENSION_NAME,
+           VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME,
+           VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME,
+       },
        true});
 
-  instance_params.extension_names.insert("VK_EXT_debug_report");
   // Only enable Vulkan validation layers when in debug mode.
 #if !defined(NDEBUG)
   instance_params.layer_names.insert("VK_LAYER_LUNARG_standard_validation");
 #endif
   vulkan_instance_ = escher::VulkanInstance::New(std::move(instance_params));
   surface_ = CreateVulkanMagmaSurface(vulkan_instance_->vk_instance());
-  vulkan_device_queues_ = escher::VulkanDeviceQueues::New(
-      vulkan_instance_, {{VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
-                          VK_KHR_EXTERNAL_MEMORY_FUCHSIA_EXTENSION_NAME,
-                          VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
-                          VK_KHR_EXTERNAL_SEMAPHORE_FUCHSIA_EXTENSION_NAME},
-                         surface_});
+
+  // Tell Escher not to filter out queues that don't support presentation.
+  // The display manager only supports a single connection, so none of the
+  // available queues will support presentation.  This is OK, because we use
+  // the display manager API to present frames directly, instead of using
+  // Vulkan swapchains.
+  escher::VulkanDeviceQueues::Params device_queues_params(
+      {{VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_MEMORY_FUCHSIA_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME,
+        VK_KHR_EXTERNAL_SEMAPHORE_FUCHSIA_EXTENSION_NAME},
+       surface_,
+       escher::VulkanDeviceQueues::Params::kDisableQueueFilteringForPresent});
+  vulkan_device_queues_ =
+      escher::VulkanDeviceQueues::New(vulkan_instance_, device_queues_params);
 
   {
     VkDebugReportCallbackCreateInfoEXT dbgCreateInfo;
@@ -103,13 +114,13 @@ void GfxSystem::Initialize() {
   Display* display = display_manager_.default_display();
   if (!display) {
     FXL_LOG(ERROR) << "No default display, Graphics system exiting";
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    context()->Quit();
     return;
   }
 
   if (!escher::VulkanIsSupported()) {
     FXL_LOG(ERROR) << "No Vulkan on device, Graphics system exiting.";
-    fsl::MessageLoop::GetCurrent()->PostQuitTask();
+    context()->Quit();
     return;
   }
 
@@ -153,11 +164,10 @@ void GfxSystem::GetDisplayInfo(
 };
 
 void GfxSystem::TakeScreenshot(
-    fidl::StringPtr filename,
     fuchsia::ui::scenic::Scenic::TakeScreenshotCallback callback) {
   FXL_CHECK(initialized_);
   Screenshotter screenshotter(engine_.get());
-  screenshotter.TakeScreenshot(filename.get(), callback);
+  screenshotter.TakeScreenshot(callback);
 }
 
 void GfxSystem::GetOwnershipEventImmediately(

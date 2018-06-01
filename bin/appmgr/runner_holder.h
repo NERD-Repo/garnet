@@ -7,7 +7,7 @@
 
 #include <lib/zx/vmo.h>
 
-#include <component/cpp/fidl.h>
+#include <fuchsia/sys/cpp/fidl.h>
 #include "garnet/bin/appmgr/namespace.h"
 #include "garnet/lib/farfs/file_system.h"
 #include "lib/fxl/files/unique_fd.h"
@@ -15,21 +15,22 @@
 #include "lib/fxl/memory/ref_ptr.h"
 #include "lib/svc/cpp/services.h"
 
-namespace component {
+namespace fuchsia {
+namespace sys {
 
 class RunnerHolder {
  public:
-  RunnerHolder(Services services, ApplicationControllerPtr controller);
+  RunnerHolder(Services services, ComponentControllerPtr controller);
   ~RunnerHolder();
 
   void StartComponent(Package package, StartupInfo startup_info,
                       std::unique_ptr<archive::FileSystem> file_system,
                       fxl::RefPtr<Namespace> ns,
-                      fidl::InterfaceRequest<ApplicationController> controller);
+                      fidl::InterfaceRequest<ComponentController> controller);
 
  private:
   Services services_;
-  ApplicationControllerPtr controller_;
+  ComponentControllerPtr controller_;
   RunnerPtr runner_;
 
   // TODO(abarth): We hold these objects for the lifetime of the runner, but we
@@ -40,6 +41,7 @@ class RunnerHolder {
   FXL_DISALLOW_COPY_AND_ASSIGN(RunnerHolder);
 };
 
-}  // namespace component
+}  // namespace sys
+}  // namespace fuchsia
 
 #endif  // GARNET_BIN_APPMGR_RUNNER_HOLDER_H_

@@ -10,13 +10,14 @@
 #include <memory>
 #include <thread>
 
+#include <cobalt/cpp/fidl.h>
+#include <lib/async-loop/cpp/loop.h>
+#include <lib/zx/resource.h>
 #include <zircon/device/device.h>
 #include <zircon/device/sysinfo.h>
 
-#include <cobalt/cpp/fidl.h>
-#include <lib/zx/resource.h>
-#include "lib/app/cpp/application_context.h"
-#include "lib/fsl/tasks/message_loop.h"
+#include "lib/app/cpp/startup_context.h"
+#include "lib/fxl/logging.h"
 
 const uint32_t kSystemMetricsProjectId = 102;
 const uint32_t kUptimeMetricId = 1;
@@ -70,7 +71,7 @@ class SystemMetricsApp {
   // tick_interval_minutes is the number of minutes to sleep in between calls to
   // the GatherMetrics method.
   SystemMetricsApp(unsigned int tick_interval_minutes)
-      : context_(component::ApplicationContext::CreateFromStartupInfo()),
+      : context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
         start_time_(std::chrono::steady_clock::now()),
         tick_interval_(tick_interval_minutes) {}
 
@@ -92,7 +93,7 @@ class SystemMetricsApp {
   cobalt::Status LogMemoryUsage(std::chrono::minutes uptime_minutes);
 
  private:
-  std::unique_ptr<component::ApplicationContext> context_;
+  std::unique_ptr<fuchsia::sys::StartupContext> context_;
   cobalt::CobaltEncoderSyncPtr encoder_;
   std::chrono::steady_clock::time_point start_time_;
   std::chrono::minutes tick_interval_;
@@ -206,7 +207,7 @@ void SystemMetricsApp::ConnectToEnvironmentService() {
 }
 
 int main(int argc, const char** argv) {
-  fsl::MessageLoop loop;
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
   SystemMetricsApp app(kIntervalMinutes);
   app.Main();
   return 0;

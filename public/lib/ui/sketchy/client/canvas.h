@@ -5,28 +5,30 @@
 #ifndef LIB_UI_SKETCHY_CLIENT_CANVAS_H_
 #define LIB_UI_SKETCHY_CLIENT_CANVAS_H_
 
-#include <sketchy/cpp/fidl.h>
+#include <fuchsia/ui/sketchy/cpp/fidl.h>
+#include <lib/async-loop/cpp/loop.h>
 
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/ui/scenic/client/resources.h"
 #include "lib/ui/scenic/client/session.h"
 #include "lib/ui/sketchy/client/resources.h"
 
 namespace sketchy_lib {
 
-// Convenient C++ wrapper for sketchy::Canvas service.
+// Convenient C++ wrapper for ::fuchsia::ui::sketchy::Canvas service.
 class Canvas final {
  public:
-  Canvas(component::ApplicationContext* context);
-  Canvas(sketchy::CanvasPtr canvas);
+  Canvas(fuchsia::sys::StartupContext* context, async::Loop* loop);
+  Canvas(::fuchsia::ui::sketchy::CanvasPtr canvas, async::Loop* loop);
   void Present(uint64_t time, scenic_lib::Session::PresentCallback callback);
 
  private:
   friend class Resource;
   ResourceId AllocateResourceId();
 
-  sketchy::CanvasPtr canvas_;
-  fidl::VectorPtr<sketchy::Command> commands_;
+  ::fuchsia::ui::sketchy::CanvasPtr canvas_;
+  async::Loop* const loop_;
+  fidl::VectorPtr<::fuchsia::ui::sketchy::Command> commands_;
   ResourceId next_resource_id_;
 };
 

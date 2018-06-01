@@ -12,9 +12,9 @@
 namespace view_manager {
 
 ViewState::ViewState(ViewRegistry* registry,
-                     views_v1_token::ViewToken view_token,
-                     fidl::InterfaceRequest<views_v1::View> view_request,
-                     views_v1::ViewListenerPtr view_listener,
+                     ::fuchsia::ui::views_v1_token::ViewToken view_token,
+                     fidl::InterfaceRequest<::fuchsia::ui::views_v1::View> view_request,
+                     ::fuchsia::ui::views_v1::ViewListenerPtr view_listener,
                      scenic_lib::Session* session, const std::string& label)
     : view_token_(std::move(view_token)),
       view_listener_(std::move(view_listener)),
@@ -39,12 +39,12 @@ ViewState::ViewState(ViewRegistry* registry,
 
 ViewState::~ViewState() {}
 
-void ViewState::IssueProperties(views_v1::ViewPropertiesPtr properties) {
+void ViewState::IssueProperties(::fuchsia::ui::views_v1::ViewPropertiesPtr properties) {
   issued_properties_ = std::move(properties);
 }
 
 void ViewState::BindOwner(
-    fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request) {
+    fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner> view_owner_request) {
   FXL_DCHECK(!owner_binding_.is_bound());
   owner_binding_.Bind(std::move(view_owner_request));
 }
@@ -65,7 +65,7 @@ const std::string& ViewState::FormattedLabel() const {
   }
   return formatted_label_cache_;
 }
-component::ServiceProvider* ViewState::GetServiceProviderIfSupports(
+fuchsia::sys::ServiceProvider* ViewState::GetServiceProviderIfSupports(
     std::string service_name) {
   if (service_names_) {
     auto& v = *service_names_;
@@ -77,7 +77,7 @@ component::ServiceProvider* ViewState::GetServiceProviderIfSupports(
 }
 
 void ViewState::SetServiceProvider(
-    fidl::InterfaceHandle<component::ServiceProvider> service_provider,
+    fidl::InterfaceHandle<fuchsia::sys::ServiceProvider> service_provider,
     fidl::VectorPtr<fidl::StringPtr> service_names) {
   if (service_provider) {
     service_provider_ = service_provider.Bind();

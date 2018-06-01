@@ -7,13 +7,14 @@
 
 #include <unordered_map>
 
+#include <lib/async/default.h>
 #include <media/cpp/fidl.h>
 
 #include "garnet/bin/media/media_player/demux/reader.h"
 #include "garnet/bin/media/media_player/player/player.h"
 #include "garnet/bin/media/media_player/render/fidl_audio_renderer.h"
 #include "garnet/bin/media/media_player/render/fidl_video_renderer.h"
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/functional/closure.h"
 #include "lib/media/timeline/timeline.h"
@@ -26,11 +27,10 @@ class MediaPlayerImpl : public MediaPlayer {
  public:
   static std::unique_ptr<MediaPlayerImpl> Create(
       fidl::InterfaceRequest<MediaPlayer> request,
-      component::ApplicationContext* application_context,
-      fxl::Closure quit_callback);
+      fuchsia::sys::StartupContext* startup_context, fxl::Closure quit_callback);
 
   MediaPlayerImpl(fidl::InterfaceRequest<MediaPlayer> request,
-                  component::ApplicationContext* application_context,
+                  fuchsia::sys::StartupContext* startup_context,
                   fxl::Closure quit_callback);
 
   ~MediaPlayerImpl() override;
@@ -51,9 +51,10 @@ class MediaPlayerImpl : public MediaPlayer {
 
   void SetGain(float gain) override;
 
-  void CreateView(fidl::InterfaceHandle<views_v1::ViewManager> view_manager,
-                  fidl::InterfaceRequest<views_v1_token::ViewOwner>
-                      view_owner_request) override;
+  void CreateView(
+      fidl::InterfaceHandle<::fuchsia::ui::views_v1::ViewManager> view_manager,
+      fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+          view_owner_request) override;
 
   void SetAudioRenderer(
       fidl::InterfaceHandle<media::AudioRenderer2> audio_renderer) override;
@@ -74,8 +75,12 @@ class MediaPlayerImpl : public MediaPlayer {
 
   static const char* ToString(State value);
 
-  // Sets the current reader.
-  void SetReader(std::shared_ptr<Reader> reader);
+  // Begins the process of setting the reader.
+  void BeginSetReader(std::shared_ptr<Reader> reader);
+
+  // Finishes the process of setting the reader, assuming we're in |kIdle|
+  // state and have no source segment.
+  void FinishSetReader();
 
   // Creates the renderer for |medium| if it doesn't exist already.
   void MaybeCreateRenderer(StreamType::Medium medium);
@@ -90,6 +95,17 @@ class MediaPlayerImpl : public MediaPlayer {
   // Takes action based on current state.
   void Update();
 
+  // Determines whether we need to flush.
+  bool NeedToFlush() const {
+    return setting_reader_ || target_position_ != media::kUnspecifiedTime ||
+           target_state_ == State::kFlushed;
+  }
+
+  // Determines whether we should hold a frame when flushing.
+  bool ShouldHoldFrame() const {
+    return !setting_reader_ && target_state_ != State::kFlushed;
+  }
+
   // Sets the timeline function.
   void SetTimelineFunction(float rate, int64_t reference_time,
                            fxl::Closure callback);
@@ -100,7 +116,8 @@ class MediaPlayerImpl : public MediaPlayer {
   // Updates |status_|.
   void UpdateStatus();
 
-  component::ApplicationContext* application_context_;
+  async_t* async_;
+  fuchsia::sys::StartupContext* startup_context_;
   fxl::Closure quit_callback_;
   fidl::BindingSet<MediaPlayer> bindings_;
   Player player_;
@@ -128,6 +145,17 @@ class MediaPlayerImpl : public MediaPlayer {
 
   // The minimum program range PTS to be used for SetProgramRange.
   int64_t program_range_min_pts_ = media::kMinTime;
+
+  // Whether we need to set the reader, possibly with nothing. When this is
+  // true, the state machine will transition to |kIdle|, removing an existing
+  // reader if there is one, then call |FinishSetReader| to set up the new
+  // reader |new_reader_|.
+  bool setting_reader_ = false;
+
+  // Reader that needs to be used once we're ready to use it. If this field is
+  // null when |setting_reader_| is true, we're waiting to remove the existing
+  // reader and transition to kInactive.
+  std::shared_ptr<Reader> new_reader_;
 
   MediaPlayerStatus status_;
 };

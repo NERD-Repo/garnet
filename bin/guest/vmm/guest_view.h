@@ -8,11 +8,11 @@
 #include <lib/async/dispatcher.h>
 #include <zircon/types.h>
 
-#include <views_v1/cpp/fidl.h>
+#include <fuchsia/ui/views_v1/cpp/fidl.h>
 #include "garnet/lib/machina/gpu_scanout.h"
 #include "garnet/lib/machina/input_dispatcher.h"
 #include "garnet/lib/machina/virtio_gpu.h"
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding_set.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/tasks/task_runner.h"
@@ -30,13 +30,13 @@ static constexpr uint32_t kGuestViewDisplayHeight = 768;
 class GuestView;
 
 class ScenicScanout : public machina::GpuScanout,
-                      public views_v1::ViewProvider {
+                      public ::fuchsia::ui::views_v1::ViewProvider {
  public:
-  static zx_status_t Create(component::ApplicationContext* application_context,
+  static zx_status_t Create(fuchsia::sys::StartupContext* startup_context,
                             machina::InputDispatcher* input_dispatcher,
                             fbl::unique_ptr<ScenicScanout>* out);
 
-  ScenicScanout(component::ApplicationContext* application_context,
+  ScenicScanout(fuchsia::sys::StartupContext* startup_context,
                 machina::InputDispatcher* input_dispatcher);
 
   // |GpuScanout|
@@ -44,29 +44,32 @@ class ScenicScanout : public machina::GpuScanout,
 
   // |ViewProvider|
   void CreateView(
-      fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request,
-      fidl::InterfaceRequest<component::ServiceProvider> view_services)
+      fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+          view_owner_request,
+      fidl::InterfaceRequest<fuchsia::sys::ServiceProvider> view_services)
       override;
 
  private:
   machina::InputDispatcher* input_dispatcher_;
-  component::ApplicationContext* application_context_;
+  fuchsia::sys::StartupContext* startup_context_;
   fidl::BindingSet<ViewProvider> bindings_;
   fbl::unique_ptr<GuestView> view_;
 };
 
 class GuestView : public mozart::BaseView {
  public:
-  GuestView(
-      machina::GpuScanout* scanout, machina::InputDispatcher* input_dispatcher,
-      views_v1::ViewManagerPtr view_manager,
-      fidl::InterfaceRequest<views_v1_token::ViewOwner> view_owner_request);
+  GuestView(machina::GpuScanout* scanout,
+            machina::InputDispatcher* input_dispatcher,
+            ::fuchsia::ui::views_v1::ViewManagerPtr view_manager,
+            fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
+                view_owner_request);
 
   ~GuestView() override;
 
  private:
   // |BaseView|:
-  void OnSceneInvalidated(fuchsia::images::PresentationInfo presentation_info) override;
+  void OnSceneInvalidated(
+      fuchsia::images::PresentationInfo presentation_info) override;
   bool OnInputEvent(fuchsia::ui::input::InputEvent event) override;
 
   scenic_lib::ShapeNode background_node_;

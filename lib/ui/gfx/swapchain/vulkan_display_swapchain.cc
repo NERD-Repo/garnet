@@ -14,7 +14,6 @@
 #include "lib/escher/escher.h"
 #include "lib/escher/util/fuchsia_utils.h"
 #include "lib/escher/vk/gpu_mem.h"
-#include "lib/fsl/tasks/message_loop.h"
 
 namespace scenic {
 namespace gfx {
@@ -74,6 +73,13 @@ void VulkanDisplaySwapchain::InitializeVulkanSwapchain(
   FXL_CHECK(!swapchain_.swapchain);
   FXL_CHECK(swapchain_.images.empty());
   FXL_CHECK(recycler);
+
+  {
+    auto result = physical_device.getSurfaceSupportKHR(
+        device_queues->vk_main_queue_family(), surface);
+    VK_CHECK_RESULT(result);
+    FXL_CHECK(result.value);
+  }
 
   vk::SurfaceCapabilitiesKHR surface_caps;
   {

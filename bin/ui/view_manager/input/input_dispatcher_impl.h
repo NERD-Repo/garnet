@@ -11,7 +11,7 @@
 
 #include <fuchsia/math/cpp/fidl.h>
 #include <fuchsia/ui/input/cpp/fidl.h>
-#include <views_v1/cpp/fidl.h>
+#include <fuchsia/ui/views_v1/cpp/fidl.h>
 #include "garnet/bin/ui/view_manager/internal/view_inspector.h"
 #include "lib/fidl/cpp/binding.h"
 #include "lib/fidl/cpp/interface_request.h"
@@ -27,12 +27,15 @@ class InputOwner;
 // Binds incoming requests to the relevant view token.
 class InputDispatcherImpl : public fuchsia::ui::input::InputDispatcher {
  public:
-  InputDispatcherImpl(ViewInspector* inspector, InputOwner* owner,
-                      views_v1::ViewTreeToken view_tree_token,
-                      fidl::InterfaceRequest<fuchsia::ui::input::InputDispatcher> request);
+  InputDispatcherImpl(
+      ViewInspector* inspector, InputOwner* owner,
+      ::fuchsia::ui::views_v1::ViewTreeToken view_tree_token,
+      fidl::InterfaceRequest<fuchsia::ui::input::InputDispatcher> request);
   ~InputDispatcherImpl() override;
 
-  views_v1::ViewTreeToken view_tree_token() const { return view_tree_token_; }
+  ::fuchsia::ui::views_v1::ViewTreeToken view_tree_token() const {
+    return view_tree_token_;
+  }
 
   // |fuchsia::ui::input::InputDispatcher|
   void DispatchEvent(fuchsia::ui::input::InputEvent event) override;
@@ -46,7 +49,8 @@ class InputDispatcherImpl : public fuchsia::ui::input::InputDispatcher {
   // Used for key events (keyboard)
   // |propagation_index| is the current index in the |focus_chain|
   void DeliverKeyEvent(std::unique_ptr<FocusChain> focus_chain,
-                       uint64_t propagation_index, fuchsia::ui::input::InputEvent event);
+                       uint64_t propagation_index,
+                       fuchsia::ui::input::InputEvent event);
   // Used to post as task and schedule the next call to |DispatchEvent|
   void PopAndScheduleNextEvent();
 
@@ -56,7 +60,7 @@ class InputDispatcherImpl : public fuchsia::ui::input::InputDispatcher {
 
   ViewInspector* const inspector_;
   InputOwner* const owner_;
-  views_v1::ViewTreeToken view_tree_token_;
+  ::fuchsia::ui::views_v1::ViewTreeToken view_tree_token_;
 
   // TODO(jeffbrown): Replace this with a proper pipeline.
   std::queue<fuchsia::ui::input::InputEvent> pending_events_;

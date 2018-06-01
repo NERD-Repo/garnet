@@ -5,10 +5,9 @@
 #ifndef GARNET_EXAMPLES_UI_HELLO_SCENIC_APP_H_
 #define GARNET_EXAMPLES_UI_HELLO_SCENIC_APP_H_
 
-#include "lib/app/cpp/application_context.h"
+#include <lib/async-loop/cpp/loop.h>
 
-#include "lib/fsl/tasks/message_loop.h"
-
+#include "lib/app/cpp/startup_context.h"
 #include "lib/ui/scenic/client/resources.h"
 #include "lib/ui/scenic/client/session.h"
 
@@ -16,7 +15,7 @@ namespace hello_scenic {
 
 class App {
  public:
-  App();
+  App(async::Loop* loop);
 
  private:
   // Called asynchronously by constructor.
@@ -33,8 +32,8 @@ class App {
 
   void InitCheckerboardMaterial(scenic_lib::Material* uninitialized_material);
 
-  std::unique_ptr<component::ApplicationContext> application_context_;
-  fsl::MessageLoop* loop_;
+  std::unique_ptr<fuchsia::sys::StartupContext> startup_context_;
+  async::Loop* const loop_;
   fuchsia::ui::scenic::ScenicPtr scenic_;
 
   std::unique_ptr<scenic_lib::Session> session_;

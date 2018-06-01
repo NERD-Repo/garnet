@@ -4,6 +4,7 @@
 
 #include "garnet/lib/ui/gfx/displays/display_manager.h"
 
+#include <lib/async/default.h>
 #include <zircon/device/display-controller.h>
 #include <zircon/pixelformat.h>
 #include <zircon/syscalls.h>
@@ -11,8 +12,6 @@
 
 #include "garnet/lib/ui/gfx/displays/display_watcher.h"
 #include "garnet/lib/ui/gfx/resources/renderers/renderer.h"
-
-#include "lib/fsl/tasks/message_loop.h"
 
 namespace scenic {
 namespace gfx {
@@ -46,8 +45,8 @@ void DisplayManager::WaitForDefaultDisplay(fxl::Closure callback) {
 
         // TODO(FIDL-183): Resolve this hack when synchronous interfaces
         // support events.
-        auto dispatcher =
-            static_cast<display::Controller::Proxy_*>(event_dispatcher_.get());
+        auto dispatcher = static_cast<fuchsia::display::Controller::Proxy_*>(
+            event_dispatcher_.get());
         dispatcher->DisplaysChanged = [this](auto added, auto removed) {
           DisplaysChanged(std::move(added), std::move(removed));
         };
@@ -57,7 +56,7 @@ void DisplayManager::WaitForDefaultDisplay(fxl::Closure callback) {
 
         wait_.set_object(dc_channel_);
         wait_.set_trigger(ZX_CHANNEL_READABLE | ZX_CHANNEL_PEER_CLOSED);
-        wait_.Begin(fsl::MessageLoop::GetCurrent()->async());
+        wait_.Begin(async_get_default());
 #endif
       });
 }
@@ -80,16 +79,17 @@ void DisplayManager::OnAsync(async_t* async, async::WaitBase* self,
     return;
   }
   // Re-arm the wait.
-  wait_.Begin(fsl::MessageLoop::GetCurrent()->async());
+  wait_.Begin(async_get_default());
 
   // TODO(FIDL-183): Resolve this hack when synchronous interfaces
   // support events.
-  static_cast<display::Controller::Proxy_*>(event_dispatcher_.get())
+  static_cast<fuchsia::display::Controller::Proxy_*>(event_dispatcher_.get())
       ->Dispatch_(std::move(msg));
 }
 
-void DisplayManager::DisplaysChanged(::fidl::VectorPtr<display::Info> added,
-                                     ::fidl::VectorPtr<uint64_t> removed) {
+void DisplayManager::DisplaysChanged(
+    ::fidl::VectorPtr<fuchsia::display::Info> added,
+    ::fidl::VectorPtr<uint64_t> removed) {
   if (!default_display_) {
     FXL_DCHECK(added.get().size());
 
@@ -144,7 +144,7 @@ uint64_t DisplayManager::ImportEvent(const zx::event& event) {
       display_controller_->ImportEvent(std::move(dup), event_id)) {
     return event_id;
   }
-  return display::invalidId;
+  return fuchsia::display::invalidId;
 }
 
 void DisplayManager::ReleaseEvent(uint64_t id) {
@@ -160,7 +160,7 @@ uint32_t DisplayManager::FetchLinearStride(uint32_t width,
 
 uint64_t DisplayManager::ImportImage(const zx::vmo& vmo, int32_t width,
                                      int32_t height, zx_pixel_format_t format) {
-  display::ImageConfig config;
+  fuchsia::display::ImageConfig config;
   config.height = height;
   config.width = width;
   config.pixel_format = format;
@@ -181,7 +181,7 @@ uint64_t DisplayManager::ImportImage(const zx::vmo& vmo, int32_t width,
       status == ZX_OK) {
     return id;
   }
-  return display::invalidId;
+  return fuchsia::display::invalidId;
 }
 
 void DisplayManager::ReleaseImage(uint64_t id) {

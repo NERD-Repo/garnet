@@ -9,7 +9,7 @@
 #include <unordered_map>
 
 #include <fuchsia/ui/input/cpp/fidl.h>
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fxl/macros.h"
 #include "lib/ui/tests/mocks/mock_input_device.h"
 
@@ -25,9 +25,9 @@ class MockInputDeviceRegistry : public fuchsia::ui::input::InputDeviceRegistry {
   ~MockInputDeviceRegistry();
 
   // |InputDeviceRegistry|:
-  void RegisterDevice(
-      fuchsia::ui::input::DeviceDescriptor descriptor,
-      fidl::InterfaceRequest<fuchsia::ui::input::InputDevice> input_device_request) override;
+  void RegisterDevice(fuchsia::ui::input::DeviceDescriptor descriptor,
+                      fidl::InterfaceRequest<fuchsia::ui::input::InputDevice>
+                          input_device_request) override;
 
  private:
   OnDeviceCallback on_device_callback_;

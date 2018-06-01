@@ -19,13 +19,13 @@ class Screenshotter {
  public:
   explicit Screenshotter(Engine* engine) : engine_(engine) {}
 
-  void TakeScreenshot(const std::string& filename,
-                      fuchsia::ui::scenic::Scenic::TakeScreenshotCallback callback);
+  void TakeScreenshot(
+      fuchsia::ui::scenic::Scenic::TakeScreenshotCallback callback);
 
  private:
   static void OnCommandBufferDone(
-      const std::string& filename, const escher::ImagePtr& image,
-      uint32_t width, uint32_t height, vk::Device device,
+      const escher::ImagePtr& image, uint32_t width, uint32_t height,
+      vk::Device device,
       fuchsia::ui::scenic::Scenic::TakeScreenshotCallback done_callback);
 
   Engine* const engine_;  // Not owned.

@@ -6,6 +6,8 @@
 
 namespace zxdb {
 
+class Err;
+class LoadedModuleSymbols;
 class Process;
 class Thread;
 
@@ -14,6 +16,20 @@ class ProcessObserver {
   // Called immediately after creating a new thread and before destroying it.
   virtual void DidCreateThread(Process* process, Thread* thread) {}
   virtual void WillDestroyThread(Process* process, Thread* thread) {}
+
+  // Notification that a module with symbols is ready to use.
+  //
+  // Note: There is currently no notification for module loads absent symbol
+  // information. If that's necessary, this will need refactoring.
+  virtual void DidLoadModuleSymbols(Process* process,
+                                    LoadedModuleSymbols* module) {}
+
+  // Notification that the given module with symbols is about to be removed.
+  virtual void WillUnloadModuleSymbols(Process* process,
+                                       LoadedModuleSymbols* module) {}
+
+  // Called when symbols for a loaded binary could not be loaded.
+  virtual void OnSymbolLoadFailure(Process* process, const Err& err) {}
 };
 
 }  // namespace zxdb

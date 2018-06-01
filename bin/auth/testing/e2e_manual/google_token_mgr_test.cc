@@ -8,13 +8,13 @@
 #include <string>
 
 #include <auth/cpp/fidl.h>
+#include <lib/async-loop/cpp/loop.h>
 
 #include "garnet/bin/auth/store/auth_db_file_impl.h"
 #include "gtest/gtest.h"
-#include "lib/app/cpp/application_context.h"
 #include "lib/app/cpp/connect.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/files/file.h"
 #include "lib/fxl/files/path.h"
@@ -58,8 +58,7 @@ class GoogleTokenManagerApp : auth::AuthenticationContextProvider {
                         const std::string& refresh_token)
       : user_profile_id_(user_profile_id),
         refresh_token_(refresh_token),
-        application_context_(
-            component::ApplicationContext::CreateFromStartupInfo()),
+        startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
         auth_context_provider_binding_(this) {}
 
   ~GoogleTokenManagerApp() {}
@@ -82,8 +81,8 @@ class GoogleTokenManagerApp : auth::AuthenticationContextProvider {
   }
 
   void Initialize() {
-    component::Services services;
-    component::LaunchInfo launch_info;
+    fuchsia::sys::Services services;
+    fuchsia::sys::LaunchInfo launch_info;
     launch_info.url = "token_manager";
     launch_info.directory_request = services.NewRequest();
     {
@@ -91,9 +90,9 @@ class GoogleTokenManagerApp : auth::AuthenticationContextProvider {
       stream << "--verbose=" << fxl::GetVlogVerbosity();
       launch_info.arguments.push_back(stream.str());
     }
-    application_context_->launcher()->CreateApplication(
-        std::move(launch_info), app_controller_.NewRequest());
-    app_controller_.set_error_handler([] {
+    startup_context_->launcher()->CreateComponent(std::move(launch_info),
+                                                  controller_.NewRequest());
+    controller_.set_error_handler([] {
       FXL_LOG(ERROR) << "Error in connecting to TokenManagerFactory service.";
     });
 
@@ -178,8 +177,8 @@ class GoogleTokenManagerApp : auth::AuthenticationContextProvider {
 
   const std::string user_profile_id_;
   const std::string refresh_token_;
-  std::unique_ptr<component::ApplicationContext> application_context_;
-  component::ApplicationControllerPtr app_controller_;
+  std::unique_ptr<fuchsia::sys::StartupContext> startup_context_;
+  fuchsia::sys::ComponentControllerPtr controller_;
 
   fidl::Binding<auth::AuthenticationContextProvider>
       auth_context_provider_binding_;
@@ -211,7 +210,7 @@ int main(int argc, char** argv) {
     return -1;
   }
 
-  fsl::MessageLoop loop;
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
   google_oauth_demo::GoogleTokenManagerApp gtm(std::move(refresh_token),
                                                std::move(user_profile_id_));
   gtm.Run();

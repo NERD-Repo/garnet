@@ -5,10 +5,12 @@
 #ifndef LIB_TEST_RUNNER_CPP_TEST_RUNNER_H_
 #define LIB_TEST_RUNNER_CPP_TEST_RUNNER_H_
 
-#include <test_runner/cpp/fidl.h>
 #include <memory>
-#include "lib/app/cpp/application_context.h"
-#include "lib/fxl/tasks/one_shot_timer.h"
+
+#include <lib/async/cpp/task.h>
+#include <test_runner/cpp/fidl.h>
+
+#include "lib/app/cpp/startup_context.h"
 #include "lib/test_runner/cpp/scope.h"
 #include "lib/test_runner/cpp/test_runner_store_impl.h"
 
@@ -67,8 +69,7 @@ class TestRunnerImpl : public TestRunner {
   fidl::Binding<TestRunner> binding_;
   TestRunContext* const test_run_context_;
   std::string program_name_ = "UNKNOWN";
-  bool waiting_for_termination_ = false;
-  fxl::OneShotTimer termination_timer_;
+  async::Task termination_task_;
   bool teardown_after_termination_ = false;
   int64_t remaining_test_points_ = -1;
 
@@ -83,7 +84,7 @@ class TestRunnerImpl : public TestRunner {
 // reporting anything, we declare the test a failure.
 class TestRunContext {
  public:
-  TestRunContext(std::shared_ptr<component::ApplicationContext> app_context,
+  TestRunContext(std::shared_ptr<fuchsia::sys::StartupContext> app_context,
                  TestRunObserver* connection, const std::string& test_id,
                  const std::string& url, const std::vector<std::string>& args);
 
@@ -94,7 +95,7 @@ class TestRunContext {
   void Teardown(TestRunnerImpl* teardown_client);
 
  private:
-  component::ApplicationControllerPtr child_app_controller_;
+  fuchsia::sys::ComponentControllerPtr child_controller_;
   std::unique_ptr<Scope> child_env_scope_;
 
   TestRunObserver* const test_runner_connection_;

@@ -8,7 +8,7 @@
 
 namespace root_presenter {
 
-DisplayRotater::DisplayRotater() {}
+DisplayRotater::DisplayRotater() : spring_(0.f) {}
 
 bool DisplayRotater::OnEvent(const fuchsia::ui::input::InputEvent& event,
                              Presentation* presentation) {
@@ -29,14 +29,20 @@ bool DisplayRotater::OnEvent(const fuchsia::ui::input::InputEvent& event,
 void DisplayRotater::SetDisplayRotation(Presentation* p,
                                         float display_rotation_degrees,
                                         bool animate) {
-  rotation_animation_start_value_ = p->display_rotation_desired_;
-  rotation_animation_end_value_ = display_rotation_degrees;
-
   if (animate) {
-    animation_start_time_ = zx_clock_get(ZX_CLOCK_MONOTONIC);
-    UpdateAnimation(p, animation_start_time_);
+    float animation_start_time;
+
+    if (spring_.is_done()) {
+      animation_start_time = zx_clock_get(ZX_CLOCK_MONOTONIC);
+    } else {
+      animation_start_time = last_animation_update_time_;
+    }
+    last_animation_update_time_ = animation_start_time;
+
+    spring_.SetTargetValue(display_rotation_degrees);
+    UpdateAnimation(p, animation_start_time);
   } else {
-    p->display_rotation_desired_ = rotation_animation_end_value_;
+    p->display_rotation_desired_ = display_rotation_degrees;
     if (p->ApplyDisplayModelChanges(false)) {
       p->PresentScene();
     }
@@ -44,7 +50,7 @@ void DisplayRotater::SetDisplayRotation(Presentation* p,
 }
 
 void DisplayRotater::FlipDisplay(Presentation* p) {
-  if (rotation_animation_end_value_ == 0.f) {
+  if (spring_.target_value() == 0.f) {
     SetDisplayRotation(p, 180.f, true);
   } else {
     SetDisplayRotation(p, 0.f, true);
@@ -53,23 +59,35 @@ void DisplayRotater::FlipDisplay(Presentation* p) {
 
 bool DisplayRotater::UpdateAnimation(Presentation* p,
                                      uint64_t presentation_time) {
-  if (p->display_rotation_desired_ == rotation_animation_end_value_) {
+  if (spring_.is_done()) {
     return false;
   }
 
-  // Adjust duration so velocity of animation (degrees/millisecond) is the same.
-  float animation_duration = std::abs(rotation_animation_end_value_ -
-                                      rotation_animation_start_value_) /
-                             180.f * 250'000'000;
+  float seconds_since_last_frame =
+      (presentation_time - last_animation_update_time_) / 1'000'000'000.f;
+  last_animation_update_time_ = presentation_time;
 
-  float t = std::min(
-      1.f, (presentation_time - animation_start_time_) / animation_duration);
-  p->display_rotation_desired_ = (1 - t) * rotation_animation_start_value_ +
-                                 t * rotation_animation_end_value_;
+  spring_.ElapseTime(seconds_since_last_frame);
+  p->display_rotation_desired_ = spring_.GetValue();
+
   if (p->ApplyDisplayModelChanges(false)) {
     p->PresentScene();
   }
   return true;
+}
+
+glm::vec2 DisplayRotater::RotatePointerCoordinates(Presentation* p, float x,
+                                                   float y) {
+  glm::vec4 pointer_coords(x, y, 0.f, 1.f);
+
+  float width = p->display_model_actual_.display_info().width_in_px;
+  float height = p->display_model_actual_.display_info().height_in_px;
+  glm::vec4 rotated_coords =
+      glm::translate(glm::vec3(width / 2, height / 2, 0)) *
+      glm::rotate(glm::radians<float>(p->display_rotation_current_),
+                  glm::vec3(0, 0, 1)) *
+      glm::translate(glm::vec3(-width / 2, -height / 2, 0)) * pointer_coords;
+  return glm::vec2(rotated_coords.x, rotated_coords.y);
 }
 
 }  // namespace root_presenter

@@ -14,17 +14,17 @@
 std::unique_ptr<DemoHarness> DemoHarness::New(
     DemoHarness::WindowParams window_params,
     DemoHarness::InstanceParams instance_params) {
-  auto harness = new DemoHarnessFuchsia(window_params);
+  auto harness = new DemoHarnessFuchsia(nullptr, window_params);
   harness->Init(std::move(instance_params));
   return std::unique_ptr<DemoHarness>(harness);
 }
 
-DemoHarnessFuchsia::DemoHarnessFuchsia(WindowParams window_params)
+DemoHarnessFuchsia::DemoHarnessFuchsia(async::Loop* loop,
+                                       WindowParams window_params)
     : DemoHarness(window_params),
-      loop_(fsl::MessageLoop::GetCurrent()),
-      owned_loop_(loop_ ? nullptr : new fsl::MessageLoop()),
-      application_context_(
-          component::ApplicationContext::CreateFromStartupInfo()),
+      loop_(loop),
+      owned_loop_(loop_ ? nullptr : new async::Loop()),
+      startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
       escher_demo_binding_(this) {
   if (!loop_) {
     loop_ = owned_loop_.get();
@@ -64,7 +64,7 @@ void DemoHarnessFuchsia::Run(Demo* demo) {
 void DemoHarnessFuchsia::RenderFrameOrQuit() {
   FXL_CHECK(demo_);  // Must be running.
   if (ShouldQuit()) {
-    loop_->QuitNow();
+    loop_->Quit();
     device().waitIdle();
   } else {
     demo_->DrawFrame();
@@ -77,20 +77,17 @@ void DemoHarnessFuchsia::HandleKeyPress(uint8_t key) {
   demo_->HandleKeyPress(std::string(1, static_cast<char>(key)));
 }
 
-void DemoHarnessFuchsia::HandleTouchBegin(uint64_t touch_id,
-                                          double xpos,
+void DemoHarnessFuchsia::HandleTouchBegin(uint64_t touch_id, double xpos,
                                           double ypos) {
   demo_->BeginTouch(touch_id, xpos, ypos);
 }
 
-void DemoHarnessFuchsia::HandleTouchContinue(uint64_t touch_id,
-                                             double xpos,
+void DemoHarnessFuchsia::HandleTouchContinue(uint64_t touch_id, double xpos,
                                              double ypos) {
   demo_->ContinueTouch(touch_id, &xpos, &ypos, 1);
 }
 
-void DemoHarnessFuchsia::HandleTouchEnd(uint64_t touch_id,
-                                        double xpos,
+void DemoHarnessFuchsia::HandleTouchEnd(uint64_t touch_id, double xpos,
                                         double ypos) {
   demo_->EndTouch(touch_id, xpos, ypos);
 }

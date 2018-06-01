@@ -14,10 +14,11 @@
 #include <string>
 
 #include <cobalt/cpp/fidl.h>
-#include "lib/app/cpp/application_context.h"
+#include <lib/async-loop/cpp/loop.h>
+
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding.h"
 #include "lib/fidl/cpp/synchronous_interface_ptr.h"
-#include "lib/fsl/tasks/message_loop.h"
 #include "lib/fxl/command_line.h"
 #include "lib/fxl/log_settings_command_line.h"
 #include "lib/fxl/logging.h"
@@ -126,7 +127,7 @@ class CobaltTestApp {
       : use_network_(use_network),
         do_environment_test_(do_environment_test),
         num_observations_per_batch_(num_observations_per_batch),
-        context_(component::ApplicationContext::CreateFromStartupInfo()) {}
+        context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()) {}
 
   // We have multiple testing strategies based on the method we use to
   // connect to the FIDL service and the method we use to determine whether
@@ -252,8 +253,8 @@ class CobaltTestApp {
   bool do_environment_test_;
   int num_observations_per_batch_;
   int previous_value_of_num_send_attempts_ = 0;
-  std::unique_ptr<component::ApplicationContext> context_;
-  component::ApplicationControllerPtr app_controller_;
+  std::unique_ptr<fuchsia::sys::StartupContext> context_;
+  fuchsia::sys::ComponentControllerPtr controller_;
   cobalt::CobaltEncoderSyncPtr encoder_;
   cobalt::CobaltControllerSyncPtr cobalt_controller_;
 
@@ -278,9 +279,9 @@ bool CobaltTestApp::RunAllTestingStrategies() {
 
 void CobaltTestApp::Connect(uint32_t schedule_interval_seconds,
                             uint32_t min_interval_seconds) {
-  app_controller_.Unbind();
-  component::Services services;
-  component::LaunchInfo launch_info;
+  controller_.Unbind();
+  fuchsia::sys::Services services;
+  fuchsia::sys::LaunchInfo launch_info;
   launch_info.url = "cobalt";
   launch_info.directory_request = services.NewRequest();
   {
@@ -300,9 +301,9 @@ void CobaltTestApp::Connect(uint32_t schedule_interval_seconds,
     stream << "--verbose=" << fxl::GetVlogVerbosity();
     launch_info.arguments.push_back(stream.str());
   }
-  context_->launcher()->CreateApplication(std::move(launch_info),
-                                          app_controller_.NewRequest());
-  app_controller_.set_error_handler([] {
+  context_->launcher()->CreateComponent(std::move(launch_info),
+                                        controller_.NewRequest());
+  controller_.set_error_handler([] {
     FXL_LOG(ERROR) << "Connection error from CobaltTestApp to CobaltClient.";
   });
 
@@ -805,7 +806,7 @@ int main(int argc, const char** argv) {
   auto num_observations_per_batch = std::stoi(
       command_line.GetOptionValueWithDefault(kNumObservationsPerBatch, "7"));
 
-  fsl::MessageLoop loop;
+  async::Loop loop(&kAsyncLoopConfigMakeDefault);
   CobaltTestApp app(use_network, do_environment_test,
                     num_observations_per_batch);
   if (!app.RunAllTestingStrategies()) {

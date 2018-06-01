@@ -2,23 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <compatibility_test_service/cpp/fidl.h>
+#include <fidl/test/compatibility/cpp/fidl.h>
 #include <lib/async-loop/cpp/loop.h>
 #include <zx/channel.h>
 #include <cstdlib>
 #include <string>
 
 #include "garnet/public/lib/fidl/compatibility_test/echo_client_app.h"
-#include "lib/app/cpp/application_context.h"
+#include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding_set.h"
 #include "lib/fidl/cpp/interface_request.h"
 
-namespace compatibility_test_service {
+namespace fidl {
+namespace test {
+namespace compatibility {
 
 class EchoServerApp : public Echo {
  public:
   EchoServerApp()
-      : context_(component::ApplicationContext::CreateFromStartupInfo()) {
+      : context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()) {
     context_->outgoing().AddPublicService<Echo>(
         [this](fidl::InterfaceRequest<Echo> request) {
           bindings_.AddBinding(
@@ -50,17 +52,19 @@ class EchoServerApp : public Echo {
   EchoServerApp(const EchoServerApp&) = delete;
   EchoServerApp& operator=(const EchoServerApp&) = delete;
 
-  std::unique_ptr<component::ApplicationContext> context_;
+  std::unique_ptr<fuchsia::sys::StartupContext> context_;
   fidl::BindingSet<Echo> bindings_;
 };
 
-}  // namespace compatibility_test_service
+}  // namespace compatibility
+}  // namespace test
+}  // namespace fidl
 
 int main(int argc, const char** argv) {
   // The FIDL support lib requires async_get_default() to return non-null.
   async::Loop loop(&kAsyncLoopConfigMakeDefault);
 
-  compatibility_test_service::EchoServerApp app;
+  fidl::test::compatibility::EchoServerApp app;
   loop.Run();
   return EXIT_SUCCESS;
 }

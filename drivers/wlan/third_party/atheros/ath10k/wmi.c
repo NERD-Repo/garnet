@@ -2372,7 +2372,6 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
                buf, buf->used,
                fc & IEEE80211_FRAME_TYPE_MASK, fc & IEEE80211_FRAME_SUBTYPE_MASK);
 
-
     void* frame_data = ath10k_msg_buf_get_payload(buf) + buf->rx.frame_offset;
 
     // There's no wlan event for assocation, so we have to look for the association

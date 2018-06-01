@@ -5,16 +5,16 @@
 import("//build/fidl/fidl.gni")
 
 fidl("fidl") {
-  name = "component"
+  name = "fuchsia.sys"
 
   sdk_category = "partner"
 
   sources = [
-    "application_controller.fidl",
-    "application_launcher.fidl",
+    "component_controller.fidl",
     "environment.fidl",
     "environment_controller.fidl",
     "flat_namespace.fidl",
+    "launcher.fidl",
     "loader.fidl",
     "runner.fidl",
     "service_provider.fidl",
