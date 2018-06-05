@@ -3309,13 +3309,11 @@ static int ath10k_station_disassoc(struct ath10k* ar,
 
     return ret;
 }
-#endif // NEEDS PORTING
 
 /**************/
 /* Regulatory */
 /**************/
 
-#if 0
 static zx_status_t ath10k_update_channel_list(struct ath10k* ar) {
 
     ASSERT_MTX_HELD(&ar->conf_mutex);
@@ -3398,9 +3396,7 @@ static zx_status_t ath10k_update_channel_list(struct ath10k* ar) {
 
     return ret;
 }
-#endif
 
-#if 0 // NEEDS PORTING
 static enum wmi_dfs_region
 ath10k_mac_get_dfs_region(enum nl80211_dfs_regions dfs_region) {
     switch (dfs_region) {
