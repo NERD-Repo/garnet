@@ -1,9 +1,11 @@
-#![allow(infoings)]
-#![feature(proc_macro, conservative_impl_trait, generators)]
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
-//#[macro_use]
+#![feature(proc_macro, generators)]
+//#![deny(warnings)]
+
 extern crate failure;
-// #[macro_use]
 extern crate fdio;
 extern crate fidl;
 extern crate fidl_bluetooth_bonder;
@@ -15,25 +17,18 @@ extern crate futures;
 extern crate parking_lot;
 #[macro_use]
 extern crate log;
-//#[macro_use]
+#[macro_use]
+extern crate serde_derive;
 extern crate serde;
 extern crate toml;
-//extern crate structopt;
-// #[macro_use]
-//extern crate serde_derive;
 
-use futures::{future, FutureExt};
-use futures::IntoFuture;
-use futures::Never;
-use futures::Future;
+use std::io::Read;
+use std::path::PathBuf;
 
-use std::mem;
-
+use fidl::endpoints2::ServiceMarker;
 use std::{thread, time};
-use fidl::endpoints2::{Proxy, ServiceMarker};
 
-use app::client::connect_to_service;
-//use app::client::pass_channel_to_service;
+use app::client::App;
 use std::sync::{Arc, Mutex};
 
 use std::fs::File;
@@ -41,31 +36,59 @@ use std::fs::OpenOptions;
 
 use std::io::Write;
 
-use fidl_bluetooth_bonder::{Bonder, BonderImpl, BonderMarker, BonderProxy};
-use fidl_bluetooth_control::{Control, ControlImpl, ControlMarker, ControlProxy};
-use failure::{Error, ResultExt};
-use app::server::ServicesServer;
 use app::client::Launcher;
-use std::collections::HashMap;
+use app::server::ServicesServer;
+use failure::{Error, ResultExt};
+use fidl_bluetooth_bonder::BonderMarker;
+use fidl_bluetooth_control::ControlMarker;
 
+mod bond_defs;
 mod logger;
+
+use bond_defs::*;
 
 const MAX_LOG_LEVEL: log::LevelFilter = log::LevelFilter::Info;
 static LOGGER: logger::Logger = logger::Logger;
-//static BT_MGR_DIR: &'static str = "data/btmgr";
+
+static BT_MGR_DIR: &'static str = "data/bt-mgr";
 
 struct BondStore {
-    bonds: HashMap<String, Vec<u8>>,
-    //file: File,
+    bonds: BondMap,
+    bond_store: File,
 }
 
 impl BondStore {
+    fn load_store() -> Result<Self, Error> {
+        let store_path: PathBuf = [BT_MGR_DIR, "/bonds.toml"].iter().collect();
+
+        let mut bond_store = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(store_path)?;
+
+        let mut contents = String::new();
+        bond_store
+            .read_to_string(&mut contents)
+            .expect("The bond storage file is corrupted");
+        let bonds: BondMap = toml::from_str(contents.as_str()).unwrap();
+
+        Ok(BondStore { bonds, bond_store })
+    }
+
     fn save_state(&mut self) -> Result<(), Error> {
-        let string = toml::to_string(&self.bonds)?;
-        //self.file.write_all(string.as_bytes())?;
-        //self.file.sync_data()?;
+        let toml = toml::to_string_pretty(&self.bonds)?;
+        self.bond_store.write_all(toml.as_bytes())?;
+        self.bond_store.sync_data()?;
         Ok(())
     }
+}
+
+fn bond(_bond_store: Arc<Mutex<BondStore>>, bt_gap: App) -> Result<(), Error> {
+    let _bond_svc = bt_gap.connect_to_service(BonderMarker)?;
+
+    //bond_svc.add_bonded_devices();
+    Ok(())
 }
 
 fn main() -> Result<(), Error> {
@@ -75,17 +98,20 @@ fn main() -> Result<(), Error> {
     info!("Starting bt-mgr...");
     let mut executor = async::Executor::new().context("Error creating executor")?;
 
+    let bond_store = Arc::new(Mutex::new(BondStore::load_store()?));
     let server = ServicesServer::new()
         .add_service((ControlMarker::NAME, move |chan: async::Channel| {
-            info!("launch");
-            let launcher = Launcher::new().context("Failed to open launcher service").unwrap();
-            info!("STHEu");
-            let app = launcher.launch(String::from("bt-gap"), None).context("Failed to launch bt-gap (bluetooth) service").unwrap();
-            thread::sleep(time::Duration::from_millis(10000));
-            info!("aseouthSTHEu");
-            app.pass_to_service(ControlMarker, chan.into());
-            thread::sleep(time::Duration::from_millis(4000));
-            info!("STHEue");
+            info!("Passing Control Handle to bt-gap");
+            let launcher = Launcher::new()
+                .context("Failed to open launcher service")
+                .unwrap();
+            let app = launcher
+                .launch(String::from("bt-gap"), None)
+                .context("Failed to launch bt-gap (bluetooth) service")
+                .unwrap();
+            thread::sleep(time::Duration::from_millis(2000));
+            let _ = app.pass_to_service(ControlMarker, chan.into());
+            let _ = bond(bond_store.clone(), app);
         }))
         .start()
         .map_err(|e| e.context("error starting service server"))?;

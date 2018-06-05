@@ -1,198 +1,57 @@
 library bluetooth_bonder;
 
-//
-//struct Key {
-//   // True if the key was distributed over an authenticated link (false means
-//   // the “Just Works” pairing method was used).
-//   bool authenticated;
-//
-//   // 128-bit key
-//   array<uint8>:16 value;
-//};
-//
-//// Represents a BR/EDR Link Key.
-//struct LinkKey {
-//   Key key;
-//
-//   // True if the key was created using P-256 elliptic curve.
-//   bool secure_connections;
-//};
-//
-// 
-//
-//// Represents out-of-band pairing data that is common in LE and BR/EDR
-//
-//struct OOB {
-//
-//   // The “Simple Pairing Hash C”.
-//
-//     array<uint8>:16? hash_192;
-//
-//   array<uint8>:16? hash_256;
-//
-//   
-//
-//     // The “Simple Pairing Randomizer R”.
-//
-//     array<uint8>:16? rand_192;
-//
-//   array<uint8>:16? rand_256;
-//
-//};
-//
-// 
-//
-//// Represents LE out-of-band data.
-//
-//struct LEOOB {
-//
-//   OOBData data;
-//
-//   
-//
-//     // LE Secure Connections confirmation value
-//
-//     array<uint8>:16? secure_conn_conf;
-//
-//   
-//
-//     // LE Secure Connections random value
-//
-//     array<uint8>:16? secure_conn_rand;
-//
-//};
-//
-// 
-//
-//// Represents a LE Long-Term Key. The |ediv| and |rand| fields are zero if
-//
-//// distributed using LE Secure Connections pairing.
-//
-//struct LTK {
-//
-//   Key key;
-//
-//   
-//
-//     // The encryption key size used by the link, in octets. Valid values are between [7, 16]. 
-//
-//     uint8 key_size;
-//
-//   
-//
-//     // Encrypted Diversifier used to identify the LTK if distributed using LE legacy
-//
-//     // pairing. 0 if |ltk.secure_connections| is true.
-//
-//     uint16 ediv;
-//
-//   
-//
-//     // Random Number used to identify the LTK if distributed using LE legacy pairing.
-//
-//     // 0 if |ltk.secure_connections| is true.
-//
-//     uint64 rand;
-//
-//};
-//
-// 
-//
-//// The preferred LE connection parameters of the peer.
-//
-//struct LEConnectionParameters {
-//
-//   uint16 connection_interval;
-//
-//   uint16 connection_latency;
-//
-//   uint16 supervision_timeout;
-//
-//};
-//
-// 
-//
-//struct LEData {
-//
-//   // The identity address of the peer. If |resolvable| is true, then this is the
-//
-//     // resolved private address (and the |irk| is present).
-//
-//     string address;
-//
-//   bool resolvable;
-//
-//   // True if the peer is the master of the connection.
-//
-//     bool master;
-//
-//   
-//
-//     // The peer’s preferred connection parameters, if known.
-//
-//     LEConnectionParameters? connection_parameters;
-//
-//   
-//
-//     // Known GATT service UUIDs.
-//
-//     vector<string> services;
-//
-//   
-//
-//     // The LE long-term key. Present if the link was encrypted.
-//
-//     LTK? ltk;
-//
-//   
-//
-//     // Identity Resolving Key used to generate and resolve random addresses.
-//
-//     Key? irk;
-//
-//   
-//
-//     // Connection Signature Resolving Key used for data signing without encryption.
-//
-//     Key? csrk;
-//
-//};
-//
-// 
-//
-//struct BREDRData {
-//
-//   // The BD_ADDR of the peer device.
-//
-//     string address;
-//
-//   
-//
-//     // True if the peer is the master of the connection.
-//
-//     bool master;
-//
-//   
-//
-//     // Known Traditional service UUIDs.
-//
-//     vector<string> services;
-//
-//   
-//
-//     // The BR/EDR link key. Present if the link was encrypted.
-//
-//     LinkKey? link_key;
-//
-//};
-//
-// 
-//
-//// Represents the bonding data for a peer device.
-//
+struct Key {
+  bool authenticated;
+
+  // 128 bit key
+  array<uint8>:16 value;
+};
+
+// Represents a LE Long-Term Key. The |ediv| and |rand| fields are zero if
+// distributed using LE Secure Connections pairing.
+struct LTK {
+  Key key;
+  uint8 key_size;
+  uint16 ediv;
+  uint64 rand;
+};
+
+// The preferred LE connection parameters of the peer.
+struct LEConnectionParameters {
+  uint16 connection_interval;
+  uint16 connection_latency;
+  uint16 supervision_timeout;
+};
+
+struct LEData {
+  // The identity address of the peer. If |resolvable| is true, then this is the
+  // resolved private address (and the |irk| is present).
+  string address;
+
+  bool resolvable;
+
+  // True if the peer is the master of the connection.
+  bool master;
+
+  // The peer’s preferred connection parameters, if known.
+  LEConnectionParameters? connection_parameters;
+
+  // Known GATT service UUIDs.
+  vector<string> services;
+
+  // The LE long-term key. Present if the link was encrypted.
+  LTK? ltk;
+
+  // Identity Resolving Key used to generate and resolve random addresses.
+  Key? irk;
+
+  // Connection Signature Resolving Key used for data signing without encryption.
+  Key? csrk;
+};
 
 struct BondingData {
   string name;
+  LEData? le;
 };
 
 interface Bonder {
@@ -200,9 +59,9 @@ interface Bonder {
   // as the ID provided in OnDeviceBonded().
   1: AddBondedDevices(string local_id, vector<BondingData> bonds) -> (bluetooth.Status @status);
 
-//  2: AddOutOfBandData(string local_id, string peer_address, OOBData? bredr_data, LEOOB? le_data) -> (bluetooth.Status @status);
+  //  2: AddOutOfBandData(string local_id, string peer_address, OOBData? bredr_data, LEOOB? le_data) -> (bluetooth.Status @status);
 
   // Called when the pairing procedure with a new peer has completed or when new data for an
   // existing bond is available.
-  003: -> OnNewBondingData(string local_id, BondingData data);
+  103: -> OnNewBondingData(string local_id, BondingData data);
 };
