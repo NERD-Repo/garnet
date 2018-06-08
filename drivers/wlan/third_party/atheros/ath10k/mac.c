@@ -2962,12 +2962,15 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
     struct ath10k* ar = thrd_data;
     zx_status_t status;
 
-    while(zx_object_wait_one(ar->assoc_signal, ZX_USER_SIGNAL_0,
-                             ZX_TIME_INFINITE, NULL) == ZX_OK) {
+    while (1) {
+        completion_wait(&ar->assoc_complete, ZX_TIME_INFINITE);
         mtx_lock(&ar->assoc_lock);
-        status = zx_object_signal(ar->assoc_signal, ZX_USER_SIGNAL_0, 0);
-        ZX_DEBUG_ASSERT(status == ZX_OK);
+        completion_reset(&ar->assoc_complete);
+
+        // assoc_frame is set by ath10k_wmi_event_mgmt_rx before signaling the
+        // assoc_complete completion.
         struct ath10k_msg_buf* buf = ar->assoc_frame;
+        ZX_DEBUG_ASSERT(buf != NULL);
         mtx_unlock(&ar->assoc_lock);
 
         mtx_lock(&ar->conf_mutex);
@@ -2995,8 +2998,8 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
         assoc_resp = frame_ptr + sizeof(*frame_hdr);
         arvif->aid = (assoc_resp->assoc_id & 0x3fff);
 
-        status = ath10k_wmi_peer_create(ar, arvif->vdev_id, ieee80211_get_bssid(frame_hdr),
-                                        WMI_PEER_TYPE_BSS);
+        uint8_t* frame_bssid = ieee80211_get_bssid(frame_hdr);
+        status = ath10k_wmi_peer_create(ar, arvif->vdev_id, frame_bssid, WMI_PEER_TYPE_BSS);
         if (status != ZX_OK) {
             ath10k_warn("failed to create peer: %s\n", zx_status_get_string(status));
             goto done;
@@ -3010,17 +3013,16 @@ int ath10k_mac_bss_assoc(void* thrd_data) {
         }
 
         memset(&assoc_arg, 0, sizeof(assoc_arg));
-        uint8_t* bssid = ieee80211_get_bssid(frame_hdr);
-        if (memcmp(bssid, arvif->bssid, ETH_ALEN)) {
+        if (memcmp(frame_bssid, arvif->bssid, ETH_ALEN)) {
             char bssid_expected[ETH_ALEN * 3];
             char bssid_actual[ETH_ALEN * 3];
             ethaddr_sprintf(bssid_expected, arvif->bssid);
-            ethaddr_sprintf(bssid_actual, bssid);
+            ethaddr_sprintf(bssid_actual, frame_bssid);
             ath10k_warn("expected to associate with %s but got response from %s - ignoring\n",
                         bssid_expected, bssid_actual);
             goto done;
         }
-        memcpy(assoc_arg.addr, bssid, ETH_ALEN);
+        memcpy(assoc_arg.addr, frame_bssid, ETH_ALEN);
 
         assoc_arg.vdev_id = arvif->vdev_id;
         assoc_arg.peer_reassoc = false;

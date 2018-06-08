@@ -2381,14 +2381,14 @@ zx_status_t ath10k_wmi_event_mgmt_rx(struct ath10k* ar, struct ath10k_msg_buf* b
     if ((ieee80211_get_frame_type(hdr) == IEEE80211_FRAME_TYPE_MGMT)
         && ieee80211_get_frame_subtype(hdr) == IEEE80211_FRAME_SUBTYPE_ASSOC_RESP) {
         mtx_lock(&ar->assoc_lock);
+        // assoc_frame is reset to NULL by ath10k_mac_bss_assoc when it has finished
+        // processing an association response.
         if (ar->assoc_frame == NULL) {
             ar->assoc_frame = buf;
             // This path is critical. If we don't tell the firmware to associate before
             // the first key packet is received, it will gladly deauthenticate us.
-            if (zx_object_signal(ar->assoc_signal, 0, ZX_USER_SIGNAL_0) != ZX_OK) {
-                mtx_unlock(&ar->assoc_lock);
-                goto maybe_free_buf;
-            }
+            completion_signal(&ar->assoc_complete);
+
             // mac_bss_assoc owns the buffer now
             free_buf = false;
         } else {

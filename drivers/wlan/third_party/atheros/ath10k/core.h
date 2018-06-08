@@ -905,7 +905,7 @@ struct ath10k {
 #endif
 
     mtx_t assoc_lock;
-    zx_handle_t assoc_signal;
+    completion_t assoc_complete;
     struct ath10k_msg_buf* assoc_frame;
 
 #if 0 // NEEDS PORTING
