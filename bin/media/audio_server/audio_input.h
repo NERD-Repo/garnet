@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_INPUT_H_
+#define GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_INPUT_H_
 
 #include <lib/zx/channel.h>
 
@@ -20,7 +21,8 @@ class AudioInput : public AudioDevice {
                                         AudioDeviceManager* manager);
 
  protected:
-  MediaResult Init() override FXL_LOCKS_EXCLUDED(mix_domain_->token());
+  fuchsia::media::MediaResult Init() override
+      FXL_LOCKS_EXCLUDED(mix_domain_->token());
 
   void OnWakeup() override FXL_EXCLUSIVE_LOCKS_REQUIRED(mix_domain_->token());
 
@@ -58,3 +60,5 @@ class AudioInput : public AudioDevice {
 
 }  // namespace audio
 }  // namespace media
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_INPUT_H_

@@ -44,9 +44,7 @@ class ProcessSymbolsImpl : public ProcessSymbols {
                      TargetSymbolsImpl* target_symbols);
   ~ProcessSymbolsImpl();
 
-  TargetSymbolsImpl* target_symbols() {
-    return target_symbols_;
-  }
+  TargetSymbolsImpl* target_symbols() { return target_symbols_; }
 
   // Adds the given module to the process. The callback will be executed with
   // the local path of the module if it is found, or the empty string if it is
@@ -73,6 +71,17 @@ class ProcessSymbolsImpl : public ProcessSymbols {
     // MAY BE NULL if the symbols could not be loaded.
     std::unique_ptr<LoadedModuleSymbolsImpl> symbols;
   };
+
+  // Creates the ModuleInfo structure, attempts to load the symbols, and
+  // updates the modules_ list for this process. *err will be filled with the
+  // success code of symbol loading (the function will save the ModuleInfo
+  // either way).
+  //
+  // This class issues no notifications, the caller needs to do that. Just
+  // because there's no error doesn't necessarily mean the symbols have been
+  // loaded, since some symbols might be expected to be not present.
+  ModuleInfo* SaveModuleInfo(const debug_ipc::Module& module,
+                             Err* symbol_load_err);
 
   // Equality comparison for the two types of modules. This compares load
   // address and build id.

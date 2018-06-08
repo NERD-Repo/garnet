@@ -8,9 +8,10 @@
 #include <memory>
 #include <queue>
 
+#include <fuchsia/media/cpp/fidl.h>
+#include <fuchsia/mediaplayer/cpp/fidl.h>
 #include <lib/async-loop/cpp/loop.h>
-#include <media/cpp/fidl.h>
-#include <media_player/cpp/fidl.h>
+#include <lib/fit/function.h>
 
 #include "garnet/bin/media/media_player/test/media_player_test_params.h"
 #include "lib/app/cpp/startup_context.h"
@@ -24,7 +25,7 @@ namespace test {
 class MediaPlayerTestView : public mozart::BaseView {
  public:
   MediaPlayerTestView(
-      std::function<void(int)> quit_callback,
+      fit::function<void(int)> quit_callback,
       ::fuchsia::ui::views_v1::ViewManagerPtr view_manager,
       fidl::InterfaceRequest<::fuchsia::ui::views_v1_token::ViewOwner>
           view_owner_request,
@@ -54,7 +55,8 @@ class MediaPlayerTestView : public mozart::BaseView {
   void Layout();
 
   // Handles a status changed event from the player.
-  void HandleStatusChanged(const media_player::MediaPlayerStatus& status);
+  void HandleStatusChanged(
+      const fuchsia::mediaplayer::MediaPlayerStatus& status);
 
   // Handle transition to end-of-stream.
   void OnEndOfStream();
@@ -71,7 +73,7 @@ class MediaPlayerTestView : public mozart::BaseView {
   // Seeks to a new position and sets |seek_interval_end_|.
   void StartNewSeekInterval();
 
-  std::function<void(int)> quit_callback_;
+  fit::function<void(int)> quit_callback_;
   const MediaPlayerTestParams& params_;
   size_t current_url_index_ = 0;
 
@@ -80,19 +82,19 @@ class MediaPlayerTestView : public mozart::BaseView {
   scenic_lib::ShapeNode progress_bar_slider_node_;
   std::unique_ptr<scenic_lib::EntityNode> video_host_node_;
 
-  media_player::MediaPlayerPtr media_player_;
+  fuchsia::mediaplayer::MediaPlayerPtr media_player_;
   fuchsia::math::Size video_size_;
   fuchsia::math::Size pixel_aspect_ratio_;
   State state_ = State::kPaused;
   media::TimelineFunction timeline_function_;
-  media_player::MediaMetadataPtr metadata_;
+  fuchsia::mediaplayer::MediaMetadataPtr metadata_;
   fuchsia::math::RectF content_rect_;
   fuchsia::math::RectF controls_rect_;
   bool problem_shown_ = false;
   bool was_at_end_of_stream_ = false;
 
-  int64_t seek_interval_start_ = media::kUnspecifiedTime;
-  int64_t seek_interval_end_ = media::kUnspecifiedTime;
+  int64_t seek_interval_start_ = fuchsia::media::kUnspecifiedTime;
+  int64_t seek_interval_end_ = fuchsia::media::kUnspecifiedTime;
   bool in_current_seek_interval_ = false;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(MediaPlayerTestView);

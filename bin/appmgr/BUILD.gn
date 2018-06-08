@@ -40,6 +40,8 @@ source_set("lib") {
     "sandbox_metadata.h",
     "url_resolver.cc",
     "url_resolver.h",
+    "util.cc",
+    "util.h",
   ]
 
   public_deps = [
@@ -50,6 +52,7 @@ source_set("lib") {
     "//garnet/public/lib/svc/cpp",
     "//third_party/rapidjson",
     "//zircon/public/fidl/process",
+    "//zircon/public/lib/fit",
     "//zircon/public/lib/fs",
     "//zircon/public/lib/launchpad",
     "//zircon/public/lib/loader-service",
@@ -59,10 +62,30 @@ source_set("lib") {
   defines = [ "_ALL_SOURCE=1" ]
 }
 
+source_set("appmgr_for_test") {
+  testonly = true
+
+  sources = [
+    "appmgr.cc",
+    "appmgr.h",
+  ]
+
+  public_deps = [
+    ":lib",
+    "//garnet/public/lib/app/cpp",
+    "//garnet/public/lib/app/fidl",
+    "//garnet/public/lib/fxl",
+    "//zircon/public/lib/fs",
+    "//zircon/public/lib/zx",
+  ]
+}
+
 executable("bin") {
   output_name = "appmgr"
 
   sources = [
+    "appmgr.cc",
+    "appmgr.h",
     "main.cc",
   ]
 
@@ -77,16 +100,21 @@ executable("tests") {
   output_name = "appmgr_unittests"
 
   sources = [
+    "appmgr_unittest.cc",
     "cmx_metadata_unittest.cc",
+    "component_controller_unittest.cc",
     "hub/hub_holder_unittest.cc",
     "namespace_builder_unittest.cc",
     "runtime_metadata_unittest.cc",
     "sandbox_metadata_unittest.cc",
+    "util_unittest.cc",
   ]
 
   deps = [
+    ":appmgr_for_test",
     ":lib",
     "//garnet/public/lib/fxl/test:gtest_main",
+    "//garnet/public/lib/gtest",
   ]
 }
 
@@ -103,7 +131,7 @@ package("appmgr") {
   ]
 }
 
-package("appmgr_tests") {
+package("appmgr_unittests") {
   testonly = true
   deprecated_system_image = true
 
@@ -113,6 +141,20 @@ package("appmgr_tests") {
   tests = [
     {
       name = "appmgr_unittests"
+    },
+  ]
+}
+
+package("appmgr_integrationtests") {
+  testonly = true
+  deprecated_system_image = true
+
+  deps = [
+    "integration_tests:tests",
+  ]
+  tests = [
+    {
+      name = "appmgr_integration_tests"
     },
   ]
 }

@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_SERVER_MIXER_TEST_MIXER_TESTS_SHARED_H_
+#define GARNET_BIN_MEDIA_AUDIO_SERVER_MIXER_TEST_MIXER_TESTS_SHARED_H_
 
 #include "garnet/bin/media/audio_server/gain.h"
 #include "garnet/bin/media/audio_server/mixer/mixer.h"
@@ -25,14 +26,14 @@ inline double GainScaleToDb(Gain::AScale gain_scale) {
 }
 
 // Find a suitable mixer for the provided format, channels and frame rates.
-MixerPtr SelectMixer(AudioSampleFormat src_format, uint32_t src_channels,
-                     uint32_t src_frame_rate, uint32_t dst_channels,
-                     uint32_t dst_frame_rate,
+MixerPtr SelectMixer(fuchsia::media::AudioSampleFormat src_format,
+                     uint32_t src_channels, uint32_t src_frame_rate,
+                     uint32_t dst_channels, uint32_t dst_frame_rate,
                      Mixer::Resampler resampler = Mixer::Resampler::Default);
 
 // OutputFormatters convert frames from accumulation format to dest format.
-OutputFormatterPtr SelectOutputFormatter(AudioSampleFormat dst_format,
-                                         uint32_t num_channels);
+OutputFormatterPtr SelectOutputFormatter(
+    fuchsia::media::AudioSampleFormat dst_format, uint32_t num_channels);
 
 // When doing direct bit-for-bit comparisons in our tests, we must factor in the
 // left-shift biasing that is done while converting input data into the internal
@@ -58,3 +59,5 @@ void DoMix(MixerPtr mixer, const void* src_buf, int32_t* accum_buf,
 }  // namespace test
 }  // namespace audio
 }  // namespace media
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_SERVER_MIXER_TEST_MIXER_TESTS_SHARED_H_

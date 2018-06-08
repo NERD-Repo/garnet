@@ -6,8 +6,8 @@ package wlan
 
 import (
 	bindings "fidl/bindings"
-	mlme "fidl/wlan_mlme"
-	"fidl/wlan_service"
+	"fidl/fuchsia/wlan/mlme"
+	wlan_service "fidl/fuchsia/wlan/service"
 	"fmt"
 	"log"
 	"os"

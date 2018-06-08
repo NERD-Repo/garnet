@@ -6,16 +6,16 @@
 
 #include <iostream>
 
+#include <fuchsia/media/cpp/fidl.h>
 #include <lib/async-loop/cpp/loop.h>
 #include <lib/async/cpp/task.h>
-#include <media/cpp/fidl.h>
+#include <lib/fit/function.h>
 
 #include "garnet/bin/media/media_player/test/fake_audio_renderer.h"
 #include "garnet/bin/media/media_player/test/fake_wav_reader.h"
 #include "lib/app/cpp/connect.h"
 #include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/optional.h"
-#include "lib/fxl/functional/closure.h"
 #include "lib/fxl/logging.h"
 #include "lib/media/timeline/timeline_rate.h"
 
@@ -23,22 +23,25 @@ namespace media_player {
 namespace test {
 
 MediaPlayerTestUnattended::MediaPlayerTestUnattended(
-    std::function<void(int)> quit_callback)
+    fit::function<void(int)> quit_callback)
     : startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
-      quit_callback_(quit_callback) {
+      quit_callback_(std::move(quit_callback)) {
   FXL_DCHECK(quit_callback_);
   std::cerr << "MediaPlayerTest starting\n";
 
   std::cerr << "creating player\n";
-  media_player_ = startup_context_->ConnectToEnvironmentService<MediaPlayer>();
-  media_player_.events().StatusChanged = [this](MediaPlayerStatus status) {
-    if (status.end_of_stream) {
-      FXL_LOG(INFO) << "MediaPlayerTest "
-                    << (fake_audio_renderer_.expected() ? "SUCCEEDED"
-                                                        : "FAILED");
-      quit_callback_(fake_audio_renderer_.expected() ? 0 : 1);
-    }
-  };
+  media_player_ =
+      startup_context_
+          ->ConnectToEnvironmentService<fuchsia::mediaplayer::MediaPlayer>();
+  media_player_.events().StatusChanged =
+      [this](fuchsia::mediaplayer::MediaPlayerStatus status) {
+        if (status.end_of_stream) {
+          FXL_LOG(INFO) << "MediaPlayerTest "
+                        << (fake_audio_renderer_.expected() ? "SUCCEEDED"
+                                                            : "FAILED");
+          quit_callback_(fake_audio_renderer_.expected() ? 0 : 1);
+        }
+      };
 
   fake_audio_renderer_.SetPtsUnits(48000, 1);
 
@@ -59,12 +62,12 @@ MediaPlayerTestUnattended::MediaPlayerTestUnattended(
                                       {14336, 4096, 0xf7960542f1991800},
                                       {15360, 4052, 0x7308a9824acbd5ea}});
 
-  SeekingReaderPtr fake_reader_ptr;
-  fidl::InterfaceRequest<SeekingReader> reader_request =
+  fuchsia::mediaplayer::SeekingReaderPtr fake_reader_ptr;
+  fidl::InterfaceRequest<fuchsia::mediaplayer::SeekingReader> reader_request =
       fake_reader_ptr.NewRequest();
   fake_reader_.Bind(std::move(reader_request));
 
-  media::AudioRenderer2Ptr fake_audio_renderer_ptr;
+  fuchsia::media::AudioRenderer2Ptr fake_audio_renderer_ptr;
   fake_audio_renderer_.Bind(fake_audio_renderer_ptr.NewRequest());
 
   media_player_->SetAudioRenderer(std::move(fake_audio_renderer_ptr));

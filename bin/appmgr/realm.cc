@@ -5,10 +5,10 @@
 #include "garnet/bin/appmgr/realm.h"
 
 #include <fcntl.h>
-#include <fdio/namespace.h>
-#include <fdio/util.h>
 #include <launchpad/launchpad.h>
 #include <lib/async/default.h>
+#include <lib/fdio/namespace.h>
+#include <lib/fdio/util.h>
 #include <lib/zx/process.h>
 #include <unistd.h>
 #include <zircon/process.h>
@@ -24,6 +24,7 @@
 #include "garnet/bin/appmgr/runtime_metadata.h"
 #include "garnet/bin/appmgr/sandbox_metadata.h"
 #include "garnet/bin/appmgr/url_resolver.h"
+#include "garnet/bin/appmgr/util.h"
 #include "garnet/lib/far/format.h"
 #include "lib/app/cpp/connect.h"
 #include "lib/fsl/handles/object_info.h"
@@ -46,7 +47,6 @@ constexpr char kAppPath[] = "bin/app";
 constexpr char kAppArv0[] = "/pkg/bin/app";
 constexpr char kLegacyFlatExportedDirPath[] = "meta/legacy_flat_exported_dir";
 constexpr char kRuntimePath[] = "meta/runtime";
-constexpr char kSandboxPath[] = "meta/sandbox";
 
 enum class LaunchType {
   kProcess,
@@ -61,13 +61,6 @@ std::vector<const char*> GetArgv(const std::string& argv0,
   for (const auto& argument : *launch_info.arguments)
     argv.push_back(argument.get().c_str());
   return argv;
-}
-
-std::string GetLabelFromURL(const std::string& url) {
-  size_t last_slash = url.rfind('/');
-  if (last_slash == std::string::npos || last_slash + 1 == url.length())
-    return url;
-  return url.substr(last_slash + 1);
 }
 
 void PushFileDescriptor(fuchsia::sys::FileDescriptorPtr fd, int new_fd,
@@ -96,7 +89,7 @@ zx::process CreateProcess(const zx::job& job, fsl::SizedVmo data,
   if (!data)
     return zx::process();
 
-  std::string label = GetLabelFromURL(launch_info.url);
+  std::string label = util::GetLabelFromURL(launch_info.url);
   std::vector<const char*> argv = GetArgv(argv0, launch_info);
 
   std::vector<uint32_t> ids;
@@ -161,49 +154,13 @@ LaunchType Classify(const zx::vmo& data, std::string* runner) {
   return LaunchType::kProcess;
 }
 
-struct ExportedDirChannels {
-  // The client side of the channel serving connected application's exported
-  // dir.
-  zx::channel exported_dir;
-
-  // The server side of our client's |LaunchInfo.directory_request|.
-  zx::channel client_request;
-};
-
-ExportedDirChannels BindDirectory(LaunchInfo* launch_info) {
-  zx::channel exported_dir_server, exported_dir_client;
-  zx_status_t status =
-      zx::channel::create(0u, &exported_dir_server, &exported_dir_client);
-  if (status != ZX_OK) {
-    FXL_LOG(ERROR) << "Failed to create channel for service directory: status="
-                   << status;
-    return {zx::channel(), zx::channel()};
-  }
-
-  auto client_request = std::move(launch_info->directory_request);
-  launch_info->directory_request = std::move(exported_dir_server);
-  return {std::move(exported_dir_client), std::move(client_request)};
-}
-
-std::string GetArgsString(
-    const ::fidl::VectorPtr<::fidl::StringPtr>& arguments) {
-  std::string args = "";
-  if (!arguments->empty()) {
-    std::ostringstream buf;
-    std::copy(arguments->begin(), arguments->end() - 1,
-              std::ostream_iterator<std::string>(buf, " "));
-    buf << *arguments->rbegin();
-    args = buf.str();
-  }
-  return args;
-}
-
 }  // namespace
 
 uint32_t Realm::next_numbered_label_ = 1u;
 
-Realm::Realm(Realm* parent, zx::channel host_directory, fidl::StringPtr label)
-    : parent_(parent),
+Realm::Realm(RealmArgs args)
+    : parent_(args.parent),
+      run_virtual_console_(args.run_virtual_console),
       default_namespace_(
           fxl::MakeRefCounted<Namespace>(nullptr, this, nullptr)),
       hub_(fbl::AdoptRef(new fs::PseudoDir())),
@@ -222,16 +179,17 @@ Realm::Realm(Realm* parent, zx::channel host_directory, fidl::StringPtr label)
   FXL_CHECK(job_.duplicate(kChildJobRights, &job_for_child_) == ZX_OK);
 
   koid_ = std::to_string(fsl::GetKoid(job_.get()));
-  if (label->size() == 0)
+  if (args.label->size() == 0)
     label_ = fxl::StringPrintf(kNumberedLabelFormat, next_numbered_label_++);
   else
-    label_ = label.get().substr(0, fuchsia::sys::kLabelMaxLength);
+    label_ = args.label.get().substr(0, fuchsia::sys::kLabelMaxLength);
 
   fsl::SetObjectName(job_.get(), label_);
   hub_.SetName(label_);
   hub_.SetJobId(koid_);
 
-  default_namespace_->services().set_backing_dir(std::move(host_directory));
+  default_namespace_->services().set_backing_dir(
+      std::move(args.host_directory));
 
   ServiceProviderPtr service_provider;
   default_namespace_->services().AddBinding(service_provider.NewRequest());
@@ -265,9 +223,9 @@ void Realm::CreateNestedJob(
     zx::channel host_directory, fidl::InterfaceRequest<Environment> environment,
     fidl::InterfaceRequest<EnvironmentController> controller_request,
     fidl::StringPtr label) {
+  RealmArgs args{this, std::move(host_directory), label, false};
   auto controller = std::make_unique<EnvironmentControllerImpl>(
-      std::move(controller_request),
-      std::make_unique<Realm>(this, std::move(host_directory), label));
+      std::move(controller_request), std::make_unique<Realm>(std::move(args)));
   Realm* child = controller->realm();
   child->AddBinding(std::move(environment));
 
@@ -283,7 +241,7 @@ void Realm::CreateNestedJob(
   child->default_namespace_->services().ServeDirectory(
       std::move(root_realm->svc_channel_server_));
 
-  if (!parent()) {
+  if (run_virtual_console_) {
     child->CreateShell("/boot/bin/run-vc");
     child->CreateShell("/boot/bin/run-vc");
     child->CreateShell("/boot/bin/run-vc");
@@ -292,7 +250,8 @@ void Realm::CreateNestedJob(
 
 void Realm::CreateComponent(
     LaunchInfo launch_info,
-    fidl::InterfaceRequest<ComponentController> controller) {
+    fidl::InterfaceRequest<ComponentController> controller,
+    ComponentObjectCreatedCallback callback) {
   if (launch_info.url.get().empty()) {
     FXL_LOG(ERROR) << "Cannot create application because launch_info contains"
                       " an empty url";
@@ -310,7 +269,8 @@ void Realm::CreateComponent(
   fidl::StringPtr url = launch_info.url;
   loader_->LoadComponent(
       url, fxl::MakeCopyable([this, launch_info = std::move(launch_info),
-                              controller = std::move(controller)](
+                              controller = std::move(controller),
+                              callback = fbl::move(callback)](
                                  PackagePtr package) mutable {
         fxl::RefPtr<Namespace> ns = default_namespace_;
         if (launch_info.additional_services) {
@@ -327,18 +287,18 @@ void Realm::CreateComponent(
               case LaunchType::kProcess:
                 CreateComponentWithProcess(
                     std::move(package), std::move(launch_info),
-                    std::move(controller), std::move(ns));
+                    std::move(controller), std::move(ns), fbl::move(callback));
                 break;
               case LaunchType::kArchive:
                 CreateComponentFromPackage(
                     std::move(package), std::move(launch_info),
-                    std::move(controller), std::move(ns));
+                    std::move(controller), std::move(ns), fbl::move(callback));
                 break;
             }
           } else if (package->directory) {
-            CreateComponentFromPackage(std::move(package),
-                                       std::move(launch_info),
-                                       std::move(controller), std::move(ns));
+            CreateComponentFromPackage(
+                std::move(package), std::move(launch_info),
+                std::move(controller), std::move(ns), fbl::move(callback));
           }
         }
       }));
@@ -381,7 +341,7 @@ std::unique_ptr<EnvironmentControllerImpl> Realm::ExtractChild(Realm* child) {
   return controller;
 }
 
-std::unique_ptr<ComponentControllerImpl> Realm::ExtractApplication(
+std::unique_ptr<ComponentControllerImpl> Realm::ExtractComponent(
     ComponentControllerImpl* controller) {
   auto it = applications_.find(controller);
   if (it == applications_.end()) {
@@ -403,7 +363,7 @@ void Realm::AddBinding(fidl::InterfaceRequest<Environment> environment) {
 void Realm::CreateComponentWithProcess(
     PackagePtr package, LaunchInfo launch_info,
     fidl::InterfaceRequest<ComponentController> controller,
-    fxl::RefPtr<Namespace> ns) {
+    fxl::RefPtr<Namespace> ns, ComponentObjectCreatedCallback callback) {
   zx::channel svc = ns->services().OpenAsDirectory();
   if (!svc)
     return;
@@ -425,22 +385,25 @@ void Realm::CreateComponentWithProcess(
   if (!fsl::SizedVmo::FromTransport(std::move(*package->data), &executable))
     return;
 
-  const std::string args = GetArgsString(launch_info.arguments);
+  const std::string args = util::GetArgsString(launch_info.arguments);
   const std::string url = launch_info.url;  // Keep a copy before moving it.
-  auto channels = BindDirectory(&launch_info);
+  auto channels = util::BindDirectory(&launch_info);
   zx::process process =
       CreateProcess(job_for_child_, std::move(executable), url,
                     std::move(launch_info), zx::channel(), builder.Build());
 
   if (process) {
     auto application = std::make_unique<ComponentControllerImpl>(
-        std::move(controller), this, nullptr, std::move(process), url,
-        std::move(args), GetLabelFromURL(url), std::move(ns),
+        std::move(controller), this, koid_, nullptr, std::move(process), url,
+        std::move(args), util::GetLabelFromURL(url), std::move(ns),
         ExportedDirType::kPublicDebugCtrlLayout,
         std::move(channels.exported_dir), std::move(channels.client_request));
     // update hub
     hub_.AddComponent(application->HubInfo());
     ComponentControllerImpl* key = application.get();
+    if (callback != nullptr) {
+      callback(key);
+    }
     applications_.emplace(key, std::move(application));
   }
 }
@@ -448,7 +411,7 @@ void Realm::CreateComponentWithProcess(
 void Realm::CreateComponentFromPackage(
     PackagePtr package, LaunchInfo launch_info,
     fidl::InterfaceRequest<ComponentController> controller,
-    fxl::RefPtr<Namespace> ns) {
+    fxl::RefPtr<Namespace> ns, ComponentObjectCreatedCallback callback) {
   zx::channel svc = ns->services().OpenAsDirectory();
   if (!svc)
     return;
@@ -468,7 +431,6 @@ void Realm::CreateComponentFromPackage(
         std::make_unique<archive::FileSystem>(std::move(package->data->vmo));
     pkg = pkg_fs->OpenAsDirectory();
     pkg_fs->GetFileAsString(cmx_path, &cmx_data);
-    pkg_fs->GetFileAsString(kSandboxPath, &sandbox_data);
     if (!pkg_fs->GetFileAsString(kRuntimePath, &runtime_data))
       app_data = pkg_fs->GetFileAsVMO(kAppPath);
     exported_dir_layout = pkg_fs->IsFile(kLegacyFlatExportedDirPath)
@@ -480,7 +442,6 @@ void Realm::CreateComponentFromPackage(
     if (!cmx_path.empty()) {
       files::ReadFileToStringAt(fd.get(), cmx_path, &cmx_data);
     }
-    files::ReadFileToStringAt(fd.get(), kSandboxPath, &sandbox_data);
     if (!files::ReadFileToStringAt(fd.get(), kRuntimePath, &runtime_data))
       VmoFromFilenameAt(fd.get(), kAppPath, &app_data);
     exported_dir_layout = files::IsFileAt(fd.get(), kLegacyFlatExportedDirPath)
@@ -502,20 +463,13 @@ void Realm::CreateComponentFromPackage(
   builder.AddPackage(std::move(pkg));
   builder.AddServices(std::move(svc));
 
-  // If meta/*.cmx exists, read sandbox data from it, instead of meta/sandbox.
-  // TODO(CP-37): Remove meta/sandbox once completely migrated.
-  if (!sandbox_data.empty() || !cmx_data.empty()) {
+  // If meta/*.cmx exists, read sandbox data from it.
+  if (!cmx_data.empty()) {
     SandboxMetadata sandbox;
 
     CmxMetadata cmx;
     if (!cmx_data.empty()) {
       sandbox.Parse(cmx.ParseSandboxMetadata(cmx_data));
-    } else {
-      if (!sandbox.Parse(sandbox_data)) {
-        FXL_LOG(ERROR) << "Failed to parse sandbox metadata for "
-                       << launch_info.url;
-        return;
-      }
     }
 
     // If an app has the "shell" feature, then we use the libraries from the
@@ -534,22 +488,25 @@ void Realm::CreateComponentFromPackage(
   builder.AddFlatNamespace(std::move(launch_info.flat_namespace));
 
   if (app_data) {
-    const std::string args = GetArgsString(launch_info.arguments);
+    const std::string args = util::GetArgsString(launch_info.arguments);
     const std::string url = launch_info.url;  // Keep a copy before moving it.
-    auto channels = BindDirectory(&launch_info);
+    auto channels = util::BindDirectory(&launch_info);
     zx::process process = CreateProcess(
         job_for_child_, std::move(app_data), kAppArv0, std::move(launch_info),
         std::move(loader_service), builder.Build());
 
     if (process) {
       auto application = std::make_unique<ComponentControllerImpl>(
-          std::move(controller), this, std::move(pkg_fs), std::move(process),
-          url, std::move(args), GetLabelFromURL(url), std::move(ns),
-          exported_dir_layout, std::move(channels.exported_dir),
+          std::move(controller), this, koid_, std::move(pkg_fs),
+          std::move(process), url, std::move(args), util::GetLabelFromURL(url),
+          std::move(ns), exported_dir_layout, std::move(channels.exported_dir),
           std::move(channels.client_request));
       // update hub
       hub_.AddComponent(application->HubInfo());
       ComponentControllerImpl* key = application.get();
+      if (callback != nullptr) {
+        callback(key);
+      }
       applications_.emplace(key, std::move(application));
     }
   } else {
@@ -589,14 +546,11 @@ RunnerHolder* Realm::GetOrCreateRunner(const std::string& runner) {
     LaunchInfo runner_launch_info;
     runner_launch_info.url = runner;
     runner_launch_info.directory_request = runner_services.NewRequest();
-    CreateComponent(std::move(runner_launch_info),
-                    runner_controller.NewRequest());
-
-    runner_controller.set_error_handler(
+    result.first->second = std::make_unique<RunnerHolder>(
+        std::move(runner_services), std::move(runner_controller),
+        std::move(runner_launch_info), this,
         [this, runner] { runners_.erase(runner); });
 
-    result.first->second = std::make_unique<RunnerHolder>(
-        std::move(runner_services), std::move(runner_controller));
   } else if (!result.first->second) {
     // There was a cycle in the runner graph.
     FXL_LOG(ERROR) << "Detected a cycle in the runner graph for " << runner

@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <echo2/cpp/fidl.h>
+#define FIDL_ENABLE_LEGACY_WAIT_FOR_RESPONSE
+
+#include <fidl/examples/echo/cpp/fidl.h>
 #include <launchpad/launchpad.h>
 #include <lib/async-loop/cpp/loop.h>
 #include <lib/async/default.h>
@@ -19,7 +21,7 @@ class EchoClientApp {
   EchoClientApp()
       : context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()) {}
 
-  echo2::EchoPtr& echo() { return echo_; }
+  fidl::examples::echo::EchoPtr& echo() { return echo_; }
 
   void Start(std::string server_url) {
     fuchsia::sys::LaunchInfo launch_info;
@@ -29,7 +31,7 @@ class EchoClientApp {
                                           controller_.NewRequest());
 
     echo_provider_.ConnectToService(echo_.NewRequest().TakeChannel(),
-                                    Echo::Name_);
+                                    fidl::examples::echo::Echo::Name_);
   }
 
  private:
@@ -39,7 +41,7 @@ class EchoClientApp {
   std::unique_ptr<fuchsia::sys::StartupContext> context_;
   fuchsia::sys::Services echo_provider_;
   fuchsia::sys::ComponentControllerPtr controller_;
-  echo2::EchoPtr echo_;
+  fidl::examples::echo::EchoPtr echo_;
 };
 
 }  // namespace echo2

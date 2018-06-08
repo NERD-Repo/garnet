@@ -30,30 +30,27 @@ ReaderCache::ReaderCache(std::shared_ptr<Reader> upstream_reader) {
 ReaderCache::~ReaderCache() {}
 
 void ReaderCache::Describe(DescribeCallback callback) {
-  describe_is_complete_.When([this, callback]() { store_.Describe(callback); });
+  describe_is_complete_.When([this, callback = std::move(callback)]() mutable {
+    store_.Describe(std::move(callback));
+  });
 }
 
-void ReaderCache::ReadAt(size_t position,
-                         uint8_t* buffer,
-                         size_t bytes_to_read,
+void ReaderCache::ReadAt(size_t position, uint8_t* buffer, size_t bytes_to_read,
                          ReadAtCallback callback) {
   FXL_DCHECK(buffer);
   FXL_DCHECK(bytes_to_read > 0);
 
-  read_at_request_.Start(position, buffer, bytes_to_read, callback);
+  read_at_request_.Start(position, buffer, bytes_to_read, std::move(callback));
 
   describe_is_complete_.When(
       [this]() { store_.SetReadAtRequest(&read_at_request_); });
 }
 
-ReaderCache::ReadAtRequest::ReadAtRequest() {
-  in_progress_ = false;
-}
+ReaderCache::ReadAtRequest::ReadAtRequest() { in_progress_ = false; }
 
 ReaderCache::ReadAtRequest::~ReadAtRequest() {}
 
-void ReaderCache::ReadAtRequest::Start(size_t position,
-                                       uint8_t* buffer,
+void ReaderCache::ReadAtRequest::Start(size_t position, uint8_t* buffer,
                                        size_t bytes_to_read,
                                        ReadAtCallback callback) {
   FXL_DCHECK(!in_progress_) << "concurrent calls to ReadAt are not allowed";
@@ -62,7 +59,7 @@ void ReaderCache::ReadAtRequest::Start(size_t position,
   buffer_ = buffer;
   original_bytes_to_read_ = bytes_to_read;
   remaining_bytes_to_read_ = bytes_to_read;
-  callback_ = callback;
+  callback_ = std::move(callback);
 }
 
 void ReaderCache::ReadAtRequest::CopyFrom(uint8_t* source, size_t byte_count) {

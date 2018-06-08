@@ -14,6 +14,7 @@
 #include <unordered_map>
 
 #include <fuchsia/sys/cpp/fidl.h>
+#include "garnet/bin/appmgr/component_container.h"
 #include "garnet/bin/appmgr/component_controller_impl.h"
 #include "garnet/bin/appmgr/environment_controller_impl.h"
 #include "garnet/bin/appmgr/hub/hub_info.h"
@@ -21,6 +22,7 @@
 #include "garnet/bin/appmgr/namespace.h"
 #include "garnet/bin/appmgr/runner_holder.h"
 #include "lib/fidl/cpp/binding_set.h"
+#include "lib/fit/function.h"
 #include "lib/fxl/macros.h"
 #include "lib/fxl/memory/ref_ptr.h"
 #include "lib/fxl/strings/string_view.h"
@@ -29,9 +31,16 @@
 namespace fuchsia {
 namespace sys {
 
-class Realm {
+struct RealmArgs {
+  Realm* parent;
+  zx::channel host_directory;
+  fidl::StringPtr label;
+  bool run_virtual_console;
+};
+
+class Realm : public ComponentContainer<ComponentControllerImpl> {
  public:
-  Realm(Realm* parent, zx::channel host_directory, fidl::StringPtr label);
+  Realm(RealmArgs args);
   ~Realm();
 
   Realm* parent() const { return parent_; }
@@ -47,8 +56,12 @@ class Realm {
                        fidl::InterfaceRequest<EnvironmentController> controller,
                        fidl::StringPtr label);
 
+  using ComponentObjectCreatedCallback =
+      fit::function<void(ComponentControllerImpl* component)>;
+
   void CreateComponent(LaunchInfo launch_info,
-                       fidl::InterfaceRequest<ComponentController> controller);
+                       fidl::InterfaceRequest<ComponentController> controller,
+                       ComponentObjectCreatedCallback callback = nullptr);
 
   // Removes the child realm from this realm and returns the owning
   // reference to the child's controller. The caller of this function typically
@@ -60,8 +73,8 @@ class Realm {
   // reference to the application's controller. The caller of this function
   // typically destroys the controller (and hence the application) shortly after
   // calling this function.
-  std::unique_ptr<ComponentControllerImpl> ExtractApplication(
-      ComponentControllerImpl* controller);
+  std::unique_ptr<ComponentControllerImpl> ExtractComponent(
+      ComponentControllerImpl* controller) override;
 
   void AddBinding(fidl::InterfaceRequest<Environment> environment);
 
@@ -76,11 +89,14 @@ class Realm {
   void CreateComponentWithProcess(
       PackagePtr package, LaunchInfo launch_info,
       fidl::InterfaceRequest<ComponentController> controller,
-      fxl::RefPtr<Namespace> ns);
+      fxl::RefPtr<Namespace> ns,
+      ComponentObjectCreatedCallback callback = nullptr);
+
   void CreateComponentFromPackage(
       PackagePtr package, LaunchInfo launch_info,
       fidl::InterfaceRequest<ComponentController> controller,
-      fxl::RefPtr<Namespace> ns);
+      fxl::RefPtr<Namespace> ns,
+      ComponentObjectCreatedCallback callback = nullptr);
 
   zx::channel OpenRootInfoDir();
 
@@ -88,6 +104,7 @@ class Realm {
   LoaderPtr loader_;
   std::string label_;
   std::string koid_;
+  const bool run_virtual_console_;
 
   zx::job job_;
   zx::job job_for_child_;

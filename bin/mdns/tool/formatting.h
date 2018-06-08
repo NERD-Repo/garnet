@@ -2,13 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MDNS_TOOL_FORMATTING_H_
+#define GARNET_BIN_MDNS_TOOL_FORMATTING_H_
 
 #include <iomanip>
 #include <iostream>
 
+#include <fuchsia/netstack/cpp/fidl.h>
 #include <mdns/cpp/fidl.h>
-#include <netstack/cpp/fidl.h>
 
 namespace mdns {
 
@@ -32,6 +33,8 @@ std::ostream& operator<<(std::ostream& os, const fidl::VectorPtr<T>& value) {
 
 std::ostream& operator<<(std::ostream& os, const MdnsServiceInstance& value);
 std::ostream& operator<<(std::ostream& os,
-                         const netstack::SocketAddress& value);
+                         const fuchsia::netstack::SocketAddress& value);
 
 }  // namespace mdns
+
+#endif  // GARNET_BIN_MDNS_TOOL_FORMATTING_H_

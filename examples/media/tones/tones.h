@@ -8,8 +8,9 @@
 #include <list>
 #include <map>
 
-#include <fbl/vmo_mapper.h>
-#include <media/cpp/fidl.h>
+#include <fuchsia/media/cpp/fidl.h>
+#include <lib/fit/function.h>
+#include <lib/vmo-utils/vmo_mapper.h>
 
 #include "garnet/examples/media/tones/tone_generator.h"
 #include "lib/app/cpp/startup_context.h"
@@ -23,7 +24,7 @@ class MidiKeyboard;
 
 class Tones {
  public:
-  Tones(bool interactive, fxl::Closure quit_callback);
+  Tones(bool interactive, fit::closure quit_callback);
 
   ~Tones();
 
@@ -67,13 +68,13 @@ class Tones {
   }
 
   bool interactive_;
-  fxl::Closure quit_callback_;
+  fit::closure quit_callback_;
   fsl::FDWaiter fd_waiter_;
-  media::AudioRenderer2Ptr audio_renderer_;
+  fuchsia::media::AudioRenderer2Ptr audio_renderer_;
   std::map<int64_t, float> frequencies_by_pts_;
   std::list<ToneGenerator> tone_generators_;
   int64_t pts_ = 0;
-  fbl::VmoMapper payload_buffer_;
+  vmo_utils::VmoMapper payload_buffer_;
   uint32_t active_packets_in_flight_ = 0;
   uint32_t target_packets_in_flight_ = 0;
   bool started_ = false;

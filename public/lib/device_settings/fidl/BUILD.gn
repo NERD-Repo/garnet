@@ -5,8 +5,9 @@
 import("//build/fidl/fidl.gni")
 
 fidl("fidl") {
-  name = "device_settings"
+  name = "fuchsia.devicesettings"
+  cpp_legacy_callbacks = true
   sources = [
-    "device_settings.fidl",
+    "devicesettings.fidl",
   ]
 }

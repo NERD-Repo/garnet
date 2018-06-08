@@ -4,7 +4,7 @@
 
 #include "garnet/examples/ui/tile/tile_view.h"
 
-#include <fdio/util.h>
+#include <lib/fdio/util.h>
 
 #include <fuchsia/ui/views_v1/cpp/fidl.h>
 #include "lib/fidl/cpp/optional.h"
@@ -34,7 +34,7 @@ TileView::~TileView() {}
 void TileView::Present(
     fidl::InterfaceHandle<::fuchsia::ui::views_v1_token::ViewOwner>
         child_view_owner,
-    fidl::InterfaceRequest<presentation::Presentation> presentation) {
+    fidl::InterfaceRequest<fuchsia::ui::policy::Presentation> presentation) {
   const std::string empty_url;
   AddChildView(std::move(child_view_owner), empty_url, nullptr);
 }
@@ -72,8 +72,8 @@ void TileView::CreateNestedEnvironment() {
   env_->GetLauncher(env_launcher_.NewRequest());
 
   // Add a binding for the presenter service
-  service_provider_bridge_.AddService<presentation::Presenter>(
-      [this](fidl::InterfaceRequest<presentation::Presenter> request) {
+  service_provider_bridge_.AddService<fuchsia::ui::policy::Presenter>(
+      [this](fidl::InterfaceRequest<fuchsia::ui::policy::Presenter> request) {
         presenter_bindings_.AddBinding(this, std::move(request));
       });
 

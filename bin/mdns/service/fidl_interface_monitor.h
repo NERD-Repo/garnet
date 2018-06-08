@@ -7,14 +7,15 @@
 
 #include <memory>
 
-#include <netstack/cpp/fidl.h>
+#include <fuchsia/netstack/cpp/fidl.h>
+
 #include "garnet/bin/mdns/service/interface_monitor.h"
 #include "lib/app/cpp/startup_context.h"
 
 namespace mdns {
 
 // FIDL-based interface monitor implementation.
-class FidlInterfaceMonitor : public netstack::NotificationListener,
+class FidlInterfaceMonitor : public fuchsia::netstack::NotificationListener,
                              public InterfaceMonitor {
  public:
   static std::unique_ptr<InterfaceMonitor> Create(
@@ -25,7 +26,7 @@ class FidlInterfaceMonitor : public netstack::NotificationListener,
   ~FidlInterfaceMonitor();
 
   // InterfaceMonitor implementation.
-  void RegisterLinkChangeCallback(const fxl::Closure& callback) override;
+  void RegisterLinkChangeCallback(fit::closure callback) override;
 
   const std::vector<std::unique_ptr<InterfaceDescriptor>>& GetInterfaces()
       override;
@@ -33,11 +34,11 @@ class FidlInterfaceMonitor : public netstack::NotificationListener,
  private:
   // NotificationListener implementation.
   void OnInterfacesChanged(
-      fidl::VectorPtr<netstack::NetInterface> interfaces) override;
+      fidl::VectorPtr<fuchsia::netstack::NetInterface> interfaces) override;
 
-  netstack::NetstackPtr netstack_;
-  fidl::Binding<netstack::NotificationListener> binding_;
-  fxl::Closure link_change_callback_;
+  fuchsia::netstack::NetstackPtr netstack_;
+  fidl::Binding<fuchsia::netstack::NotificationListener> binding_;
+  fit::closure link_change_callback_;
   std::vector<std::unique_ptr<InterfaceDescriptor>> interfaces_;
 };
 

@@ -5,11 +5,12 @@
 #ifndef GARNET_BIN_APPMGR_COMPONENT_CONTROLLER_IMPL_H_
 #define GARNET_BIN_APPMGR_COMPONENT_CONTROLLER_IMPL_H_
 
-#include <fuchsia/sys/cpp/fidl.h>
 #include <fs/pseudo-dir.h>
+#include <fuchsia/sys/cpp/fidl.h>
 #include <lib/async/cpp/wait.h>
 #include <lib/zx/process.h>
 
+#include "garnet/bin/appmgr/component_container.h"
 #include "garnet/bin/appmgr/hub/component_hub.h"
 #include "garnet/bin/appmgr/hub/hub_info.h"
 #include "garnet/bin/appmgr/namespace.h"
@@ -21,7 +22,6 @@
 
 namespace fuchsia {
 namespace sys {
-class Realm;
 
 enum class ExportedDirType {
   // Legacy exported directory layout where each file / service is exposed at
@@ -37,26 +37,59 @@ enum class ExportedDirType {
   kPublicDebugCtrlLayout,
 };
 
-class ComponentControllerImpl : public ComponentController {
+class ComponentControllerBase : public ComponentController {
  public:
-  ComponentControllerImpl(fidl::InterfaceRequest<ComponentController> request,
-                          Realm* realm, std::unique_ptr<archive::FileSystem> fs,
-                          zx::process process, std::string url,
-                          std::string args, std::string label,
+  ComponentControllerBase(fidl::InterfaceRequest<ComponentController> request,
+                          std::unique_ptr<archive::FileSystem> fs,
+                          std::string url, std::string args, std::string label,
+                          std::string hub_instance_id,
                           fxl::RefPtr<Namespace> ns,
                           ExportedDirType export_dir_type,
                           zx::channel exported_dir, zx::channel client_request);
-  ~ComponentControllerImpl() override;
+  ~ComponentControllerBase() override;
 
+ public:
   HubInfo HubInfo();
-
   const std::string& label() const { return label_; }
-  const std::string& koid() const { return koid_; }
   const fbl::RefPtr<fs::PseudoDir>& hub_dir() const { return hub_.dir(); }
 
   // |ComponentController| implementation:
-  void Kill() override;
   void Detach() override;
+
+ protected:
+  ComponentHub* hub() { return &hub_; }
+
+ private:
+  fidl::Binding<ComponentController> binding_;
+  std::unique_ptr<archive::FileSystem> fs_;
+  std::string label_;
+  std::string hub_instance_id_;
+
+  ComponentHub hub_;
+
+  zx::channel exported_dir_;
+
+  fxl::RefPtr<Namespace> ns_;
+};
+
+class ComponentControllerImpl : public ComponentControllerBase {
+ public:
+  ComponentControllerImpl(
+      fidl::InterfaceRequest<ComponentController> request,
+      ComponentContainer<ComponentControllerImpl>* container,
+      std::string job_id, std::unique_ptr<archive::FileSystem> fs,
+      zx::process process, std::string url, std::string args, std::string label,
+      fxl::RefPtr<Namespace> ns, ExportedDirType export_dir_type,
+      zx::channel exported_dir, zx::channel client_request);
+  ~ComponentControllerImpl() override;
+
+  const std::string& koid() const { return koid_; }
+
+  zx_status_t AddSubComponentHub(const fuchsia::sys::HubInfo& hub_info);
+  zx_status_t RemoveSubComponentHub(const fuchsia::sys::HubInfo& hub_info);
+
+  // |ComponentController| implementation:
+  void Kill() override;
   void Wait(WaitCallback callback) override;
 
  private:
@@ -65,23 +98,43 @@ class ComponentControllerImpl : public ComponentController {
 
   bool SendReturnCodeIfTerminated();
 
-  fidl::Binding<ComponentController> binding_;
-  Realm* realm_;
-  std::unique_ptr<archive::FileSystem> fs_;
+  ComponentContainer<ComponentControllerImpl>* container_;
   zx::process process_;
-  std::string label_;
   const std::string koid_;
   std::vector<WaitCallback> wait_callbacks_;
-  ComponentHub hub_;
-
-  zx::channel exported_dir_;
-
-  fxl::RefPtr<Namespace> ns_;
 
   async::WaitMethod<ComponentControllerImpl, &ComponentControllerImpl::Handler>
       wait_;
 
   FXL_DISALLOW_COPY_AND_ASSIGN(ComponentControllerImpl);
+};
+
+// This class acts as a bridge between the components created by ComponentRunner
+// and |request|.
+class ComponentBridge : public ComponentControllerBase {
+ public:
+  ComponentBridge(fidl::InterfaceRequest<ComponentController> request,
+                  ComponentControllerPtr remote_controller,
+                  ComponentContainer<ComponentBridge>* container,
+                  std::unique_ptr<archive::FileSystem> fs, std::string url,
+                  std::string args, std::string label,
+                  std::string hub_instance_id, fxl::RefPtr<Namespace> ns,
+                  ExportedDirType export_dir_type, zx::channel exported_dir,
+                  zx::channel client_request);
+
+  ~ComponentBridge() override;
+
+  void SetParentJobId(const std::string& id);
+
+  // |ComponentController| implementation:
+  void Kill() override;
+  void Wait(WaitCallback callback) override;
+
+ private:
+  ComponentControllerPtr remote_controller_;
+  ComponentContainer<ComponentBridge>* container_;
+
+  FXL_DISALLOW_COPY_AND_ASSIGN(ComponentBridge);
 };
 
 }  // namespace sys

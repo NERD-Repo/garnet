@@ -2,17 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include <dirent.h>
-#include <sys/types.h>
-
 #include "garnet/bin/sysmgr/app.h"
 
 #include <zircon/process.h>
 #include <zircon/processargs.h>
 
-#include <fdio/util.h>
 #include <fs/managed-vfs.h>
 #include <lib/async/default.h>
+#include <lib/fdio/util.h>
 #include "lib/app/cpp/connect.h"
 #include "lib/fidl/cpp/clone.h"
 #include "lib/fxl/functional/make_copyable.h"
@@ -21,39 +18,12 @@
 namespace sysmgr {
 
 constexpr char kDefaultLabel[] = "sys";
-constexpr char kConfigDir[] = "/system/data/sysmgr/";
 
-App::App()
+App::App(Config config)
     : startup_context_(fuchsia::sys::StartupContext::CreateFromStartupInfo()),
       vfs_(async_get_default()),
       svc_root_(fbl::AdoptRef(new fs::PseudoDir())) {
   FXL_DCHECK(startup_context_);
-
-  Config config;
-  char buf[PATH_MAX];
-  if (strlcpy(buf, kConfigDir, PATH_MAX) >= PATH_MAX) {
-    FXL_LOG(ERROR) << "Config directory path too long";
-  } else {
-    const size_t dir_len = strlen(buf);
-    DIR* cfg_dir = opendir(kConfigDir);
-    if (cfg_dir != NULL) {
-      for (dirent* cfg = readdir(cfg_dir); cfg != NULL;
-           cfg = readdir(cfg_dir)) {
-        if (strcmp(".", cfg->d_name) == 0 || strcmp("..", cfg->d_name) == 0) {
-          continue;
-        }
-        if (strlcat(buf, cfg->d_name, PATH_MAX) >= PATH_MAX) {
-          FXL_LOG(WARNING) << "Could not read config file, path too long";
-          continue;
-        }
-        config.ReadFrom(buf);
-        buf[dir_len] = '\0';
-      }
-      closedir(cfg_dir);
-    } else {
-      FXL_LOG(WARNING) << "Could not open config directory" << kConfigDir;
-    }
-  }
 
   // Set up environment for the programs we will run.
   startup_context_->environment()->CreateNestedEnvironment(
@@ -74,11 +44,6 @@ App::App()
   // Launch startup applications.
   for (auto& launch_info : config.TakeApps())
     LaunchApplication(std::move(*launch_info));
-
-  // TODO(abarth): Remove this hard-coded mention of netstack once netstack is
-  // fully converted to using service namespaces.
-  LaunchNetstack();
-  LaunchWlanstack();
 }
 
 App::~App() {}
@@ -118,7 +83,7 @@ void App::LaunchNetstack() {
 void App::LaunchWlanstack() {
   zx::channel h1, h2;
   zx::channel::create(0, &h1, &h2);
-  ConnectToService("wlan_service.Wlan", std::move(h1));
+  ConnectToService("fuchsia.wlan.service.Wlan", std::move(h1));
 }
 
 void App::RegisterSingleton(std::string service_name,

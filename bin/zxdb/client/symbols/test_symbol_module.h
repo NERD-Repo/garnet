@@ -18,7 +18,7 @@ class MemoryBuffer;
 
 namespace object {
 class Binary;
-} // namespace object
+}  // namespace object
 
 }  // namespace llvm
 
@@ -46,6 +46,9 @@ class TestSymbolModule {
   // Loads the test file. On failure, returns false and sets the given error
   // message to be something helpful.
   bool Load(std::string* err_msg);
+
+  // Loads a file at the given path. See Load().
+  bool LoadSpecific(const std::string& path, std::string* err_msg);
 
   llvm::DWARFContext* context() { return context_.get(); }
   llvm::DWARFUnitSection<llvm::DWARFCompileUnit>& compile_units() {

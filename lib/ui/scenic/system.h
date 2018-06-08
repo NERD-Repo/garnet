@@ -5,6 +5,8 @@
 #ifndef GARNET_LIB_UI_SCENIC_SYSTEM_H_
 #define GARNET_LIB_UI_SCENIC_SYSTEM_H_
 
+#include <lib/fit/function.h>
+
 #include "garnet/lib/ui/scenic/command_dispatcher.h"
 
 #include <lib/fit/function.h>
@@ -62,7 +64,7 @@ class System {
     kInvalid = kMaxSystems,
   };
 
-  using OnInitializedCallback = std::function<void(System* system)>;
+  using OnInitializedCallback = fit::function<void(System* system)>;
 
   // If |initialized_after_construction| is false, the System must call
   // SetToInitialized() after initialization is complete.
@@ -79,7 +81,7 @@ class System {
 
   void set_on_initialized_callback(OnInitializedCallback callback) {
     FXL_DCHECK(!on_initialized_callback_);
-    on_initialized_callback_ = callback;
+    on_initialized_callback_ = std::move(callback);
   }
 
  protected:
@@ -111,7 +113,7 @@ class TempSystemDelegate : public System {
 
 // Return the system type that knows how to handle the specified command.
 // Used by Session to choose a CommandDispatcher.
-inline System::TypeId SystemTypeForCommand(
+inline System::TypeId SystemTypeForCmd(
     const fuchsia::ui::scenic::Command& command) {
   switch (command.Which()) {
     case fuchsia::ui::scenic::Command::Tag::kGfx:

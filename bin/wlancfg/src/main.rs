@@ -6,8 +6,8 @@
 
 extern crate failure;
 extern crate fidl;
-extern crate fidl_wlan_device as wlan;
-extern crate fidl_wlan_device_service as wlan_service;
+extern crate fidl_fuchsia_wlan_device as wlan;
+extern crate fidl_fuchsia_wlan_device_service as wlan_service;
 extern crate fuchsia_app as app;
 extern crate fuchsia_async as async;
 extern crate fuchsia_zircon as zx;
@@ -32,9 +32,10 @@ fn main() -> Result<(), Error> {
     let wlan_svc = app::client::connect_to_service::<DeviceServiceMarker>()
         .context("failed to connect to device service")?;
 
-    let event_stream = wlan_svc.take_event_stream();
+    let (watcher_proxy, watcher_server_end) = fidl::endpoints2::create_endpoints()?;
+    wlan_svc.watch_devices(watcher_server_end)?;
     let listener = device::Listener::new(wlan_svc, cfg);
-    let fut = event_stream
+    let fut = watcher_proxy.take_event_stream()
         .for_each(move |evt| device::handle_event(&listener, evt))
         .err_into();
 

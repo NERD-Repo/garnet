@@ -16,11 +16,11 @@
 #include <wlan/mlme/packet.h>
 #include <wlan/mlme/service.h>
 #include <wlan/protocol/mac.h>
+#include <zircon/fidl.h>
 #include <zircon/types.h>
 
-#include <wlan_mlme/c/fidl.h>
-#include <wlan_mlme/cpp/fidl.h>
-#include <wlan_stats/c/fidl.h>
+#include <fuchsia/wlan/mlme/c/fidl.h>
+#include <fuchsia/wlan/mlme/cpp/fidl.h>
 
 #include <atomic>
 #include <cinttypes>
@@ -28,6 +28,8 @@
 #include <sstream>
 
 namespace wlan {
+
+namespace wlan_mlme = ::fuchsia::wlan::mlme;
 
 Dispatcher::Dispatcher(DeviceInterface* device, fbl::unique_ptr<Mlme> mlme)
     : device_(device), mlme_(std::move(mlme)) {
@@ -363,36 +365,40 @@ zx_status_t Dispatcher::HandleSvcPacket(fbl::unique_ptr<Packet> packet) {
     }
     debughdr("service packet txid=%u flags=%u ordinal=%u\n", hdr->txid, hdr->flags, hdr->ordinal);
 
-    if (hdr->ordinal == wlan_mlme_MLMEDeviceQueryReqOrdinal) {
+    if (hdr->ordinal == fuchsia_wlan_mlme_MLMEDeviceQueryReqOrdinal) {
         return HandleMlmeMethod<wlan_mlme::DeviceQueryRequest>(fbl::move(packet), hdr->ordinal);
     }
 
+    if (hdr->ordinal == fuchsia_wlan_mlme_MLMEStatsQueryReqOrdinal) {
+        return HandleMlmeStats(hdr->ordinal);
+    }
+
     switch (hdr->ordinal) {
-    case wlan_mlme_MLMEResetReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEResetReqOrdinal:
         infof("resetting MLME\n");
         HandleMlmeMethod<wlan_mlme::ResetRequest>(fbl::move(packet), hdr->ordinal);
         return ZX_OK;
-    case wlan_mlme_MLMEStartReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEStartReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::StartRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEStopReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEStopReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::StopRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEScanReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEScanReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::ScanRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEJoinReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEJoinReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::JoinRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEAuthenticateReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEAuthenticateReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::AuthenticateRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEAuthenticateRespOrdinal:
+    case fuchsia_wlan_mlme_MLMEAuthenticateRespOrdinal:
         return HandleMlmeMethod<wlan_mlme::AuthenticateResponse>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEDeauthenticateReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEDeauthenticateReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::DeauthenticateRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEAssociateReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEAssociateReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::AssociateRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEAssociateRespOrdinal:
+    case fuchsia_wlan_mlme_MLMEAssociateRespOrdinal:
         return HandleMlmeMethod<wlan_mlme::AssociateResponse>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMEEapolReqOrdinal:
+    case fuchsia_wlan_mlme_MLMEEapolReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::EapolRequest>(fbl::move(packet), hdr->ordinal);
-    case wlan_mlme_MLMESetKeysReqOrdinal:
+    case fuchsia_wlan_mlme_MLMESetKeysReqOrdinal:
         return HandleMlmeMethod<wlan_mlme::SetKeysRequest>(fbl::move(packet), hdr->ordinal);
     default:
         warnf("unknown MLME method %u\n", hdr->ordinal);
@@ -411,11 +417,29 @@ zx_status_t Dispatcher::HandleMlmeMethod(fbl::unique_ptr<Packet> packet, uint32_
     return mlme_->HandleFrame(ordinal, msg);
 }
 
+template <typename T> zx_status_t Dispatcher::SendServiceMessage(uint32_t ordinal, T* msg) const {
+  // fidl2 doesn't have a way to get the serialized size yet. 4096 bytes should be enough for
+  // everyone.
+  size_t buf_len = 4096;
+  // size_t buf_len = sizeof(fidl_message_header_t) + resp->GetSerializedSize();
+  fbl::unique_ptr<Buffer> buffer = GetBuffer(buf_len);
+  if (buffer == nullptr) { return ZX_ERR_NO_RESOURCES; }
+
+  auto packet = fbl::make_unique<Packet>(std::move(buffer), buf_len);
+  packet->set_peer(Packet::Peer::kService);
+  zx_status_t status = SerializeServiceMsg(packet.get(), ordinal, msg);
+  if (status != ZX_OK) {
+    errorf("could not serialize message with ordinal %d: %d\n", ordinal, status);
+    return status;
+  }
+  return device_->SendService(std::move(packet));
+}
+
 template <>
 zx_status_t Dispatcher::HandleMlmeMethod<wlan_mlme::DeviceQueryRequest>(fbl::unique_ptr<Packet> _,
                                                                         uint32_t ordinal) {
     debugfn();
-    ZX_DEBUG_ASSERT(ordinal == wlan_mlme_MLMEDeviceQueryReqOrdinal);
+    ZX_DEBUG_ASSERT(ordinal == fuchsia_wlan_mlme_MLMEDeviceQueryReqOrdinal);
 
     wlan_mlme::DeviceQueryConfirm resp;
     const wlanmac_info_t& info = device_->GetWlanInfo();
@@ -455,23 +479,29 @@ zx_status_t Dispatcher::HandleMlmeMethod<wlan_mlme::DeviceQueryRequest>(fbl::uni
         resp.bands->push_back(std::move(band));
     }
 
-    // fidl2 doesn't have a way to get the serialized size yet. 4096 bytes should be enough for
-    // everyone.
-    size_t buf_len = 4096;
-    // size_t buf_len = sizeof(fidl_message_header_t) + resp->GetSerializedSize();
-    fbl::unique_ptr<Buffer> buffer = GetBuffer(buf_len);
-    if (buffer == nullptr) { return ZX_ERR_NO_RESOURCES; }
+    return SendServiceMessage(fuchsia_wlan_mlme_MLMEDeviceQueryConfOrdinal, &resp);
+}
 
-    auto packet = fbl::unique_ptr<Packet>(new Packet(std::move(buffer), buf_len));
-    packet->set_peer(Packet::Peer::kService);
-    zx_status_t status =
-        SerializeServiceMsg(packet.get(), wlan_mlme_MLMEDeviceQueryConfOrdinal, &resp);
-    if (status != ZX_OK) {
-        errorf("could not serialize DeviceQueryResponse: %d\n", status);
-        return status;
+zx_status_t Dispatcher::HandleMlmeStats(uint32_t ordinal) const {
+    debugfn();
+    ZX_DEBUG_ASSERT(ordinal == fuchsia_wlan_mlme_MLMEStatsQueryReqOrdinal);
+
+    wlan_mlme::StatsQueryResponse resp;
+    const wlanmac_info_t& info = device_->GetWlanInfo();
+
+    resp.dispatcher_stats = stats_.ToFidl();
+
+    switch (info.mac_role) {
+    case WLAN_MAC_ROLE_CLIENT:
+        resp.mlme_stats.client_mlme_stats() = mlme_->GetClientMlmeStats();
+        break;
+    // TODO: Add stats for AP
+    case WLAN_MAC_ROLE_AP:
+        break;
+    default:
+        break;
     }
-
-    return device_->SendService(std::move(packet));
+    return SendServiceMessage(fuchsia_wlan_mlme_MLMEStatsQueryRespOrdinal, &resp);
 }
 
 zx_status_t Dispatcher::PreChannelChange(wlan_channel_t chan) {

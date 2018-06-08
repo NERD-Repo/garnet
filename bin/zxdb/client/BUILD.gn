@@ -37,6 +37,10 @@ static_library("client") {
     "process.cc",
     "process_impl.cc",
     "process_impl.h",
+    "remote_api.cc",
+    "remote_api.h",
+    "remote_api_impl.cc",
+    "remote_api_impl.h",
     "session.cc",
     "system.cc",
     "system_impl.cc",
@@ -70,24 +74,36 @@ static_library("common") {
   public = [
     "client_object.h",
     "err.h",
-    "host_utils.h",
+    "file_util.h",
+    "host_util.h",
+    "string_util.h",
   ]
   sources = [
     "client_object.cc",
     "err.cc",
-    "host_utils.cc",
+    "file_util.cc",
+    "host_util.cc",
+    "string_util.cc",
+  ]
+
+  public_deps = [
+    "//garnet/public/lib/fxl",
   ]
 }
 
 source_set("tests") {
   testonly = true
   sources = [
+    "breakpoint_impl_unittest.cc",
     "disassembler_unittest.cc",
+    "file_util_unittest.cc",
     "memory_dump_unittest.cc",
+    "string_util_unittest.cc",
   ]
 
   deps = [
     ":client",
+    "symbols:test_support",
     "symbols:tests",
     "//third_party/googletest:gtest",
   ]

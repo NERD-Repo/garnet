@@ -2,12 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-library wlan_device_service;
+library fuchsia.wlan.device.service;
 
-using wlan_device;
+using fuchsia.wlan.device;
+using fuchsia.wlan.sme;
+
+struct PhyListItem {
+    uint16 phy_id;
+    string path;
+};
 
 struct ListPhysResponse {
-    vector<wlan_device.PhyInfo> phys;
+    vector<PhyListItem> phys;
 };
 
 struct QueryPhyRequest {
@@ -15,16 +21,16 @@ struct QueryPhyRequest {
 };
 
 struct QueryPhyResponse {
-    wlan_device.PhyInfo info;
+    fuchsia.wlan.device.PhyInfo info;
 };
 
 struct ListIfacesResponse {
-    vector<wlan_device.IfaceInfo> ifaces;
+    vector<fuchsia.wlan.device.IfaceInfo> ifaces;
 };
 
 struct CreateIfaceRequest {
     uint16 phy_id;
-    wlan_device.MacRole role;
+    fuchsia.wlan.device.MacRole role;
 };
 
 struct CreateIfaceResponse {
@@ -34,6 +40,13 @@ struct CreateIfaceResponse {
 struct DestroyIfaceRequest {
     uint16 phy_id;
     uint16 iface_id;
+};
+
+interface DeviceWatcher {
+    1: -> OnPhyAdded(uint16 phy_id);
+    2: -> OnPhyRemoved(uint16 phy_id);
+    3: -> OnIfaceAdded(uint16 iface_id);
+    4: -> OnIfaceRemoved(uint16 iface_id);
 };
 
 [Discoverable]
@@ -50,11 +63,7 @@ interface DeviceService {
   // 19: reserved for StartIface
   // 20: reserved for StopIface
   21: DestroyIface(DestroyIfaceRequest req) -> (int32 @status);
-  22: GetClientSme(uint16 iface_id, request<wlan_sme.ClientSme> sme) -> (bool ok);
+  22: GetClientSme(uint16 iface_id, request<fuchsia.wlan.sme.ClientSme> sme) -> (bool ok);
 
-  // Device events
-  0x1000: -> OnPhyAdded(uint16 id);
-  0x1001: -> OnPhyRemoved(uint16 id);
-  0x1002: -> OnIfaceAdded(uint16 id);
-  0x1003: -> OnIfaceRemoved(uint16 id);
+  100: WatchDevices(request<DeviceWatcher> watcher);
 };

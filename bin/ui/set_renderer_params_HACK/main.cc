@@ -6,7 +6,7 @@
 #include <lib/zx/channel.h>
 
 #include <fuchsia/ui/views_v1/cpp/fidl.h>
-#include <presentation/cpp/fidl.h>
+#include <fuchsia/ui/policy/cpp/fidl.h>
 #include "garnet/bin/ui/root_presenter/renderer_params.h"
 #include "lib/app/cpp/startup_context.h"
 #include "lib/fxl/command_line.h"
@@ -19,8 +19,9 @@ int main(int argc, const char** argv) {
   if (!fxl::SetLogSettingsFromCommandLine(command_line))
     return 1;
 
-  FXL_LOG(ERROR) << "This tool is intended for testing and debugging purposes "
-                    "only and may cause problems if invoked incorrectly.";
+  FXL_LOG(WARNING)
+      << "This tool is intended for testing and debugging purposes "
+         "only and may cause problems if invoked incorrectly.";
 
   root_presenter::RendererParams presenter_renderer_params =
       root_presenter::RendererParams::FromCommandLine(command_line);
@@ -49,7 +50,7 @@ int main(int argc, const char** argv) {
 
   // Ask the presenter to change renderer params.
   auto presenter =
-      startup_context_->ConnectToEnvironmentService<presentation::Presenter>();
+      startup_context_->ConnectToEnvironmentService<fuchsia::ui::policy::Presenter>();
   presenter->HACK_SetRendererParams(clipping_enabled,
                                     std::move(renderer_params));
 

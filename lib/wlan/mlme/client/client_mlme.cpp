@@ -14,7 +14,7 @@
 #include <wlan/mlme/timer.h>
 #include <wlan/mlme/wlan.h>
 
-#include <wlan_mlme/cpp/fidl.h>
+#include <fuchsia/wlan/mlme/cpp/fidl.h>
 
 #include <lib/zx/time.h>
 #include <zircon/assert.h>
@@ -25,6 +25,8 @@
 #include <sstream>
 
 namespace wlan {
+
+namespace wlan_mlme = ::fuchsia::wlan::mlme;
 
 ClientMlme::ClientMlme(DeviceInterface* device) : device_(device) {
     debugfn();
@@ -106,6 +108,10 @@ zx_status_t ClientMlme::PostChannelChange() {
     debugfn();
     if (IsStaValid()) { sta_->PostChannelChange(); }
     return ZX_OK;
+}
+
+wlan_stats::ClientMlmeStats ClientMlme::GetClientMlmeStats() const {
+    return sta_->stats();
 }
 
 }  // namespace wlan

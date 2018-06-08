@@ -2,20 +2,21 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_DEVICE_MANAGER_H_
+#define GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_DEVICE_MANAGER_H_
 
 #include <set>
 
 #include <fbl/intrusive_double_list.h>
 #include <fbl/ref_ptr.h>
-#include <media/cpp/fidl.h>
+#include <fuchsia/media/cpp/fidl.h>
+#include <lib/fit/function.h>
 
 #include "garnet/bin/media/audio_server/audio_device.h"
 #include "garnet/bin/media/audio_server/audio_input.h"
 #include "garnet/bin/media/audio_server/audio_output.h"
 #include "garnet/bin/media/audio_server/audio_plug_detector.h"
 #include "garnet/bin/media/audio_server/fwd_decls.h"
-#include "lib/fxl/functional/closure.h"
 
 namespace media {
 namespace audio {
@@ -34,7 +35,7 @@ class AudioDeviceManager {
   // 2) Instantiate all of the built-in audio output devices.
   // 3) Being monitoring for plug/unplug events for pluggable audio output
   //    devices.
-  MediaResult Init();
+  fuchsia::media::MediaResult Init();
 
   // Blocking call.  Called by the service, once, when it is time to shutdown
   // the service implementation.  While this function is blocking, it must never
@@ -73,10 +74,10 @@ class AudioDeviceManager {
   void RemoveCapturer(AudioCapturerImpl* capturer);
 
   // Schedule a closure to run on our encapsulating server's main message loop.
-  void ScheduleMainThreadTask(const fxl::Closure& task);
+  void ScheduleMainThreadTask(fit::closure task);
 
   // Attempt to initialize an output and add it to the set of active outputs.
-  MediaResult AddDevice(const fbl::RefPtr<AudioDevice>& device);
+  fuchsia::media::MediaResult AddDevice(const fbl::RefPtr<AudioDevice>& device);
 
   // Shutdown the specified audio device and remove it from the appropriate set
   // of active devices.
@@ -163,3 +164,5 @@ class AudioDeviceManager {
 
 }  // namespace audio
 }  // namespace media
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_DEVICE_MANAGER_H_

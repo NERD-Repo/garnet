@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-library wlan_stats;
+library fuchsia.wlan.stats;
 
 struct Counter {
   uint64 count;
@@ -28,6 +28,10 @@ struct ClientMlmeStats {
   PacketCounter svc_msg;
   PacketCounter data_frame;
   PacketCounter mgmt_frame;
+};
+
+struct ApMlmeStats {
+  PacketCounter not_used;
 };
 
 // LINT.ThenChange(//garnet/lib/wlan/common/include/wlan/common/stats.h)

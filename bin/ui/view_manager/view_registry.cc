@@ -8,6 +8,7 @@
 #include <cmath>
 #include <utility>
 
+#include <fuchsia/ui/a11y/cpp/fidl.h>
 #include <fuchsia/ui/input/cpp/fidl.h>
 #include <lib/async/cpp/task.h>
 #include <lib/async/default.h>
@@ -27,18 +28,11 @@
 namespace view_manager {
 namespace {
 
-bool Validate(const ::fuchsia::ui::views_v1::DisplayMetrics& value) {
-  return std::isnormal(value.device_pixel_ratio) &&
-         value.device_pixel_ratio > 0.f;
-}
-
 bool Validate(const ::fuchsia::ui::views_v1::ViewLayout& value) {
   return value.size.width >= 0 && value.size.height >= 0;
 }
 
 bool Validate(const ::fuchsia::ui::views_v1::ViewProperties& value) {
-  if (value.display_metrics && !Validate(*value.display_metrics))
-    return false;
   if (value.view_layout && !Validate(*value.view_layout))
     return false;
   return true;
@@ -47,15 +41,13 @@ bool Validate(const ::fuchsia::ui::views_v1::ViewProperties& value) {
 // Returns true if the properties are valid and are sufficient for
 // operating the view tree.
 bool IsComplete(const ::fuchsia::ui::views_v1::ViewProperties& value) {
-  return Validate(value) && value.view_layout && value.display_metrics;
+  return Validate(value) && value.view_layout;
 }
 
 void ApplyOverrides(::fuchsia::ui::views_v1::ViewProperties* value,
                     const ::fuchsia::ui::views_v1::ViewProperties* overrides) {
   if (!overrides)
     return;
-  if (overrides->display_metrics)
-    *value->display_metrics = *overrides->display_metrics;
   if (overrides->view_layout)
     *value->view_layout = *overrides->view_layout;
 }
@@ -739,26 +731,27 @@ void ViewRegistry::HitTest(
   session_.HitTestDeviceRay(
       (float[3]){ray_origin.x, ray_origin.y, ray_origin.z},
       (float[3]){ray_direction.x, ray_direction.y, ray_direction.z},
-      [this, callback = std::move(callback), ray_origin,
-       ray_direction](fidl::VectorPtr<fuchsia::ui::gfx::Hit> hits) {
-        auto view_hits = fidl::VectorPtr<ViewHit>::New(0);
-        for (auto& hit : *hits) {
-          auto it = views_by_token_.find(hit.tag_value);
-          if (it != views_by_token_.end()) {
-            ViewState* view_state = it->second;
+      fxl::MakeCopyable(
+          [this, callback = std::move(callback), ray_origin,
+           ray_direction](fidl::VectorPtr<fuchsia::ui::gfx::Hit> hits) {
+            auto view_hits = fidl::VectorPtr<ViewHit>::New(0);
+            for (auto& hit : *hits) {
+              auto it = views_by_token_.find(hit.tag_value);
+              if (it != views_by_token_.end()) {
+                ViewState* view_state = it->second;
 
-            view_hits->emplace_back(
-                ViewHit{view_state->view_token(), ray_origin, ray_direction,
-                        hit.distance, ToTransform(hit.inverse_transform)});
-          }
-        }
-        callback(std::move(view_hits));
-      });
+                view_hits->emplace_back(
+                    ViewHit{view_state->view_token(), ray_origin, ray_direction,
+                            hit.distance, ToTransform(hit.inverse_transform)});
+              }
+            }
+            callback(std::move(view_hits));
+          }));
 }
 
 void ViewRegistry::ResolveFocusChain(
     ::fuchsia::ui::views_v1::ViewTreeToken view_tree_token,
-    const ResolveFocusChainCallback& callback) {
+    ResolveFocusChainCallback callback) {
   FXL_VLOG(1) << "ResolveFocusChain: view_tree_token=" << view_tree_token;
 
   auto it = view_trees_by_token_.find(view_tree_token.value);
@@ -771,7 +764,7 @@ void ViewRegistry::ResolveFocusChain(
 
 void ViewRegistry::ActivateFocusChain(
     ::fuchsia::ui::views_v1_token::ViewToken view_token,
-    const ActivateFocusChainCallback& callback) {
+    ActivateFocusChainCallback callback) {
   FXL_VLOG(1) << "ActivateFocusChain: view_token=" << view_token;
 
   ViewState* view = FindView(view_token.value);
@@ -788,7 +781,7 @@ void ViewRegistry::ActivateFocusChain(
 }
 
 void ViewRegistry::HasFocus(::fuchsia::ui::views_v1_token::ViewToken view_token,
-                            const HasFocusCallback& callback) {
+                            HasFocusCallback callback) {
   FXL_VLOG(1) << "HasFocus: view_token=" << view_token;
   ViewState* view = FindView(view_token.value);
   if (!view) {
@@ -921,6 +914,14 @@ void ViewRegistry::DeliverEvent(
   FXL_VLOG(1) << "DeliverEvent: view_token=" << view_token
               << ", event=" << event;
 
+  // TODO(SCN-743) Remove this stub code once there is a proper design for A11y
+  // integration with Scenic.
+  if (event.is_pointer()
+      && event.pointer().type == fuchsia::ui::input::PointerEventType::TOUCH
+      && event.pointer().phase == fuchsia::ui::input::PointerEventPhase::DOWN) {
+    A11yNotifyViewSelected(view_token);
+  }
+
   auto it = input_connections_by_view_token_.find(view_token.value);
   if (it == input_connections_by_view_token_.end()) {
     FXL_VLOG(1)
@@ -930,10 +931,12 @@ void ViewRegistry::DeliverEvent(
     return;
   }
 
-  it->second->DeliverEvent(std::move(event), [callback](bool handled) {
-    if (callback)
-      callback(handled);
-  });
+  it->second->DeliverEvent(
+      std::move(event),
+      fxl::MakeCopyable([callback = std::move(callback)](bool handled) {
+        if (callback)
+          callback(handled);
+      }));
 }
 
 void ViewRegistry::CreateInputConnection(
@@ -996,6 +999,20 @@ ViewState* ViewRegistry::FindView(uint32_t view_token_value) {
 ViewTreeState* ViewRegistry::FindViewTree(uint32_t view_tree_token_value) {
   auto it = view_trees_by_token_.find(view_tree_token_value);
   return it != view_trees_by_token_.end() ? it->second : nullptr;
+}
+
+void ViewRegistry::A11yNotifyViewSelected(
+    ::fuchsia::ui::views_v1_token::ViewToken view_token){
+  auto view_elem = views_by_token_.find(view_token.value);
+  if (view_elem != views_by_token_.end()) {
+    fuchsia::sys::ServiceProvider* a11y_provider = view_elem->second->
+        GetServiceProviderIfSupports(fuchsia::ui::a11y::A11yClient::Name_);
+    if (a11y_provider != nullptr) {
+      auto a11y_client = fuchsia::sys::ConnectToService
+          <fuchsia::ui::a11y::A11yClient>(a11y_provider);
+      a11y_client->NotifyViewSelected();
+    }
+  }
 }
 
 }  // namespace view_manager

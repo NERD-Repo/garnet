@@ -2,7 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_DRIVER_H_
+#define GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_DRIVER_H_
+
+#include <mutex>
+#include <string>
 
 #include <dispatcher-pool/dispatcher-channel.h>
 #include <dispatcher-pool/dispatcher-timer.h>
@@ -11,9 +15,6 @@
 #include <lib/zx/channel.h>
 #include <lib/zx/vmo.h>
 #include <zircon/device/audio.h>
-
-#include <mutex>
-#include <string>
 
 #include "garnet/bin/media/audio_server/audio_device.h"
 #include "garnet/bin/media/audio_server/driver_ring_buffer.h"
@@ -53,7 +54,7 @@ class AudioDriver {
   zx_status_t Init(zx::channel stream_channel);
   void Cleanup();
   void SnapshotRingBuffer(RingBufferSnapshot* snapshot) const;
-  AudioMediaTypeDetailsPtr GetSourceFormat() const;
+  fuchsia::media::AudioMediaTypeDetailsPtr GetSourceFormat() const;
 
   bool plugged() const {
     fbl::AutoLock lock(&plugged_lock_);
@@ -89,7 +90,7 @@ class AudioDriver {
 
   zx_status_t GetSupportedFormats();
   zx_status_t Configure(uint32_t frames_per_second, uint32_t channels,
-                        AudioSampleFormat fmt,
+                        fuchsia::media::AudioSampleFormat fmt,
                         zx_duration_t min_ring_buffer_duration);
   zx_status_t Start();
   zx_status_t Stop();
@@ -207,7 +208,7 @@ class AudioDriver {
   // destintions (either outputs or capturers) when determining what mixer to
   // use.
   mutable std::mutex configured_format_lock_;
-  AudioMediaTypeDetailsPtr configured_format_
+  fuchsia::media::AudioMediaTypeDetailsPtr configured_format_
       FXL_GUARDED_BY(configured_format_lock_);
 
   // Ring buffer state.  Note, the details of the ring buffer state are
@@ -234,3 +235,5 @@ class AudioDriver {
 
 }  // namespace audio
 }  // namespace media
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_SERVER_AUDIO_DRIVER_H_

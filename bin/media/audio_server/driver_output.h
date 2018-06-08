@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_SERVER_DRIVER_OUTPUT_H_
+#define GARNET_BIN_MEDIA_AUDIO_SERVER_DRIVER_OUTPUT_H_
 
 #include <dispatcher-pool/dispatcher-channel.h>
 #include <lib/zx/channel.h>
@@ -25,7 +26,7 @@ class DriverOutput : public StandardOutputBase {
   ~DriverOutput();
 
   // AudioOutput implementation
-  MediaResult Init() override;
+  fuchsia::media::MediaResult Init() override;
   void OnWakeup() FXL_EXCLUSIVE_LOCKS_REQUIRED(mix_domain_->token()) override;
 
   void Cleanup() override;
@@ -80,3 +81,5 @@ class DriverOutput : public StandardOutputBase {
 
 }  // namespace audio
 }  // namespace media
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_SERVER_DRIVER_OUTPUT_H_

@@ -9,8 +9,8 @@
 
 #include <lib/async-loop/loop.h>
 #include <lib/async/default.h>
-
 #include <mdns/cpp/fidl.h>
+
 #include "garnet/bin/mdns/tool/formatting.h"
 #include "garnet/bin/mdns/tool/mdns_params.h"
 #include "lib/fsl/types/type_converters.h"
@@ -20,8 +20,8 @@
 namespace mdns {
 
 MdnsImpl::MdnsImpl(fuchsia::sys::StartupContext* startup_context,
-                   MdnsParams* params, fxl::Closure quit_callback)
-    : quit_callback_(quit_callback), binding_(this) {
+                   MdnsParams* params, fit::closure quit_callback)
+    : quit_callback_(std::move(quit_callback)), binding_(this) {
   FXL_DCHECK(startup_context);
   FXL_DCHECK(params);
   FXL_DCHECK(quit_callback_);
@@ -89,8 +89,8 @@ void MdnsImpl::Resolve(const std::string& host_name, uint32_t timeout_seconds) {
   std::cout << "resolving " << host_name << "\n";
   mdns_service_->ResolveHostName(
       host_name, timeout_seconds * 1000,
-      [this](netstack::SocketAddressPtr v4Address,
-             netstack::SocketAddressPtr v6Address) {
+      [this](fuchsia::netstack::SocketAddressPtr v4Address,
+             fuchsia::netstack::SocketAddressPtr v6Address) {
         if (v4Address) {
           std::cout << "IPv4 address: " << *v4Address << "\n";
         }

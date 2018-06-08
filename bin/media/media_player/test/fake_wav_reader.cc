@@ -9,9 +9,7 @@
 
 namespace media_player {
 
-FakeWavReader::FakeWavReader() : binding_(this) {
-  WriteHeader();
-}
+FakeWavReader::FakeWavReader() : binding_(this) { WriteHeader(); }
 
 void FakeWavReader::WriteHeader() {
   header_.clear();
@@ -45,12 +43,13 @@ void FakeWavReader::WriteHeader() {
 
 FakeWavReader::~FakeWavReader() {}
 
-void FakeWavReader::Bind(fidl::InterfaceRequest<SeekingReader> request) {
+void FakeWavReader::Bind(
+    fidl::InterfaceRequest<fuchsia::mediaplayer::SeekingReader> request) {
   binding_.Bind(std::move(request));
 }
 
 void FakeWavReader::Describe(DescribeCallback callback) {
-  callback(media::MediaResult::OK, size_, true);
+  callback(fuchsia::media::MediaResult::OK, size_, true);
 }
 
 void FakeWavReader::ReadAt(uint64_t position, ReadAtCallback callback) {
@@ -61,7 +60,7 @@ void FakeWavReader::ReadAt(uint64_t position, ReadAtCallback callback) {
   zx::socket other_socket;
   zx_status_t status = zx::socket::create(0u, &socket_, &other_socket);
   FXL_DCHECK(status == ZX_OK);
-  callback(media::MediaResult::OK, std::move(other_socket));
+  callback(fuchsia::media::MediaResult::OK, std::move(other_socket));
 
   position_ = position;
 

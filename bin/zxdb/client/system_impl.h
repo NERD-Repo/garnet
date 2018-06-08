@@ -7,8 +7,8 @@
 #include <memory>
 #include <vector>
 
-#include "garnet/bin/zxdb/client/system.h"
 #include "garnet/bin/zxdb/client/symbols/system_symbols.h"
+#include "garnet/bin/zxdb/client/system.h"
 #include "garnet/public/lib/fxl/macros.h"
 #include "garnet/public/lib/fxl/memory/weak_ptr.h"
 
@@ -27,6 +27,12 @@ class SystemImpl : public System {
   ProcessImpl* ProcessImplFromKoid(uint64_t koid) const;
 
   SystemSymbols& symbols() { return symbols_; }
+
+  // Broadcasts the global process notifications.
+  void NotifyDidCreateProcess(Process* process);
+  void NotifyWillDestroyProcess(Process* process);
+
+  std::vector<TargetImpl*> GetTargetImpls() const;
 
   // System implementation:
   std::vector<Target*> GetTargets() const override;

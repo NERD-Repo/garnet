@@ -22,9 +22,17 @@
 
 class AmlogicVideo {
  public:
+  enum class DeviceType {
+    kUnknown,
+    kGXM,   // S912
+    kG12A,  // S905D2
+  };
+
   ~AmlogicVideo();
 
-  zx_status_t Init(zx_device_t* parent);
+  zx_status_t InitRegisters(zx_device_t* parent);
+  zx_status_t InitDecoder();
+  zx_status_t Bind();
 
   zx_status_t LoadDecoderFirmware(uint8_t* data, uint32_t size);
 
@@ -36,6 +44,7 @@ class AmlogicVideo {
   zx_device_t* parent_ = nullptr;
   zx_device_t* device_ = nullptr;
   platform_device_protocol_t pdev_;
+  DeviceType device_type_ = DeviceType::kUnknown;
   io_buffer_t mmio_cbus_ = {};
   io_buffer_t mmio_dosbus_ = {};
   io_buffer_t mmio_hiubus_ = {};
@@ -46,6 +55,7 @@ class AmlogicVideo {
   std::unique_ptr<HiuRegisterIo> hiubus_;
   std::unique_ptr<AoRegisterIo> aobus_;
   std::unique_ptr<DmcRegisterIo> dmc_;
+  std::unique_ptr<ResetRegisterIo> reset_;
 
   std::unique_ptr<FirmwareBlob> firmware_;
 

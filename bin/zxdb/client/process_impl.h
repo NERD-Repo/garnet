@@ -44,13 +44,15 @@ class ProcessImpl : public Process, public ProcessSymbolsImpl::Notifications {
   void Pause() override;
   void Continue() override;
   void ReadMemory(
-      uint64_t address,
-      uint32_t size,
+      uint64_t address, uint32_t size,
       std::function<void(const Err&, MemoryDump)> callback) override;
 
   // Notifications from the agent that a thread has started or exited.
   void OnThreadStarting(const debug_ipc::ThreadRecord& record);
   void OnThreadExiting(const debug_ipc::ThreadRecord& record);
+
+  // Notification that a module has been loaded.
+  void NotifyModuleLoaded(const debug_ipc::Module& module);
 
  private:
   // Syncs the threads_ list to the new list of threads passed in .

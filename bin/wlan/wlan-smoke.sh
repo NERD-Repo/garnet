@@ -34,7 +34,6 @@ log_fail() {
 
 ping_dst() {
   dst="$1"
-  shift
   cmd="ping -c 2 ${dst}"
   ${cmd} > /dev/null 2>&1
 
@@ -68,27 +67,29 @@ get_file_size() {
   echo "${filesize}"
 }
 
-wget_dst() {
-  tmp_file="/tmp/wlan_smoke_wget.tmp"
-  dst="$1"
-  bytes_want="$2"
+curl_md5sum() {
+  url="$1"
+  tmp_file="/tmp/wlan_smoke_md5sum.tmp"
+  md5_wanted="$2"
 
-  # Fuchsia Dash's pipe and redirection is funky when used in $(..)
-  cmd="wget ${dst} > ${tmp_file}"
-  wget "${dst}" > "${tmp_file}"
+  speed=$(curl -sw "%{speed_download}" -o "${tmp_file}" "${url}" | cut -f 1 -d ".")
+  speed=$((speed/1024))
+  md5_download=$(md5sum "${tmp_file}" | cut -f 1 -d " ")
 
-  bytes_got=$(get_file_size "${tmp_file}")
-  if [ "${bytes_got}" -lt "${bytes_want}" ]; then
-    log_fail "${cmd}"
+  msg="curl_md5sum ${speed}kB/s ${url}"
+  if [ "${md5_download}" = "${md5_wanted}" ]; then
+    log_pass "${msg}"
   else
-    log_pass "${cmd}"
+    log_fail "${msg}"
   fi
 }
 
-
-test_wget() {
-  wget_dst www.google.com 40000
-  wget_dst example.com 1400
+test_curl_md5sum() {
+  curl_md5sum http://ovh.net/files/1Mb.dat 62501d556539559fb422943553cd235a
+  # curl_md5sum http://ovh.net/files/1Mio.dat 6cb91af4ed4c60c11613b75cd1fc6116
+  # curl_md5sum http://ovh.net/files/10Mb.dat 241cead4562ebf274f76f2e991750b9d
+  # curl_md5sum http://ovh.net/files/10Mio.dat ecf2a421f46ab33f277fa2aaaf141780
+  # curl_md5sum http://ipv4.download.thinkbroadband.com/5MB.zip b3215c06647bc550406a9c8ccc378756
 }
 
 check_wlan_status() {
@@ -119,7 +120,6 @@ wlan_connect() {
   WLAN_STATUS_QUERY_RETRY_MAX=10
 
   ssid=$1
-  shift
   for i in $(seq 1 ${WLAN_STATUS_QUERY_RETRY_MAX}); do
     status=$(check_wlan_status)
     if [ "${status}" = "associated" ]; then
@@ -164,7 +164,6 @@ test_teardown() {
 
 run() {
   cmd="$*"
-  shift
   ${cmd}
   if [ "$?" -ne 0 ]; then
     log_fail "failed in ${cmd}"
@@ -176,15 +175,15 @@ main() {
   log "Start"
   eth_iface_list=$(get_eth_iface_list)
   run test_setup "${eth_iface_list}"
-  run wlan_disconnect "${eth_iface_list}"
-  run wlan_connect GoogleGuest "${eth_iface_list}"
+  run wlan_disconnect
+  run wlan_connect GoogleGuest
   run wait_for_dhcp
   log "Starting traffic tests"
-  run test_ping "${eth_iface_list}"
+  run test_ping
   run test_dns
-  run test_wget
+  run test_curl_md5sum
   log "Ending traffic tests"
-  run wlan_disconnect "${eth_iface_list}"
+  run wlan_disconnect
   run test_teardown "${eth_iface_list}"
   log "End"
 }

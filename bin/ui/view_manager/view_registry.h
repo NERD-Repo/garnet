@@ -117,11 +117,11 @@ class ViewRegistry : public ViewInspector, public InputOwner {
                const fuchsia::math::Point3F& ray_direction,
                HitTestCallback callback) override;
   void ResolveFocusChain(::fuchsia::ui::views_v1::ViewTreeToken view_tree_token,
-                         const ResolveFocusChainCallback& callback) override;
+                         ResolveFocusChainCallback callback) override;
   void ActivateFocusChain(::fuchsia::ui::views_v1_token::ViewToken view_token,
-                          const ActivateFocusChainCallback& callback) override;
+                          ActivateFocusChainCallback callback) override;
   void HasFocus(::fuchsia::ui::views_v1_token::ViewToken view_token,
-                const HasFocusCallback& callback) override;
+                HasFocusCallback callback) override;
   void GetSoftKeyboardContainer(
       ::fuchsia::ui::views_v1_token::ViewToken view_token,
       fidl::InterfaceRequest<fuchsia::ui::input::SoftKeyboardContainer>
@@ -230,6 +230,12 @@ class ViewRegistry : public ViewInspector, public InputOwner {
            (IsViewStateRegisteredDebug(container_state->AsViewState()) ||
             IsViewTreeStateRegisteredDebug(container_state->AsViewTreeState()));
   }
+
+  // A11Y CLIENTS
+
+  // Calls a view's accessibility service if it exists.
+  void A11yNotifyViewSelected(
+      ::fuchsia::ui::views_v1_token::ViewToken view_token);
 
   fuchsia::sys::StartupContext* startup_context_;
   fuchsia::ui::scenic::ScenicPtr scenic_;

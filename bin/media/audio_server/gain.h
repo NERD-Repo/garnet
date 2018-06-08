@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#pragma once
+#ifndef GARNET_BIN_MEDIA_AUDIO_SERVER_GAIN_H_
+#define GARNET_BIN_MEDIA_AUDIO_SERVER_GAIN_H_
 
-#include <stdint.h>
 #include <atomic>
 
-#include <media/cpp/fidl.h>
+#include <fuchsia/media/cpp/fidl.h>
+#include <stdint.h>
 
 #include "garnet/bin/media/audio_server/constants.h"
 
@@ -40,8 +41,8 @@ class Gain {
       (static_cast<AScale>(1u) << kFractionalScaleBits);
   static constexpr AScale kMaxScale = 0xFD9539A4;  // +24.0 dB: kMaxGain
 
-  static constexpr float kMinGain = media::kMutedGain;
-  static constexpr float kMaxGain = media::kMaxGain;
+  static constexpr float kMinGain = fuchsia::media::kMutedGain;
+  static constexpr float kMaxGain = fuchsia::media::kMaxGain;
 
   // TODO(mpuryear): MTWN-70 Clarify/document/test audio::Gain's thread-safety
   //
@@ -85,3 +86,5 @@ class Gain {
 
 }  // namespace audio
 }  // namespace media
+
+#endif  // GARNET_BIN_MEDIA_AUDIO_SERVER_GAIN_H_

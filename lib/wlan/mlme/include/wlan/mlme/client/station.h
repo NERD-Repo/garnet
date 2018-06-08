@@ -10,8 +10,8 @@
 #include <wlan/mlme/mac_frame.h>
 #include <wlan/mlme/sequence.h>
 
-#include <wlan_mlme/cpp/fidl.h>
-#include <wlan_stats/c/fidl.h>
+#include <fuchsia/wlan/mlme/cpp/fidl.h>
+#include <fuchsia/wlan/stats/cpp/fidl.h>
 
 #include <fbl/unique_ptr.h>
 #include <wlan/common/macaddr.h>
@@ -76,12 +76,12 @@ class Station : public FrameHandler {
     zx_status_t SendKeepAliveResponse();
 
     zx_status_t HandleMlmeMessage(uint32_t ordinal) override;
-    zx_status_t HandleMlmeJoinReq(const wlan_mlme::JoinRequest& req) override;
-    zx_status_t HandleMlmeAuthReq(const wlan_mlme::AuthenticateRequest& req) override;
-    zx_status_t HandleMlmeDeauthReq(const wlan_mlme::DeauthenticateRequest& req) override;
-    zx_status_t HandleMlmeAssocReq(const wlan_mlme::AssociateRequest& req) override;
-    zx_status_t HandleMlmeEapolReq(const wlan_mlme::EapolRequest& req) override;
-    zx_status_t HandleMlmeSetKeysReq(const wlan_mlme::SetKeysRequest& req) override;
+    zx_status_t HandleMlmeJoinReq(const ::fuchsia::wlan::mlme::JoinRequest& req) override;
+    zx_status_t HandleMlmeAuthReq(const ::fuchsia::wlan::mlme::AuthenticateRequest& req) override;
+    zx_status_t HandleMlmeDeauthReq(const ::fuchsia::wlan::mlme::DeauthenticateRequest& req) override;
+    zx_status_t HandleMlmeAssocReq(const ::fuchsia::wlan::mlme::AssociateRequest& req) override;
+    zx_status_t HandleMlmeEapolReq(const ::fuchsia::wlan::mlme::EapolRequest& req) override;
+    zx_status_t HandleMlmeSetKeysReq(const ::fuchsia::wlan::mlme::SetKeysRequest& req) override;
 
     zx_status_t HandleDataFrame(const DataFrameHeader& hdr) override;
     zx_status_t HandleBeacon(const MgmtFrame<Beacon>& frame) override;
@@ -109,6 +109,8 @@ class Station : public FrameHandler {
 
     const Timer& timer() const { return *timer_; }
 
+    const ::fuchsia::wlan::stats::ClientMlmeStats& stats();
+
    private:
     zx_status_t SendAddBaRequestFrame();
 
@@ -128,7 +130,7 @@ class Station : public FrameHandler {
 
     DeviceInterface* device_;
     fbl::unique_ptr<Timer> timer_;
-    wlan_mlme::BSSDescriptionPtr bss_;
+    ::fuchsia::wlan::mlme::BSSDescriptionPtr bss_;
     common::MacAddr bssid_;
     Sequence seq_;
 
@@ -139,12 +141,12 @@ class Station : public FrameHandler {
     zx::time signal_report_timeout_;
     zx::time last_seen_;
     uint16_t aid_ = 0;
-    common::MovingAverage<int8_t, int16_t, 20> avg_rssi_dbm_;
+    common::MovingAverageDbm<20> avg_rssi_dbm_;
     AuthAlgorithm auth_alg_ = AuthAlgorithm::kOpenSystem;
     eapol::PortState controlled_port_ = eapol::PortState::kBlocked;
 
     wlan_channel_t join_chan_;
-    common::WlanStats<common::ClientMlmeStats, wlan_stats_ClientMlmeStats> stats_;
+    common::WlanStats<common::ClientMlmeStats, ::fuchsia::wlan::stats::ClientMlmeStats> stats_;
 };
 
 }  // namespace wlan

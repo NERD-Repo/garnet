@@ -25,8 +25,6 @@ source_set("sources") {
     "host_device.h",
 
     # FIDL servers
-    "fidl/adapter_server.cc",
-    "fidl/adapter_server.h",
     "fidl/gatt_client_server.cc",
     "fidl/gatt_client_server.h",
     "fidl/gatt_remote_service_server.cc",
@@ -56,6 +54,7 @@ source_set("sources") {
     "//zircon/public/lib/ddk",
     "//zircon/public/lib/driver",
     "//zircon/public/lib/fbl",
+    "//zircon/public/lib/fit",
     "//zircon/public/lib/zx",
   ]
 }
