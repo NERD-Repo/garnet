@@ -1,10 +1,35 @@
+#![allow(unused_imports, unused_variables, dead_code)]
 #[macro_use]
 extern crate failure;
-extern crate fuchsia_framebuffer_sys;
+extern crate fdio;
+extern crate fidl_fuchsia_display;
+extern crate fuchsia_async;
 extern crate fuchsia_zircon;
 extern crate shared_buffer;
 
 use failure::Error;
+use fdio::fdio_sys::{fdio_ioctl, IOCTL_FAMILY_DISPLAY_CONTROLLER, IOCTL_KIND_GET_HANDLE};
+use fdio::make_ioctl;
+use fuchsia_zircon::sys::zx_handle_t;
+use fuchsia_zircon::{Unowned, Vmar, Vmo};
+use shared_buffer::SharedBuffer;
+use std::fs::{File, OpenOptions};
+use std::mem;
+use std::os::unix::io::AsRawFd;
+use std::ptr;
+
+#[derive(Debug, Clone, Copy)]
+pub enum PixelFormat {
+    Argb8888,
+    Gray8,
+    Mono1,
+    Mono8,
+    Rgb2220,
+    Rgb332,
+    Rgb565,
+    RgbX888,
+    Unknown,
+}
 
 #[derive(Debug)]
 pub struct Config {
@@ -28,7 +53,7 @@ impl<'a> Frame<'a> {
     }
 
     pub fn write_pixel(&self, x: u32, y: u32, value: &[u8]) {
-        let pixel_size = pixel_format_bytes(self.config.format.into());
+        let pixel_size = 4;
         let offset = self.config.linear_stride_pixels as usize * pixel_size * y as usize
             + x as usize * pixel_size;
         self.pixel_buffer.write_at(offset, value);
@@ -63,10 +88,36 @@ impl<'a> Drop for Frame<'a> {
     }
 }
 
-pub struct FrameBuffer {}
+pub struct FrameBuffer {
+    display_controller: File,
+}
 
 impl FrameBuffer {
     pub fn new() -> Result<FrameBuffer, Error> {
+        let device_path = format!("/dev/class/display-controller/{:03}", 0);
+        println!("device_path = {}", device_path);
+        let file = OpenOptions::new().read(true).write(true).open(device_path)?;
+        let fd = file.as_raw_fd() as i32;
+        println!("fd = {}", fd);
+        let ioctl_display_controller_get_handle = make_ioctl(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DISPLAY_CONTROLLER, 1);
+        let mut display_handle: zx_handle_t = 0;
+        let display_handle_ptr: *mut std::os::raw::c_void =
+            &mut display_handle as *mut _ as *mut std::os::raw::c_void;
+        let status = unsafe {
+            fdio_ioctl(
+                fd,
+                ioctl_display_controller_get_handle,
+                ptr::null(),
+                0,
+                display_handle_ptr,
+                mem::size_of::<zx_handle_t>(),
+            )
+        };
+
+        println!("display_handle = {:x}", display_handle);
+
+        ControllerMarker::Proxy::from_channel(async::Channel::from_channel(display_handle)?)?;
+
         return Err(format_err!("Not yet implemented"));
     }
 
@@ -75,23 +126,25 @@ impl FrameBuffer {
     }
 
     pub fn get_config(&self) -> Config {
-        let mut width = 0;
-        let mut height = 0;
-        let mut linear_stride_pixels = 0;
-        let mut format = 0;
         Config {
-            width,
-            height,
-            linear_stride_pixels,
-            format: PixelFormat::from(format),
+            height: 0,
+            width: 0,
+            linear_stride_pixels: 0,
+            format: PixelFormat::Unknown,
         }
     }
 }
 
 impl Drop for FrameBuffer {
-    fn drop(&mut self) {
-        unsafe {
-            fb_release();
-        }
+    fn drop(&mut self) {}
+}
+
+#[cfg(test)]
+mod tests {
+    use FrameBuffer;
+
+    #[test]
+    fn test_framebuffer() {
+        let fb = FrameBuffer::new().unwrap();
     }
 }

@@ -8,8 +8,11 @@ rustc_library("fuchsia-framebuffer") {
   name = "fuchsia_framebuffer"
   version = "0.1.0"
   deps = [
+    "//garnet/public/rust/crates/fuchsia-async",
     "//garnet/public/rust/crates/fuchsia-zircon",
+    "//garnet/public/rust/crates/fdio",
     "//garnet/public/rust/crates/shared-buffer",
     "//third_party/rust-crates/rustc_deps:failure",
+    "//zircon/public/fidl/display:display-rustc",
   ]
 }
