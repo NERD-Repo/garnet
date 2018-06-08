@@ -2902,7 +2902,7 @@ static void ath10k_mac_parse_assoc_resp(struct ath10k* ar,
             if (tag_len != 22) {
                 goto invalid_data;
             }
-#if 0
+#if 0 // NEEDS PORTING
             struct ieee80211_ht_info* ht_info = (void*)tagged_data;
             unsigned i, n, max_nss;
             for (i = 0, n = 0, max_nss = 0; i < (10 * 8); i++) {
@@ -2922,18 +2922,18 @@ static void ath10k_mac_parse_assoc_resp(struct ath10k* ar,
              * Firmware asserts if such situation occurs.
              */
             if (n == 0) {
-#endif
+#endif // NEEDS PORTING
                 unsigned i;
                 assoc_arg->peer_ht_rates.num_rates = 8;
                 for (i = 0; i < assoc_arg->peer_ht_rates.num_rates; i++) {
                     assoc_arg->peer_ht_rates.rates[i] = i;
                 }
-#if 0
+#if 0 // NEEDS PORTING
             } else {
                 arg->peer_ht_rates.num_rates = n;
                 arg->peer_num_spatial_streams = MIN(sta->rx_nss, max_nss);
             }
-#endif
+#endif // NEEDS PORTING
             break;
         case IEEE80211_ASSOC_TAG_EXTENDED_RATES:
             {
