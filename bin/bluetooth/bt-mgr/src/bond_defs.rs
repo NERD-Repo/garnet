@@ -101,11 +101,46 @@ optboxify!(
 #[derive(Serialize, Deserialize)]
 pub struct BondMap(HashMap<String, VecBondingData>);
 
-#[derive(Serialize, Deserialize)]
-struct VecBondingData {
-    #[serde(with = "VecBondData")]
-    inner: Vec<BondingData>,
+impl BondMap {
+    pub fn inner(&self) -> &HashMap<String, VecBondingData> {
+        &self.0
+    }
+
+    pub fn inner_mut(&mut self) -> &mut HashMap<String, VecBondingData> {
+        &mut self.0
+    }
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct VecBondingData {
+    #[serde(with = "VecBondData")]
+    pub inner: Vec<BondingData>,
+}
+
+//impl VecBondingData {
+//    pub fn inner(&self) -> VecBondingData {
+//        &self.inner
+//    }
+//}
+
+// TODO
+struct VecBondIter {}
+//
+//impl Iterator for VecBondIter {
+//    type Item = BondingData;
+//
+//    fn next(&mut self) -> Option<Self::Item> {
+//        self.inner.iter().next()
+//    }
+//}
+//impl IntoIterator for VecBondingData {
+//    type Item = BondingData;
+//    //type IntoIterator = VecBondIter;
+//
+//    //fn into_iter(self) -> Self::IntoIterator {
+//
+//    //}
+//}
 
 mod VecBondData {
     use super::{BondingData, BondingDataDef};
