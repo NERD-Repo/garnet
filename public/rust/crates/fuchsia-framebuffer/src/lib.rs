@@ -228,10 +228,9 @@ impl FrameBuffer {
             })
             .next();
 
-        #[allow(unused_must_use)]
-        {
-            executor.run_singlethreaded(event_listener);
-        }
+        executor
+            .run_singlethreaded(event_listener)
+            .map_err(|(e, _rest_of_stream)| e)?;
 
         println!("config = {:#?}", config);
 
@@ -239,10 +238,7 @@ impl FrameBuffer {
             let vmo_response = proxy
                 .allocate_vmo(config.pixel_size_bytes as u64)
                 .map(|res| println!("rest = {:#?}", res));
-            #[allow(unused_must_use)]
-            {
-                executor.run_singlethreaded(vmo_response);
-            }
+            executor.run_singlethreaded(vmo_response)?;
         }
 
         return Err(format_err!("Not yet implemented"));
