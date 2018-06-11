@@ -1,3 +1,4 @@
+extern crate fuchsia_async as async;
 extern crate fuchsia_framebuffer;
 extern crate fuchsia_zircon;
 extern crate image;
@@ -44,13 +45,15 @@ fn main() {
     println!("Recovery UI");
     wait_for_close();
 
-    let fb = FrameBuffer::new().unwrap();
+    let mut executor = async::Executor::new().unwrap();
+
+    let fb = FrameBuffer::new(&mut executor).unwrap();
     let config = fb.get_config();
 
     let values565 = &[31, 248];
     let values8888 = &[255, 0, 255, 255];
 
-    let pink_frame = fb.new_frame().unwrap();
+    let pink_frame = fb.new_frame(&mut executor).unwrap();
 
     for y in 0..config.height {
         for x in 0..config.width {
