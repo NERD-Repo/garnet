@@ -7,7 +7,7 @@ extern crate fuchsia_async as async;
 extern crate fuchsia_zircon as zx;
 extern crate shared_buffer;
 
-use async::futures::StreamExt;
+use async::futures::{FutureExt, StreamExt};
 use display::{ControllerEvent, ControllerProxy};
 use failure::Error;
 use fdio::fdio_sys::{fdio_ioctl, IOCTL_FAMILY_DISPLAY_CONTROLLER, IOCTL_KIND_GET_HANDLE};
@@ -98,6 +98,7 @@ pub struct Config {
     pub height: u32,
     pub linear_stride_pixels: u32,
     pub format: PixelFormat,
+    pub pixel_size_bytes: u32,
 }
 
 pub struct Frame<'a> {
@@ -195,6 +196,7 @@ impl FrameBuffer {
                         let mut zx_pixel_format = 0;
                         let mut linear_stride_pixels = 0;
                         let mut pixel_format = PixelFormat::Unknown;
+                        let mut pixel_size_bytes = 0;
                         if added.len() > 0 {
                             let first_added = &added[0];
                             if first_added.pixel_format.len() > 0 {
@@ -204,6 +206,7 @@ impl FrameBuffer {
                             if first_added.modes.len() > 0 {
                                 let mode = &first_added.modes[0];
                                 if pixel_format != PixelFormat::Unknown {
+                                    pixel_size_bytes = pixel_format_bytes(zx_pixel_format);
                                     linear_stride_pixels = pixel_format_bytes(zx_pixel_format)
                                         as u32
                                         * mode.horizontal_resolution;
@@ -213,6 +216,7 @@ impl FrameBuffer {
                                     height: mode.vertical_resolution,
                                     linear_stride_pixels,
                                     format: pixel_format,
+                                    pixel_size_bytes: pixel_size_bytes as u32,
                                 };
                                 *config.borrow_mut() = Some(calculated_config);
                             }
@@ -229,7 +233,17 @@ impl FrameBuffer {
             executor.run_singlethreaded(event_listener);
         }
 
-        println!("config = {:#?}", config.borrow());
+        println!("config = {:#?}", config);
+
+        if let Some(ref config) = *config.borrow() {
+            let vmo_response = proxy
+                .allocate_vmo(config.pixel_size_bytes as u64)
+                .map(|res| println!("rest = {:#?}", res));
+            #[allow(unused_must_use)]
+            {
+                executor.run_singlethreaded(vmo_response);
+            }
+        }
 
         return Err(format_err!("Not yet implemented"));
     }
@@ -244,6 +258,7 @@ impl FrameBuffer {
             width: 0,
             linear_stride_pixels: 0,
             format: PixelFormat::Unknown,
+            pixel_size_bytes: 0,
         }
     }
 }
