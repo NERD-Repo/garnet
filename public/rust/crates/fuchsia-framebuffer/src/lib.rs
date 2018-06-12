@@ -123,66 +123,85 @@ pub struct Frame<'a> {
 }
 
 impl<'a> Frame<'a> {
+    fn allocate_image_vmo(
+        framebuffer: &FrameBuffer, executor: &mut async::Executor,
+    ) -> Result<Vmo, Error> {
+        let vmo: Rc<RefCell<Option<Vmo>>> = Rc::new(RefCell::new(None));
+        let vmo_response = framebuffer
+            .controller
+            .allocate_vmo(framebuffer.byte_size() as u64)
+            .map(|(status, allocated_vmo)| {
+                if status == Status::OK {
+                    vmo.replace(allocated_vmo);
+                }
+            });
+        executor.run_singlethreaded(vmo_response)?;
+        let vmo = vmo.replace(None);
+        if let Some(vmo) = vmo {
+            Ok(vmo)
+        } else {
+            Err(format_err!("Could not allocate image vmo"))
+        }
+    }
+
+    fn import_image_vmo(
+        framebuffer: &FrameBuffer, executor: &mut async::Executor, image_vmo: Vmo,
+    ) -> Result<u64, Error> {
+        let pixel_format: u32 = framebuffer.config.format.into();
+        let mut image_config = ImageConfig {
+            width: framebuffer.config.width,
+            height: framebuffer.config.height,
+            pixel_format: pixel_format as i32,
+            type_: 0,
+        };
+
+        let image_id: Rc<RefCell<Option<u64>>> = Rc::new(RefCell::new(None));
+        let import_response = framebuffer
+            .controller
+            .import_vmo_image(&mut image_config, image_vmo, 0)
+            .map(|(status, id)| {
+                if status == Status::OK {
+                    image_id.replace(Some(id));
+                }
+            });
+
+        executor.run_singlethreaded(import_response)?;
+
+        let image_id = image_id.replace(None);
+        if let Some(image_id) = image_id {
+            Ok(image_id)
+        } else {
+            Err(format_err!("Could not import image vmo"))
+        }
+    }
+
     pub fn new(
         framebuffer: &FrameBuffer, executor: &mut async::Executor,
     ) -> Result<Frame<'a>, Error> {
-        let byte_size = framebuffer.byte_size();
-        let vmo_out: Rc<RefCell<Option<Vmo>>> = Rc::new(RefCell::new(None));
-        let vmo_response = framebuffer.controller.allocate_vmo(byte_size as u64).map(
-            |(status, vmo)| {
-                if status == Status::OK {
-                    *vmo_out.borrow_mut() = vmo;
-                }
+        let image_vmo = Self::allocate_image_vmo(framebuffer, executor)?;
+
+        // map image VMO
+        let pixel_buffer_addr = Vmar::root_self().map(
+            0,
+            &image_vmo,
+            0,
+            framebuffer.byte_size(),
+            ZX_VM_FLAG_PERM_READ | ZX_VM_FLAG_PERM_WRITE,
+        )?;
+
+        // import image VMO
+        let image_id = Self::import_image_vmo(framebuffer, executor, image_vmo)?;
+
+        // construct frame
+        let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
+        Ok(Frame {
+            config: framebuffer.get_config(),
+            image_id: image_id,
+            pixel_buffer_addr,
+            pixel_buffer: unsafe {
+                SharedBuffer::new(frame_buffer_pixel_ptr, framebuffer.byte_size())
             },
-        );
-        executor.run_singlethreaded(vmo_response)?;
-        let vmo_out = vmo_out.replace(None);
-        let byte_size = framebuffer.byte_size();
-        if let Some(image_vmo) = vmo_out {
-            let pixel_buffer_addr = Vmar::root_self().map(
-                0,
-                &image_vmo,
-                0,
-                byte_size as usize,
-                ZX_VM_FLAG_PERM_READ | ZX_VM_FLAG_PERM_WRITE,
-            )?;
-
-            let pixel_format: u32 = framebuffer.config.format.into();
-            let mut image_config = ImageConfig {
-                width: framebuffer.config.width,
-                height: framebuffer.config.height,
-                pixel_format: pixel_format as i32,
-                type_: 0,
-            };
-
-            let image_id: Rc<RefCell<Option<u64>>> = Rc::new(RefCell::new(None));
-            let import_response = framebuffer
-                .controller
-                .import_vmo_image(&mut image_config, image_vmo, 0)
-                .map(|(status, id)| {
-                    if status == Status::OK {
-                        image_id.replace(Some(id));
-                    }
-                });
-            executor.run_singlethreaded(import_response)?;
-
-            let image_id = image_id.replace(None);
-            if let Some(image_id) = image_id {
-                let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
-                Ok(Frame {
-                    config: framebuffer.get_config(),
-                    image_id: image_id,
-                    pixel_buffer_addr,
-                    pixel_buffer: unsafe {
-                        SharedBuffer::new(frame_buffer_pixel_ptr, byte_size as usize)
-                    },
-                })
-            } else {
-                Err(format_err!("Could not import image"))
-            }
-        } else {
-            Err(format_err!("Could not allocate VMO"))
-        }
+        })
     }
 
     pub fn write_pixel(&self, x: u32, y: u32, value: &[u8]) {
@@ -217,9 +236,8 @@ impl<'a> Frame<'a> {
         }
         framebuffer
             .controller
-            .set_display_image(self.config.display_id, self.image_id, 0, 0, 0);
-        framebuffer.controller.apply_config();
-        Ok(())
+            .set_display_image(self.config.display_id, self.image_id, 0, 0, 0)?;
+        framebuffer.controller.apply_config().map_err(|e| e.into())
     }
 
     fn byte_size(&self) -> usize {
@@ -246,9 +264,7 @@ pub struct FrameBuffer {
 }
 
 impl FrameBuffer {
-    pub fn new(executor: &mut async::Executor) -> Result<FrameBuffer, Error> {
-        let device_path = format!("/dev/class/display-controller/{:03}", 0);
-        let file = OpenOptions::new().read(true).write(true).open(device_path)?;
+    fn get_display_handle(file: &File) -> Result<Handle, Error> {
         let fd = file.as_raw_fd() as i32;
         let ioctl_display_controller_get_handle =
             make_ioctl(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DISPLAY_CONTROLLER, 1);
@@ -273,16 +289,19 @@ impl FrameBuffer {
             ));
         }
 
-        let zx_handle = unsafe { Handle::from_raw(display_handle) };
-        let channel = async::Channel::from_channel(zx_handle.into())?;
-        let proxy = ControllerProxy::new(channel);
+        Ok(unsafe { Handle::from_raw(display_handle) })
+    }
+
+    fn create_config_from_event_stream(
+        proxy: &ControllerProxy, executor: &mut async::Executor,
+    ) -> Result<Config, Error> {
         let config: Rc<RefCell<Option<Config>>> = Rc::new(RefCell::new(None));
         let stream = proxy.take_event_stream();
         let event_listener = stream
             .filter(|event| {
                 match event {
                     ControllerEvent::DisplaysChanged { added, .. } => {
-                        let mut display_id = 0;
+                        let mut display_id;
                         let mut zx_pixel_format = 0;
                         let mut linear_stride_pixels = 0;
                         let mut pixel_format = PixelFormat::Unknown;
@@ -323,19 +342,26 @@ impl FrameBuffer {
             .map_err(|(e, _rest_of_stream)| e)?;
 
         let config = config.replace(None);
-
         if let Some(config) = config {
-            Ok(FrameBuffer {
-                display_controller: file,
-                controller: proxy,
-                config: config,
-            })
+            Ok(config)
         } else {
-            return Err(format_err!(
-                "ioctl_display_controller_get_handle failed: {}",
-                result_size
-            ));
+            Err(format_err!("Could not find display"))
         }
+    }
+
+    pub fn new(display_index: Option<usize>, executor: &mut async::Executor) -> Result<FrameBuffer, Error> {
+        let device_path = format!("/dev/class/display-controller/{:03}", display_index.unwrap_or(0));
+        let file = OpenOptions::new().read(true).write(true).open(device_path)?;
+        let zx_handle = Self::get_display_handle(&file)?;
+        let channel = async::Channel::from_channel(zx_handle.into())?;
+        let proxy = ControllerProxy::new(channel);
+        let config = Self::create_config_from_event_stream(&proxy, executor)?;
+
+        Ok(FrameBuffer {
+            display_controller: file,
+            controller: proxy,
+            config: config,
+        })
     }
 
     pub fn new_frame<'a>(&self, executor: &mut async::Executor) -> Result<Frame<'a>, Error> {

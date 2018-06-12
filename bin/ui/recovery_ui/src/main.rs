@@ -47,7 +47,7 @@ fn main() {
 
     let mut executor = async::Executor::new().unwrap();
 
-    let fb = FrameBuffer::new(&mut executor).unwrap();
+    let fb = FrameBuffer::new(None, &mut executor).unwrap();
     let config = fb.get_config();
 
     let values565 = &[31, 248];
