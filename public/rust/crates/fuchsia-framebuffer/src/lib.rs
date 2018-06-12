@@ -8,7 +8,7 @@ extern crate fuchsia_zircon as zx;
 extern crate shared_buffer;
 
 use async::futures::{FutureExt, StreamExt};
-use display::{ControllerEvent, ControllerProxy};
+use display::{ControllerEvent, ControllerProxy, ImageConfig};
 use failure::Error;
 use fdio::fdio_sys::{fdio_ioctl, IOCTL_FAMILY_DISPLAY_CONTROLLER, IOCTL_KIND_GET_HANDLE};
 use fdio::make_ioctl;
@@ -101,6 +101,7 @@ fn pixel_format_bytes(pixel_format: u32) -> usize {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Config {
+    pub display_id: u64,
     pub width: u32,
     pub height: u32,
     pub linear_stride_pixels: u32,
@@ -108,33 +109,36 @@ pub struct Config {
     pub pixel_size_bytes: u32,
 }
 
+impl Config {
+    pub fn linear_stride_bytes(&self) -> usize {
+        self.linear_stride_pixels as usize * self.pixel_size_bytes as usize
+    }
+}
+
 pub struct Frame<'a> {
     config: Config,
     image_id: u64,
-    pixel_size: usize,
     pixel_buffer_addr: usize,
     pixel_buffer: SharedBuffer<'a>,
-    vmo: Vmo,
 }
 
 impl<'a> Frame<'a> {
     pub fn new(
         framebuffer: &FrameBuffer, executor: &mut async::Executor,
     ) -> Result<Frame<'a>, Error> {
+        let byte_size = framebuffer.byte_size();
         let vmo_out: Rc<RefCell<Option<Vmo>>> = Rc::new(RefCell::new(None));
-        let vmo_response = framebuffer
-            .controller
-            .allocate_vmo(framebuffer.config.pixel_size_bytes as u64)
-            .map(|(status, vmo)| {
+        let vmo_response = framebuffer.controller.allocate_vmo(byte_size as u64).map(
+            |(status, vmo)| {
                 if status == Status::OK {
                     *vmo_out.borrow_mut() = vmo;
                 }
-            });
+            },
+        );
         executor.run_singlethreaded(vmo_response)?;
-        let vmo_out2 = *vmo_out.borrow();
+        let vmo_out = vmo_out.replace(None);
         let byte_size = framebuffer.byte_size();
-        if let Some(image_vmo) = vmo_out2 {
-            println!("image_vmo = {:#?}", &image_vmo);
+        if let Some(image_vmo) = vmo_out {
             let pixel_buffer_addr = Vmar::root_self().map(
                 0,
                 &image_vmo,
@@ -143,24 +147,47 @@ impl<'a> Frame<'a> {
                 ZX_VM_FLAG_PERM_READ | ZX_VM_FLAG_PERM_WRITE,
             )?;
 
-            let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
-            Ok(Frame {
-                config: framebuffer.get_config(),
-                image_id: 0,
-                pixel_size: 0,
-                pixel_buffer_addr,
-                pixel_buffer: unsafe { SharedBuffer::new(frame_buffer_pixel_ptr, byte_size as usize) },
-                vmo: image_vmo,
-            })
+            let pixel_format: u32 = framebuffer.config.format.into();
+            let mut image_config = ImageConfig {
+                width: framebuffer.config.width,
+                height: framebuffer.config.height,
+                pixel_format: pixel_format as i32,
+                type_: 0,
+            };
+
+            let image_id: Rc<RefCell<Option<u64>>> = Rc::new(RefCell::new(None));
+            let import_response = framebuffer
+                .controller
+                .import_vmo_image(&mut image_config, image_vmo, 0)
+                .map(|(status, id)| {
+                    if status == Status::OK {
+                        image_id.replace(Some(id));
+                    }
+                });
+            executor.run_singlethreaded(import_response)?;
+
+            let image_id = image_id.replace(None);
+            if let Some(image_id) = image_id {
+                let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
+                Ok(Frame {
+                    config: framebuffer.get_config(),
+                    image_id: image_id,
+                    pixel_buffer_addr,
+                    pixel_buffer: unsafe {
+                        SharedBuffer::new(frame_buffer_pixel_ptr, byte_size as usize)
+                    },
+                })
+            } else {
+                Err(format_err!("Could not import image"))
+            }
         } else {
             Err(format_err!("Could not allocate VMO"))
         }
     }
 
     pub fn write_pixel(&self, x: u32, y: u32, value: &[u8]) {
-        let pixel_size = 4;
-        let offset = self.config.linear_stride_pixels as usize * pixel_size * y as usize
-            + x as usize * pixel_size;
+        let pixel_size = self.config.pixel_size_bytes as usize;
+        let offset = self.linear_stride_bytes() * y as usize + x as usize * pixel_size;
         self.pixel_buffer.write_at(offset, value);
     }
 
@@ -176,12 +203,31 @@ impl<'a> Frame<'a> {
         }
     }
 
-    pub fn present(&self) -> Result<(), Error> {
-        return Err(format_err!("Not yet implemented"));
+    pub fn present(&self, framebuffer: &FrameBuffer) -> Result<(), Error> {
+        let frame_buffer_pixel_ptr = self.pixel_buffer_addr as *mut u8;
+        let result = unsafe {
+            zx_cache_flush(
+                frame_buffer_pixel_ptr,
+                self.byte_size(),
+                ZX_CACHE_FLUSH_DATA,
+            )
+        };
+        if result != 0 {
+            return Err(format_err!("zx_cache_flush failed: {}", result));
+        }
+        framebuffer
+            .controller
+            .set_display_image(self.config.display_id, self.image_id, 0, 0, 0);
+        framebuffer.controller.apply_config();
+        Ok(())
     }
 
     fn byte_size(&self) -> usize {
-        self.config.linear_stride_pixels as usize * self.pixel_size * self.config.height as usize
+        self.linear_stride_bytes() * self.config.height as usize
+    }
+
+    fn linear_stride_bytes(&self) -> usize {
+        self.config.linear_stride_pixels as usize * self.config.pixel_size_bytes as usize
     }
 }
 
@@ -236,12 +282,14 @@ impl FrameBuffer {
             .filter(|event| {
                 match event {
                     ControllerEvent::DisplaysChanged { added, .. } => {
+                        let mut display_id = 0;
                         let mut zx_pixel_format = 0;
                         let mut linear_stride_pixels = 0;
                         let mut pixel_format = PixelFormat::Unknown;
                         let mut pixel_size_bytes = 0;
                         if added.len() > 0 {
                             let first_added = &added[0];
+                            display_id = first_added.id;
                             if first_added.pixel_format.len() > 0 {
                                 zx_pixel_format = first_added.pixel_format[0];
                                 pixel_format = zx_pixel_format.into();
@@ -250,18 +298,17 @@ impl FrameBuffer {
                                 let mode = &first_added.modes[0];
                                 if pixel_format != PixelFormat::Unknown {
                                     pixel_size_bytes = pixel_format_bytes(zx_pixel_format);
-                                    linear_stride_pixels = pixel_format_bytes(zx_pixel_format)
-                                        as u32
-                                        * mode.horizontal_resolution;
+                                    linear_stride_pixels = mode.horizontal_resolution;
                                 }
                                 let calculated_config = Config {
+                                    display_id: display_id,
                                     width: mode.horizontal_resolution,
                                     height: mode.vertical_resolution,
                                     linear_stride_pixels,
                                     format: pixel_format,
                                     pixel_size_bytes: pixel_size_bytes as u32,
                                 };
-                                *config.borrow_mut() = Some(calculated_config);
+                                config.replace(Some(calculated_config));
                             }
                         }
                     }
@@ -275,9 +322,7 @@ impl FrameBuffer {
             .run_singlethreaded(event_listener)
             .map_err(|(e, _rest_of_stream)| e)?;
 
-        let config = *config.borrow();
-
-        println!("config = {:#?}", config);
+        let config = config.replace(None);
 
         if let Some(config) = config {
             Ok(FrameBuffer {
@@ -298,17 +343,11 @@ impl FrameBuffer {
     }
 
     pub fn get_config(&self) -> Config {
-        Config {
-            height: 0,
-            width: 0,
-            linear_stride_pixels: 0,
-            format: PixelFormat::Unknown,
-            pixel_size_bytes: 0,
-        }
+        self.config
     }
 
-    pub fn byte_size(&self) -> u32 {
-        self.config.height * self.config.linear_stride_pixels
+    pub fn byte_size(&self) -> usize {
+        self.config.height as usize * self.config.linear_stride_bytes()
     }
 }
 

@@ -73,7 +73,7 @@ fn main() {
     let y = config.height / 2 - image.height() / 2;
     draw_image(&config, &pink_frame, &image, x, y);
 
-    pink_frame.present().unwrap();
+    pink_frame.present(&fb).unwrap();
     loop {
         thread::sleep(time::Duration::from_millis(25000));
     }
