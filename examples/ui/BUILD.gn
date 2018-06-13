@@ -16,6 +16,7 @@ group("ui") {
     "shapes_a11y",
     "sketchy",
     "spinning_square",
+    "spinning_square_rs",
     "tile",
     "video_display",
   ]
@@ -133,6 +134,14 @@ package("spinning_square_view") {
   ]
 
   binary = "spinning_square_view"
+}
+
+package("spinning_square_rs_pkg") {
+  deps = [
+    "spinning_square_rs"
+  ]
+
+  binary = "rust_crates/spinning_square_rs"
 }
 
 package("tile_view") {
