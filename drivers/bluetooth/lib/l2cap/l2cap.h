@@ -75,13 +75,17 @@ class L2CAP : public fbl::RefCounted<L2CAP> {
   // |link_error_callback| will be used to notify when a channel signals a link
   // error.
   //
+  // Upon successful registration of the link, |channel_callback| will be called
+  // with the ATT and SMP fixed channels.
+  //
   // Has no effect if L2CAP is uninitialized or shut down.
+  using RegisterLECallback =
+      fit::function<void(fbl::RefPtr<Channel> att, fbl::RefPtr<Channel> smp)>;
   virtual void RegisterLE(
-      hci::ConnectionHandle handle,
-      hci::Connection::Role role,
+      hci::ConnectionHandle handle, hci::Connection::Role role,
       LEConnectionParameterUpdateCallback conn_param_callback,
       LinkErrorCallback link_error_callback,
-      async_t* dispatcher) = 0;
+      RegisterLECallback channel_callback, async_t* dispatcher) = 0;
 
   // Removes a previously registered connection. All corresponding Channels will
   // be closed and all incoming data packets on this link will be dropped.
@@ -93,24 +97,6 @@ class L2CAP : public fbl::RefCounted<L2CAP> {
   //
   // Has no effect if L2CAP is uninitialized or shut down.
   virtual void Unregister(hci::ConnectionHandle handle) = 0;
-
-  // Opens the L2CAP fixed channel with |channel_id| over the logical link
-  // identified by |connection_handle| and starts routing packets.
-  //
-  // The resulting channel will be returned asynchronously via |callback| on the
-  // requested |dispatcher|. Runs |callback| with nullptr if the channel is
-  // already open.
-  //
-  // Has no effect if L2CAP is uninitialized or shut down. |callback| will not
-  // run in this case.
-  //
-  // TODO(armansito): Replace this with a version that returns all fixed
-  // channels to avoid jumping through an asynchronous callback for each
-  // channel. Probably one for LE and one for Classic.
-  virtual void OpenFixedChannel(hci::ConnectionHandle handle,
-                                ChannelId id,
-                                ChannelCallback callback,
-                                async_t* dispatcher) = 0;
 
  protected:
   friend class fbl::RefPtr<L2CAP>;

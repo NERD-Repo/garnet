@@ -77,25 +77,29 @@ class LowEnergyConnection {
         handle(), ref_count());
   }
 
-  // Initializes the fixed channels. Packets will start being processed
-  // asynchronously.
-  void InitializeFixedChannels(fbl::RefPtr<l2cap::L2CAP> l2cap,
-                               fbl::RefPtr<gatt::GATT> gatt) {
-    FXL_DCHECK(l2cap);
-    FXL_DCHECK(gatt);
-
+  // Registers this connection with L2CAP and initializes the fixed channel
+  // protocols.
+  void InitializeFixedChannels(
+      fbl::RefPtr<l2cap::L2CAP> l2cap, fbl::RefPtr<gatt::GATT> gatt,
+      l2cap::L2CAP::LEConnectionParameterUpdateCallback cp_cb,
+      l2cap::L2CAP::LinkErrorCallback link_error_cb) {
     auto weak = weak_ptr_factory_.GetWeakPtr();
-    auto callback = [weak, this, gatt](fbl::RefPtr<l2cap::Channel> chan) {
-      if (!weak || !chan) {
+    auto channels_cb = [weak, gatt](fbl::RefPtr<l2cap::Channel> att,
+                                    fbl::RefPtr<l2cap::Channel> smp) {
+      if (!weak || !att || !smp) {
         FXL_VLOG(1) << "gap: link was closed before opening fixed channels";
         return;
       }
 
-      gatt->AddConnection(id_, std::move(chan));
+      gatt->AddConnection(weak->id(), std::move(att));
+
+      // TODO(armansito): Retain |smp| here. For now we close the channel.
+      smp->Deactivate();
     };
 
-    l2cap->OpenFixedChannel(link_->handle(), l2cap::kATTChannelId, callback,
-                            dispatcher_);
+    l2cap->RegisterLE(link_->handle(), link_->role(), std::move(cp_cb),
+                      std::move(link_error_cb), std::move(channels_cb),
+                      dispatcher_);
   }
 
   size_t ref_count() const { return refs_.size(); }
@@ -496,27 +500,22 @@ LowEnergyConnectionRefPtr LowEnergyConnectionManager::InitializeConnection(
     }
   };
 
-  l2cap_->RegisterLE(link->handle(), link->role(),
-                     std::move(conn_param_update_cb), std::move(link_error_cb),
-                     dispatcher_);
-
   // Initialize connection.
   auto conn = std::make_unique<internal::LowEnergyConnection>(
       device_id, std::move(link), dispatcher_, weak_ptr_factory_.GetWeakPtr());
-  conn->InitializeFixedChannels(l2cap_, gatt_);
+  conn->InitializeFixedChannels(l2cap_, gatt_, std::move(conn_param_update_cb),
+                                std::move(link_error_cb));
 
   auto first_ref = conn->AddRef();
   connections_[device_id] = std::move(conn);
 
   // TODO(armansito): Should complete a few more things before returning the
   // connection:
-  //    1. Initialize SMP bearer
-  //    2. If this is the first time we connected to this device:
+  //    1. If this is the first time we connected to this device:
   //      a. Obtain LE remote features
   //      b. If master, obtain Peripheral Preferred Connection Parameters via
   //         GATT if available
   //      c. Initiate name discovery over GATT if complete name is unknown
-  //      d. Initiate service discovery over GATT
   //      e. If master, allow slave to initiate procedures (service discovery,
   //         encryption setup, etc) for kLEConnectionPauseCentralMs before
   //         updating the connection parameters to the slave's preferred values.
