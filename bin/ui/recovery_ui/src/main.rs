@@ -1,7 +1,13 @@
+extern crate failure;
+extern crate fidl_fuchsia_amber as amber;
+extern crate fuchsia_app as app;
 extern crate fuchsia_async as async;
 extern crate fuchsia_framebuffer;
 extern crate fuchsia_zircon;
 
+use app::client::connect_to_service;
+use async::futures::FutureExt;
+use failure::Error;
 use fuchsia_framebuffer::{FrameBuffer, PixelFormat};
 use std::io::{self, Read};
 use std::{thread, time};
@@ -17,7 +23,7 @@ fn wait_for_close() {
     });
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     println!("Recovery UI");
     wait_for_close();
 
@@ -29,7 +35,7 @@ fn main() {
     let values565 = &[31, 248];
     let values8888 = &[255, 0, 255, 255];
 
-    let pink_frame = fb.new_frame(&mut executor).unwrap();
+    let pink_frame = fb.new_frame(&mut executor)?;
 
     for y in 0..config.height {
         for x in 0..config.width {
@@ -43,7 +49,13 @@ fn main() {
     }
 
     pink_frame.present(&fb).unwrap();
+
+    let amber_control = connect_to_service::<amber::ControlMarker>().unwrap();
+    let srcs = amber_control.list_srcs();
+
+    executor.run_singlethreaded(srcs)?;
+
     loop {
-        thread::sleep(time::Duration::from_millis(25000));
+        thread::sleep(time::Duration::from_millis(250));
     }
 }
