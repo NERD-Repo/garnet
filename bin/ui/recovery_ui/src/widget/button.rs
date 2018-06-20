@@ -19,7 +19,7 @@ use std::any::Any;
 use geometry::{Point, Rectangle, Size};
 use widget::Widget;
 use {BoxConstraints, Geometry, LayoutResult, MouseButton, MouseType};
-use {Color, HandlerCtx, Id, LayoutCtx, PaintCtx, UiInner};
+use {Color, HandlerCtx, Id, LayoutCtx, MainPaintCtx, UiInner};
 
 /// A text label with no interaction.
 pub struct Label {
@@ -44,7 +44,7 @@ impl Label {
 }
 
 impl Widget for Label {
-    fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
+    fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {
         let location = Point {
             x: geom.pos.0 as i32,
             y: geom.pos.1 as i32,
@@ -101,7 +101,7 @@ impl Button {
 }
 
 impl Widget for Button {
-    fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
+    fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {
         let c1 = Color::from_hash_code("#404048");
         let r = Rectangle {
             origin: Point {

@@ -27,12 +27,11 @@ use std::ops::Deref;
 use std::ops::DerefMut;
 use std::rc::Rc;
 use std::{thread, time};
-use widget::{Button, Column, Label, Padding, Row};
 use text::Face;
+use widget::{Button, Column, Label, Padding, Row};
 
-static FONT_DATA: &'static [u8] = include_bytes!(
-    "../../../fonts/third_party/robotoslab/RobotoSlab-Regular.ttf"
-);
+static FONT_DATA: &'static [u8] =
+    include_bytes!("../../../fonts/third_party/robotoslab/RobotoSlab-Regular.ttf");
 
 /// Convenience function that can be called from main and causes the Fuchsia process being
 /// run over ssh to be terminated when the user hits control-C.
@@ -57,7 +56,7 @@ fn main() -> Result<(), Error> {
     let values565 = &[31, 248];
     let values8888 = &[255, 0, 255, 255];
 
-    let pink_frame = fb.new_frame(&mut executor)?;
+    let mut pink_frame = fb.new_frame(&mut executor)?;
 
     for y in 0..config.height {
         for x in 0..config.width {
@@ -73,7 +72,6 @@ fn main() -> Result<(), Error> {
     let mut state = UiState::new();
     build_recovery(&mut state);
     let main = Box::new(UiMain::new(state));
-
     let mut face = Face::new(FONT_DATA).unwrap();
     let mut paint_ctx = paint::PaintCtx {
         frame: &mut pink_frame,
@@ -87,10 +85,9 @@ fn main() -> Result<(), Error> {
 
     loop {
         main.paint(&mut paint_ctx);
-        pink_frame.present(&fb).unwrap();
-        thread::sleep(time::Duration::from_millis(250));
+        paint_ctx.frame.present(&fb).unwrap();
+        thread::sleep(time::Duration::from_millis(25000));
     }
-
 }
 
 pub use widget::Widget;
@@ -181,8 +178,8 @@ pub struct ListenerCtx<'a> {
     inner: &'a mut UiInner,
 }
 
-pub struct PaintCtx<'a, 'b: 'a> {
-    inner: &'a mut paint::PaintCtx<'b>,
+pub struct MainPaintCtx<'a, 'b: 'a, 'c: 'a + 'b> {
+    inner: &'a mut paint::PaintCtx<'b, 'c>,
     text_renderer: &'a TextRenderer,
 }
 
@@ -293,7 +290,7 @@ impl UiState {
 //
 // Implemented as a recursion, but we could use an explicit queue instead.
 fn paint_rec(
-    widgets: &mut [Box<Widget>], graph: &Graph, geom: &[Geometry], paint_ctx: &mut PaintCtx,
+    widgets: &mut [Box<Widget>], graph: &Graph, geom: &[Geometry], paint_ctx: &mut MainPaintCtx,
     node: Id, pos: (f32, f32),
 ) {
     let g = geom[node].offset(pos);
@@ -379,7 +376,7 @@ impl UiInner {
     // so are more concise to implement here.
 
     fn paint(&mut self, paint_ctx: &mut paint::PaintCtx, root: Id) {
-        let mut paint_ctx = PaintCtx {
+        let mut paint_ctx = MainPaintCtx {
             inner: paint_ctx,
             text_renderer: &self.c.text_renderer,
         };
@@ -494,7 +491,7 @@ impl<'a> ListenerCtx<'a> {
     }
 }
 
-impl<'a, 'b> PaintCtx<'a, 'b> {
+impl<'a, 'b, 'c> MainPaintCtx<'a, 'b, 'c> {
     pub fn text_renderer(&self) -> &TextRenderer {
         self.text_renderer
     }
@@ -531,7 +528,7 @@ struct RecoveryState {
 }
 
 fn pad(widget: Id, ui: &mut UiState) -> Id {
-    Padding::uniform(5.0).ui(widget, ui)
+    Padding::uniform(25.0).ui(widget, ui)
 }
 
 fn build_recovery(ui: &mut UiState) {

@@ -234,10 +234,14 @@ impl<'a> Frame<'a> {
         if result != 0 {
             return Err(format_err!("zx_cache_flush failed: {}", result));
         }
+        println!("calling set_display_image");
         framebuffer
             .controller
             .set_display_image(self.config.display_id, self.image_id, 0, 0, 0)?;
+        println!("done set_display_image");
+        println!("calling apply_config");
         framebuffer.controller.apply_config()?;
+        println!("done apply_config");
         Ok(())
     }
 
@@ -256,10 +260,19 @@ impl<'a> Frame<'a> {
     pub fn get_height(&self) -> u32 {
         self.config.height
     }
+
+    pub fn get_pixel_size(&self) -> u32 {
+        self.config.pixel_size_bytes
+    }
+
+    pub fn get_linear_stride_pixels(&self) -> u32 {
+        self.config.linear_stride_pixels
+    }
 }
 
 impl<'a> Drop for Frame<'a> {
     fn drop(&mut self) {
+        println!("dropping frame");
         Vmar::root_self()
             .unmap(self.pixel_buffer_addr, self.byte_size())
             .unwrap();
@@ -389,7 +402,9 @@ impl FrameBuffer {
 }
 
 impl Drop for FrameBuffer {
-    fn drop(&mut self) {}
+    fn drop(&mut self) {
+        println!("dropping FrameBuffer");
+    }
 }
 
 #[cfg(test)]
