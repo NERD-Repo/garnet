@@ -1,11 +1,15 @@
-#![allow(unused_imports, unused_variables, dead_code)]
+#![allow(unused)]
+// Copyright 2017 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+//! A Rust library for using the [Zircon software framebuffer](https://goo.gl/tL1Pqi).
+
+#[macro_use]
 extern crate failure;
-extern crate fidl_fuchsia_amber as amber;
+extern crate fdio;
 extern crate font_rs;
-extern crate fuchsia_app as app;
-extern crate fuchsia_async as async;
-extern crate fuchsia_framebuffer;
-extern crate fuchsia_zircon;
+extern crate fuchsia_zircon_sys;
 
 mod color;
 mod geometry;
@@ -13,84 +17,277 @@ pub mod paint;
 pub mod text;
 pub mod widget;
 
-use app::client::connect_to_service;
 pub use color::Color;
 use failure::Error;
-use fuchsia_framebuffer::{Frame, FrameBuffer, PixelFormat};
+use fdio::fdio_sys::{fdio_ioctl, IOCTL_FAMILY_DISPLAY, IOCTL_KIND_DEFAULT, IOCTL_KIND_GET_HANDLE};
+use fdio::make_ioctl;
+use fuchsia_zircon_sys::{
+    zx_handle_t, zx_vmar_map, zx_vmar_root_self, ZX_VM_FLAG_PERM_READ, ZX_VM_FLAG_PERM_WRITE,
+};
 pub use geometry::{Point, Rectangle, Size};
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::fmt;
+use std::fs::{File, OpenOptions};
 use std::io::{self, Read};
 use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
-use std::rc::Rc;
-use std::{thread, time};
-use widget::{Button, Column, Label, Padding, Row};
-use text::Face;
+use std::os::unix::io::AsRawFd;
+use std::ptr;
+use std::thread;
 
-static FONT_DATA: &'static [u8] = include_bytes!(
-    "../../../fonts/third_party/robotoslab/RobotoSlab-Regular.ttf"
-);
-
-/// Convenience function that can be called from main and causes the Fuchsia process being
-/// run over ssh to be terminated when the user hits control-C.
-fn wait_for_close() {
-    thread::spawn(move || loop {
-        let mut input = [0; 1];
-        if io::stdin().read_exact(&mut input).is_err() {
-            std::process::exit(0);
-        }
-    });
+#[repr(C)]
+struct zx_display_info_t {
+    format: u32,
+    width: u32,
+    height: u32,
+    stride: u32,
+    pixelsize: u32,
+    flags: u32,
 }
 
-fn main() -> Result<(), Error> {
-    println!("Recovery UI");
-    wait_for_close();
+const ZX_PIXEL_FORMAT_RGB_565: u32 = 0x00020001;
+const ZX_PIXEL_FORMAT_ARGB_8888: u32 = 0x00040004;
+const ZX_PIXEL_FORMAT_RGB_X888: u32 = 0x00040005;
+const ZX_PIXEL_FORMAT_MONO_1: u32 = 0x00000006;
+const ZX_PIXEL_FORMAT_MONO_8: u32 = 0x00010007;
 
-    let mut executor = async::Executor::new().unwrap();
+#[repr(C)]
+struct ioctl_display_get_fb_t {
+    vmo: zx_handle_t,
+    info: zx_display_info_t,
+}
 
-    let fb = FrameBuffer::new(None, &mut executor).unwrap();
-    let config = fb.get_config();
+/// The native pixel format of the framebuffer.
+/// These values are mapped to the values from [zircon/pixelformat.h](https://goo.gl/nM2T7T).
+#[derive(Debug, Clone, Copy)]
+pub enum PixelFormat {
+    Rgb565,
+    Argb8888,
+    RgbX888,
+    Mono1,
+    Mono8,
+    Unknown,
+}
 
-    let values565 = &[31, 248];
-    let values8888 = &[255, 0, 255, 255];
+fn get_info_for_device(fd: i32) -> Result<ioctl_display_get_fb_t, Error> {
+    let ioctl_display_get_fb_value = make_ioctl(IOCTL_KIND_GET_HANDLE, IOCTL_FAMILY_DISPLAY, 1);
+    let mut framebuffer: ioctl_display_get_fb_t = ioctl_display_get_fb_t {
+        vmo: 0,
+        info: zx_display_info_t {
+            format: 0,
+            width: 0,
+            height: 0,
+            stride: 0,
+            pixelsize: 0,
+            flags: 0,
+        },
+    };
+    let framebuffer_ptr: *mut std::os::raw::c_void =
+        &mut framebuffer as *mut _ as *mut std::os::raw::c_void;
 
-    let pink_frame = fb.new_frame(&mut executor)?;
+    let status = unsafe {
+        fdio_ioctl(
+            fd,
+            ioctl_display_get_fb_value,
+            ptr::null(),
+            0,
+            framebuffer_ptr,
+            mem::size_of::<ioctl_display_get_fb_t>(),
+        )
+    };
 
-    for y in 0..config.height {
-        for x in 0..config.width {
-            match config.format {
-                PixelFormat::RgbX888 => pink_frame.write_pixel(x, y, values8888),
-                PixelFormat::Argb8888 => pink_frame.write_pixel(x, y, values8888),
-                PixelFormat::Rgb565 => pink_frame.write_pixel(x, y, values565),
-                _ => {}
+    if status < 0 {
+        if status == -2 {
+            bail!(
+                "Software framebuffer is not supported on devices with enabled GPU drivers. \
+                 See README.md for instructions on how to disable the GPU driver."
+            );
+        }
+        bail!("ioctl failed with {}", status);
+    }
+
+    Ok(framebuffer)
+}
+
+/// Struct that provides the interface to the Zircon framebuffer.
+pub struct FrameBuffer {
+    file: File,
+    pixel_format: PixelFormat,
+    frame_buffer_pixels: Vec<u8>,
+    width: usize,
+    height: usize,
+    stride: usize,
+    pixel_size: usize,
+}
+
+impl FrameBuffer {
+    /// Create a new framebufer. By default this will open the framebuffer
+    /// device at /dev/class/framebufer/000 but you can pick a different index.
+    /// At the time of this writing, though, there are never any other framebuffer
+    /// devices.
+    pub fn new(index: Option<isize>) -> Result<FrameBuffer, Error> {
+        let index = index.unwrap_or(0);
+        let device_path = format!("/dev/class/framebuffer/{:03}", index);
+        let file = OpenOptions::new().read(true).write(true).open(device_path)?;
+        let fd = file.as_raw_fd() as i32;
+        let get_fb_data = get_info_for_device(fd)?;
+        let pixel_format = match get_fb_data.info.format {
+            ZX_PIXEL_FORMAT_RGB_565 => PixelFormat::Rgb565,
+            ZX_PIXEL_FORMAT_ARGB_8888 => PixelFormat::Argb8888,
+            ZX_PIXEL_FORMAT_RGB_X888 => PixelFormat::RgbX888,
+            ZX_PIXEL_FORMAT_MONO_1 => PixelFormat::Mono1,
+            ZX_PIXEL_FORMAT_MONO_8 => PixelFormat::Mono8,
+            _ => PixelFormat::Unknown,
+        };
+
+        let rowbytes = get_fb_data.info.stride * get_fb_data.info.pixelsize;
+        let byte_size = rowbytes * get_fb_data.info.height;
+        let map_flags = ZX_VM_FLAG_PERM_READ | ZX_VM_FLAG_PERM_WRITE;
+        let mut pixel_buffer_addr: usize = 0;
+        let pixel_buffer_addr_ptr: *mut usize = &mut pixel_buffer_addr;
+        let status = unsafe {
+            zx_vmar_map(
+                zx_vmar_root_self(),
+                0,
+                get_fb_data.vmo,
+                0,
+                byte_size as usize,
+                map_flags,
+                pixel_buffer_addr_ptr,
+            )
+        };
+
+        if status < 0 {
+            bail!("zx_vmar_map failed with {}", status);
+        }
+
+        let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
+        let frame_buffer_pixels: Vec<u8> = unsafe {
+            Vec::from_raw_parts(
+                frame_buffer_pixel_ptr,
+                byte_size as usize,
+                byte_size as usize,
+            )
+        };
+
+        Ok(FrameBuffer {
+            file,
+            pixel_format,
+            frame_buffer_pixels,
+            width: get_fb_data.info.width as usize,
+            height: get_fb_data.info.height as usize,
+            stride: get_fb_data.info.stride as usize,
+            pixel_size: get_fb_data.info.pixelsize as usize,
+        })
+    }
+
+    /// Call to cause changes you made to the pixel buffer to appear on screen.
+    pub fn flush(&self) -> Result<(), Error> {
+        let ioctl_display_flush_fb_value = make_ioctl(IOCTL_KIND_DEFAULT, IOCTL_FAMILY_DISPLAY, 2);
+        let status = unsafe {
+            fdio_ioctl(
+                self.file.as_raw_fd(),
+                ioctl_display_flush_fb_value,
+                ptr::null(),
+                0,
+                ptr::null_mut(),
+                0,
+            )
+        };
+
+        if status < 0 {
+            bail!("ioctl failed with {}", status);
+        }
+
+        Ok(())
+    }
+
+    /// Return the width and height of the framebuffer.
+    pub fn get_dimensions(&self) -> (usize, usize) {
+        (self.width, self.height)
+    }
+
+    /// Return stride of the framebuffer in pixels.
+    pub fn get_stride(&self) -> usize {
+        self.stride
+    }
+
+    /// Return the size in bytes of a pixel pixels.
+    pub fn get_pixel_size(&self) -> usize {
+        self.pixel_size
+    }
+
+    /// Return the size in bytes of a pixel pixels.
+    pub fn get_pixel_format(&self) -> PixelFormat {
+        self.pixel_format
+    }
+
+    /// Return the pixel buffer as a mutable slice.
+    pub fn get_pixels(&mut self) -> &mut [u8] {
+        self.frame_buffer_pixels.as_mut_slice()
+    }
+
+    pub fn fill_with_color(&mut self, color: &Color) {
+        let pixel_size = self.get_pixel_size();
+        let values565 = color.to_565();
+        let values8888 = color.to_8888();
+        let pixel_data = self.get_pixels();
+        for pixel_slice in pixel_data.chunks_mut(pixel_size) {
+            if pixel_size == 4 {
+                pixel_slice.copy_from_slice(&values8888);
+            } else {
+                pixel_slice.copy_from_slice(&values565);
             }
         }
     }
 
-    let mut state = UiState::new();
-    build_recovery(&mut state);
-    let main = Box::new(UiMain::new(state));
-
-    let mut face = Face::new(FONT_DATA).unwrap();
-    let mut paint_ctx = paint::PaintCtx {
-        frame: &mut pink_frame,
-        face: &mut face,
-    };
-
-    let amber_control = connect_to_service::<amber::ControlMarker>().unwrap();
-    let srcs = amber_control.list_srcs();
-
-    executor.run_singlethreaded(srcs)?;
-
-    loop {
-        main.paint(&mut paint_ctx);
-        pink_frame.present(&fb).unwrap();
-        thread::sleep(time::Duration::from_millis(250));
+    fn fill_rectangle(&mut self, color: &Color, r: &Rectangle) {
+        let pixel_size = self.get_pixel_size();
+        let stride = self.get_stride();
+        let stride_bytes = stride * pixel_size;
+        let values565 = color.to_565();
+        let values8888 = color.to_8888();
+        let pixel_data = self.get_pixels();
+        for y in r.origin.y..r.bottom() {
+            let row_offset = stride_bytes * y as usize;
+            let left_offset = row_offset + r.origin.x as usize * pixel_size;
+            let right_offset = left_offset + r.size.width as usize * pixel_size;
+            let row_slice = &mut pixel_data[left_offset..right_offset];
+            for pixel_slice in row_slice.chunks_mut(pixel_size) {
+                if pixel_size == 4 {
+                    pixel_slice.copy_from_slice(&values8888);
+                } else {
+                    pixel_slice.copy_from_slice(&values565);
+                }
+            }
+        }
     }
+}
 
+impl fmt::Debug for FrameBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "FrameBuffer {{ file: {:?}, pixel_format: {:?}, width: {}, height: {}, \
+             stride: {}, pixel_size: {} }}",
+            self.file, self.pixel_format, self.width, self.height, self.stride, self.pixel_size,
+        )
+    }
+}
+
+/// Convenience function that can be called from main and causes the Fuchsia process being
+/// run over ssh to be terminated when the user hits control-C.
+pub fn wait_for_close() {
+    thread::spawn(move || loop {
+        let mut input = [0; 1];
+        match io::stdin().read_exact(&mut input) {
+            Ok(()) => {}
+            Err(_) => std::process::exit(0),
+        }
+    });
 }
 
 pub use widget::Widget;
@@ -198,10 +395,6 @@ impl Geometry {
     }
 }
 
-fn get_dimensions(frame: &Frame) -> (f32, f32) {
-    (frame.get_width() as f32, frame.get_height() as f32)
-}
-
 impl UiMain {
     pub fn new(state: UiState) -> UiMain {
         UiMain {
@@ -212,7 +405,7 @@ impl UiMain {
     pub fn paint(&self, paint_ctx: &mut paint::PaintCtx) -> bool {
         let mut state = self.state.borrow_mut();
         let root = state.graph.root;
-        let size = get_dimensions(paint_ctx.frame);
+        let size = paint_ctx.framebuffer.get_dimensions();
         let bc = BoxConstraints::tight((size.0 as f32, size.1 as f32));
         // TODO: be lazier about relayout
         state.layout(&bc, root);
@@ -293,8 +486,12 @@ impl UiState {
 //
 // Implemented as a recursion, but we could use an explicit queue instead.
 fn paint_rec(
-    widgets: &mut [Box<Widget>], graph: &Graph, geom: &[Geometry], paint_ctx: &mut PaintCtx,
-    node: Id, pos: (f32, f32),
+    widgets: &mut [Box<Widget>],
+    graph: &Graph,
+    geom: &[Geometry],
+    paint_ctx: &mut PaintCtx,
+    node: Id,
+    pos: (f32, f32),
 ) {
     let g = geom[node].offset(pos);
     widgets[node].paint(paint_ctx, &g);
@@ -304,7 +501,11 @@ fn paint_rec(
 }
 
 fn layout_rec(
-    widgets: &mut [Box<Widget>], ctx: &mut LayoutCtx, graph: &Graph, bc: &BoxConstraints, node: Id,
+    widgets: &mut [Box<Widget>],
+    ctx: &mut LayoutCtx,
+    graph: &Graph,
+    bc: &BoxConstraints,
+    node: Id,
 ) -> (f32, f32) {
     let mut size = None;
     loop {
@@ -431,8 +632,14 @@ impl LayoutCtx {
 }
 
 fn mouse_rec(
-    widgets: &mut [Box<Widget>], graph: &Graph, x: f32, y: f32, mods: u32, which: MouseButton,
-    ty: MouseType, ctx: &mut HandlerCtx,
+    widgets: &mut [Box<Widget>],
+    graph: &Graph,
+    x: f32,
+    y: f32,
+    mods: u32,
+    which: MouseButton,
+    ty: MouseType,
+    ctx: &mut HandlerCtx,
 ) -> bool {
     let node = ctx.id;
     let g = ctx.c.geom[node];
@@ -525,22 +732,3 @@ pub enum MouseType {
 }
 #[derive(Debug)]
 pub struct GenericRenderTarget;
-
-struct RecoveryState {
-    message: String,
-}
-
-fn pad(widget: Id, ui: &mut UiState) -> Id {
-    Padding::uniform(5.0).ui(widget, ui)
-}
-
-fn build_recovery(ui: &mut UiState) {
-    let recovery = Rc::new(RefCell::new(RecoveryState {
-        message: "Recovery Mode".to_string(),
-    }));
-    let message = Label::new(recovery.borrow().message.clone()).ui(ui);
-    let row0 = pad(message, ui);
-    let panel = Column::new().ui(&[row0], ui);
-    let root = pad(panel, ui);
-    ui.set_root(root);
-}

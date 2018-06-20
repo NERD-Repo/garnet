@@ -248,6 +248,14 @@ impl<'a> Frame<'a> {
     fn linear_stride_bytes(&self) -> usize {
         self.config.linear_stride_pixels as usize * self.config.pixel_size_bytes as usize
     }
+
+    pub fn get_width(&self) -> u32 {
+        self.config.width
+    }
+
+    pub fn get_height(&self) -> u32 {
+        self.config.height
+    }
 }
 
 impl<'a> Drop for Frame<'a> {
