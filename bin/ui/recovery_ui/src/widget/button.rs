@@ -20,10 +20,14 @@ use geometry::{Point, Rectangle, Size};
 use widget::Widget;
 use {BoxConstraints, Geometry, LayoutResult, MouseButton, MouseType};
 <<<<<<< HEAD
+<<<<<<< HEAD
 use {Color, HandlerCtx, Id, LayoutCtx, MainPaintCtx, UiInner};
 =======
 use {Color, HandlerCtx, Id, LayoutCtx, PaintCtx, UiInner};
 >>>>>>> Bring in widgets
+=======
+use {Color, HandlerCtx, Id, LayoutCtx, MainPaintCtx, UiInner};
+>>>>>>> More WIP
 
 /// A text label with no interaction.
 pub struct Label {
@@ -49,10 +53,14 @@ impl Label {
 
 impl Widget for Label {
 <<<<<<< HEAD
+<<<<<<< HEAD
     fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {
 =======
     fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
 >>>>>>> Bring in widgets
+=======
+    fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {
+>>>>>>> More WIP
         let location = Point {
             x: geom.pos.0 as i32,
             y: geom.pos.1 as i32,
@@ -110,10 +118,14 @@ impl Button {
 
 impl Widget for Button {
 <<<<<<< HEAD
+<<<<<<< HEAD
     fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {
 =======
     fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {
 >>>>>>> Bring in widgets
+=======
+    fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {
+>>>>>>> More WIP
         let c1 = Color::from_hash_code("#404048");
         let r = Rectangle {
             origin: Point {

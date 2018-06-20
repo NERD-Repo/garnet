@@ -18,10 +18,14 @@ use std::any::Any;
 
 use {BoxConstraints, Geometry, LayoutResult, MouseButton, MouseType};
 <<<<<<< HEAD
+<<<<<<< HEAD
 use {HandlerCtx, Id, LayoutCtx, MainPaintCtx};
 =======
 use {HandlerCtx, Id, LayoutCtx, PaintCtx};
 >>>>>>> Bring in widgets
+=======
+use {HandlerCtx, Id, LayoutCtx, MainPaintCtx};
+>>>>>>> More WIP
 
 mod button;
 pub use widget::button::{Button, Label};
@@ -40,10 +44,14 @@ pub trait Widget {
     /// specified in the geometry.
     #[allow(unused)]
 <<<<<<< HEAD
+<<<<<<< HEAD
     fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {}
 =======
     fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {}
 >>>>>>> Bring in widgets
+=======
+    fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {}
+>>>>>>> More WIP
 
     /// Participate in the layout protocol.
     ///

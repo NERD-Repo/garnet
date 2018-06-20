@@ -32,6 +32,9 @@ impl<'a> Face<'a> {
 
     fn draw_glyph_at(frame: &mut Frame, color: &Color, glyph: &GlyphBitmap, location: &Point) {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> More WIP
         let top = location.y;
         let left = location.x;
         let glyph_data = &glyph.data.as_slice();
@@ -57,6 +60,7 @@ impl<'a> Face<'a> {
             }
             y += 1;
         }
+<<<<<<< HEAD
 =======
         // let top = location.y;
         // let left = location.x;
@@ -90,10 +94,13 @@ impl<'a> Face<'a> {
         //     y += 1;
         // }
 >>>>>>> Bring in widgets
+=======
+>>>>>>> More WIP
     }
 
     pub fn draw_text_at(&mut self, frame: &mut Frame, location: &Point, color: &Color, text: &str) {
         let mut pt = location.clone();
+<<<<<<< HEAD
 <<<<<<< HEAD
         let size = 72;
         for one_char in text.chars() {
@@ -124,6 +131,25 @@ impl<'a> Face<'a> {
             Self::draw_glyph_at(frame, color, &glyph, &glyph_location);
             pt.x += glyph.width as i32 + 2;
 >>>>>>> Bring in widgets
+=======
+        let size = 72;
+        for one_char in text.chars() {
+            if one_char == ' ' {
+                pt.x += size;
+            } else {
+                if let Some(glyph_id) = self.font.lookup_glyph_id(one_char as u32) {
+                    println!("glyph_id = {:?}", glyph_id);
+                    let glyph = self.get_glyph(glyph_id, size as u32);
+                    let glyph_location = Point {
+                        x: pt.x + glyph.left,
+                        y: pt.y + glyph.top,
+                    };
+                    println!("glyph_location = {:?}", glyph_location);
+                    Self::draw_glyph_at(frame, color, &glyph, &glyph_location);
+                    pt.x += glyph.width as i32 + 2;
+                }
+            }
+>>>>>>> More WIP
         }
     }
 }
