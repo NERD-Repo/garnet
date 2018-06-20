@@ -17,7 +17,11 @@
 use std::any::Any;
 
 use {BoxConstraints, Geometry, LayoutResult, MouseButton, MouseType};
+<<<<<<< HEAD
 use {HandlerCtx, Id, LayoutCtx, MainPaintCtx};
+=======
+use {HandlerCtx, Id, LayoutCtx, PaintCtx};
+>>>>>>> Bring in widgets
 
 mod button;
 pub use widget::button::{Button, Label};
@@ -35,7 +39,11 @@ pub trait Widget {
     /// The implementer is responsible for translating the coordinates as
     /// specified in the geometry.
     #[allow(unused)]
+<<<<<<< HEAD
     fn paint(&mut self, paint_ctx: &mut MainPaintCtx, geom: &Geometry) {}
+=======
+    fn paint(&mut self, paint_ctx: &mut PaintCtx, geom: &Geometry) {}
+>>>>>>> Bring in widgets
 
     /// Participate in the layout protocol.
     ///
