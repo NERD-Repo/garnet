@@ -1,0 +1,40 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+
+source_set("lib") {
+  sources = [
+    "perftest_server_app.cc",
+    "perftest_server_app.h",
+  ]
+
+  public_deps = [
+    "//garnet/examples/fidl_perftest/services:perftest",
+    "//garnet/public/lib/app/cpp",
+    "//garnet/public/lib/fidl/cpp",
+  ]
+}
+
+executable("bin") {
+  output_name = "perftest_server"
+
+  sources = [
+    "perftest_server.cc",
+  ]
+
+  deps = [
+    ":lib",
+    "//zircon/public/lib/async-default",
+    "//zircon/public/lib/async-loop-cpp",
+  ]
+}
+
+package("perftest_server_cpp") {
+  deps = [
+    ":bin",
+  ]
+
+  binary = "perftest_server_cpp"
+}

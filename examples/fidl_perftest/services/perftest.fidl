@@ -1,0 +1,31 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fidl.examples.perftest;
+
+// The units corresponding to the values sampled in a TestCase.
+enum Unit : string {
+    // Time-based units.
+    NANOSECONDS = "nanoseconds";
+    MILLISECONDS = "milliseconds";
+    SECONDS = "seconds";
+    
+    // Memory-based units.
+    BYTES = "bytes";
+    KILOBYTES = "kilobytes";
+    MEGABYTES = "megabytes":
+};
+
+// TestCase measures a single metric as part of a PerfTest suite.
+struct TestCase {
+    string name;
+    string unit;
+    vector<float64> values;
+};
+
+[Discoverable]
+interface PerfTest {
+  1: Name() -> (string? name);
+  2: TestCases() -> (vector<TestCase> testCases);
+};
