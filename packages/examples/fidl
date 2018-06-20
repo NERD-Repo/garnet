@@ -9,6 +9,9 @@
         "//garnet/examples/fidl/echo2_server_c",
         "//garnet/examples/fidl/echo2_server_cpp",
         "//garnet/examples/fidl/echo2_server_go",
-        "//garnet/examples/fidl/echo2_server_rust"
+        "//garnet/examples/fidl/echo2_server_rust",
+
+        "//garnet/examples/fidl_perftest/perftest_server_cpp",
+        "//garnet/examples/fidl_perftest/perftest_client_cpp"
     ]
 }

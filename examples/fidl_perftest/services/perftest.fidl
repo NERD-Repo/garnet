@@ -5,22 +5,22 @@
 library fidl.examples.perftest;
 
 // The units corresponding to the values sampled in a TestCase.
-enum Unit : string {
+enum Unit {
     // Time-based units.
-    NANOSECONDS = "nanoseconds";
-    MILLISECONDS = "milliseconds";
-    SECONDS = "seconds";
+    NANOSECONDS = 0;
+    MILLISECONDS = 1;
+    SECONDS = 2;
     
     // Memory-based units.
-    BYTES = "bytes";
-    KILOBYTES = "kilobytes";
-    MEGABYTES = "megabytes":
+    BYTES = 3;
+    KILOBYTES = 4;
+    MEGABYTES = 5;
 };
 
 // TestCase measures a single metric as part of a PerfTest suite.
 struct TestCase {
     string name;
-    string unit;
+    Unit unit;
     vector<float64> values;
 };
 

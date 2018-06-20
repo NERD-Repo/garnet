@@ -12,13 +12,13 @@
 namespace perftest {
 
 // Initializing constructor
-PerfTestServer::PerfTestServer(fidl::string name)
+PerfTestServer::PerfTestServer(fidl::StringPtr name)
     : PerfTestServer(name, fuchsia::sys::StartupContext::CreateFromStartupInfo()) {}
 
 PerfTestServer::PerfTestServer(
-    fidl::string name, std::unique_ptr<fuchsia::sys::StartupContext> context)
-    :   name_(std::move(name))
-        context_(std::move(context)) {
+    fidl::StringPtr name, std::unique_ptr<fuchsia::sys::StartupContext> context)
+    : context_(std::move(context)),
+      name_(std::move(name)) {
   context_->outgoing().AddPublicService<PerfTest>(
       [this](fidl::InterfaceRequest<PerfTest> request) {
         bindings_.AddBinding(this, std::move(request));
@@ -30,10 +30,16 @@ void PerfTestServer::Name(NameCallback callback) {
 }
 
 void PerfTestServer::TestCases(TestCasesCallback callback) {
-    fidl::Vector<fidl::examples::fidl_perftest::TestCase> test_cases;
+    fidl::VectorPtr<fidl::examples::perftest::TestCase> test_cases;
 
-    // fidl::examples::fidl_perftest::TestCase test_case;
-    
-    // Return empty vector for now.
+    fidl::examples::perftest::TestCase test_case;
+    test_case.name = fidl::StringPtr("ClockGetThread");
+    test_case.unit = fidl::examples::perftest::Unit::NANOSECONDS;
+    std::vector<double> values(3, 1.5);
+    test_case.values = fidl::VectorPtr<double>(std::move(values));
+
+    test_cases.push_back(std::move(test_case));
     callback(std::move(test_cases));
+}
+
 }  // namespace perftest

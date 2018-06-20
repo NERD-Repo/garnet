@@ -5,30 +5,30 @@
 #ifndef GARNET_EXAMPLES_FIDL_PERFTEST_SERVER_H_
 #define GARNET_EXAMPLES_FIDL_PERFTEST_SERVER_H_
 
-#include <fidl/examples/fidl_perftest/cpp/fidl.h>
+#include <fidl/examples/perftest/cpp/fidl.h>
 
 #include "lib/app/cpp/startup_context.h"
 #include "lib/fidl/cpp/binding.h"
 
 namespace perftest {
 
-class PerfTestServer : public fidl::examples::fidl_perftest::PerfTest {
+class PerfTestServer : public fidl::examples::perftest::PerfTest {
 public:
-  PerfTestServer(fidl::string name);
+  PerfTestServer(fidl::StringPtr name);
   virtual void Name(NameCallback callback);
   virtual void TestCases(TestCasesCallback callback);
 
 protected:
-  PerfTestServer(fidl::string name, std::unique_ptr<fuchsia::sys::StartupContext> context);
+  PerfTestServer(fidl::StringPtr name, std::unique_ptr<fuchsia::sys::StartupContext> context);
 
 private:
   PerfTestServer(const PerfTestServer&) = delete;
   PerfTestServer& operator=(const PerfTestServer&) = delete;
   std::unique_ptr<fuchsia::sys::StartupContext> context_;
-  fidl::BindingSet<Echo> bindings_;
+  fidl::BindingSet<PerfTest> bindings_;
 
   // The name of this performance test.
-  fidl::string name_;
+  fidl::StringPtr name_;
 };
 
 }  // namespace perftest

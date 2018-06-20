@@ -6,8 +6,8 @@ import("//build/package.gni")
 
 source_set("lib") {
   sources = [
-    "perftest_server_app.cc",
-    "perftest_server_app.h",
+    "perftest_client_app.cc",
+    "perftest_client_app.h",
   ]
 
   public_deps = [
@@ -18,23 +18,27 @@ source_set("lib") {
 }
 
 executable("bin") {
-  output_name = "perftest_server_cpp"
+  output_name = "perftest_client_cpp"
 
   sources = [
-    "perftest_server.cc",
+    "perftest_client.cc",
   ]
 
   deps = [
     ":lib",
+    "//garnet/examples/fidl_perftest/services:perftest",
+    "//garnet/public/lib/app/cpp",
+    "//garnet/public/lib/fidl/cpp",
+    "//garnet/public/lib/svc/cpp",
     "//zircon/public/lib/async-default",
     "//zircon/public/lib/async-loop-cpp",
   ]
 }
 
-package("perftest_server_cpp") {
+package("perftest_client_cpp") {
   deps = [
     ":bin",
   ]
 
-  binary = "perftest_server_cpp"
+  binary = "perftest_client_cpp"
 }
