@@ -5,6 +5,7 @@
 import("//build/package.gni")
 
 source_set("lib") {
+  testonly = true
   sources = [
     "perftest_server_app.cc",
     "perftest_server_app.h",
@@ -14,12 +15,15 @@ source_set("lib") {
     "//garnet/examples/fidl_perftest/services:perftest",
     "//garnet/public/lib/app/cpp",
     "//garnet/public/lib/fidl/cpp",
+
+    # Import zircon benchmarks.
+    "//zircon/public/lib/perftest",    
   ]
 }
 
 executable("bin") {
   output_name = "perftest_server_cpp"
-
+  testonly = true
   sources = [
     "perftest_server.cc",
   ]
@@ -28,10 +32,12 @@ executable("bin") {
     ":lib",
     "//zircon/public/lib/async-default",
     "//zircon/public/lib/async-loop-cpp",
+    "//garnet/bin/zircon_benchmarks:lib"
   ]
 }
 
 package("perftest_server_cpp") {
+  testonly = true
   deps = [
     ":bin",
   ]
