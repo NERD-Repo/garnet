@@ -19,9 +19,9 @@ use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::ptr;
 use std::rc::Rc;
-use zx::sys::{zx_cache_flush, zx_handle_t, ZX_CACHE_FLUSH_DATA, ZX_VM_FLAG_PERM_READ,
-              ZX_VM_FLAG_PERM_WRITE};
+use zx::sys::{zx_cache_flush, zx_handle_t, ZX_CACHE_FLUSH_DATA};
 use zx::{Handle, Status, Vmar, Vmo};
+use zx::VmarFlags;
 
 #[allow(non_camel_case_types, non_upper_case_globals)]
 const ZX_PIXEL_FORMAT_NONE: u32 = 0;
@@ -186,7 +186,7 @@ impl<'a> Frame<'a> {
             &image_vmo,
             0,
             framebuffer.byte_size(),
-            ZX_VM_FLAG_PERM_READ | ZX_VM_FLAG_PERM_WRITE,
+            VmarFlags::PERM_READ | VmarFlags::PERM_WRITE,
         )?;
 
         // import image VMO
@@ -234,14 +234,10 @@ impl<'a> Frame<'a> {
         if result != 0 {
             return Err(format_err!("zx_cache_flush failed: {}", result));
         }
-        println!("calling set_display_image");
         framebuffer
             .controller
             .set_display_image(self.config.display_id, self.image_id, 0, 0, 0)?;
-        println!("done set_display_image");
-        println!("calling apply_config");
         framebuffer.controller.apply_config()?;
-        println!("done apply_config");
         Ok(())
     }
 
@@ -252,30 +248,15 @@ impl<'a> Frame<'a> {
     fn linear_stride_bytes(&self) -> usize {
         self.config.linear_stride_pixels as usize * self.config.pixel_size_bytes as usize
     }
-
-    pub fn get_width(&self) -> u32 {
-        self.config.width
-    }
-
-    pub fn get_height(&self) -> u32 {
-        self.config.height
-    }
-
-    pub fn get_pixel_size(&self) -> u32 {
-        self.config.pixel_size_bytes
-    }
-
-    pub fn get_linear_stride_pixels(&self) -> u32 {
-        self.config.linear_stride_pixels
-    }
 }
 
 impl<'a> Drop for Frame<'a> {
     fn drop(&mut self) {
-        println!("dropping frame");
-        Vmar::root_self()
-            .unmap(self.pixel_buffer_addr, self.byte_size())
-            .unwrap();
+        unsafe {
+            Vmar::root_self()
+                .unmap(self.pixel_buffer_addr, self.byte_size())
+                .unwrap();
+        }
     }
 }
 
@@ -402,9 +383,7 @@ impl FrameBuffer {
 }
 
 impl Drop for FrameBuffer {
-    fn drop(&mut self) {
-        println!("dropping FrameBuffer");
-    }
+    fn drop(&mut self) {}
 }
 
 #[cfg(test)]
