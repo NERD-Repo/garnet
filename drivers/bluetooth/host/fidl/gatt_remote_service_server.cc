@@ -121,6 +121,11 @@ void GattRemoteServiceServer::WriteCharacteristic(
   service_->WriteCharacteristic(id, value.take(), std::move(cb));
 }
 
+void GattRemoteServiceServer::WriteWithoutResponse(
+    uint64_t id, ::fidl::VectorPtr<uint8_t> value) {
+  service_->WriteWithoutResponse(id, value.take());
+}
+
 void GattRemoteServiceServer::NotifyCharacteristic(
     uint64_t id,
     bool enable,
