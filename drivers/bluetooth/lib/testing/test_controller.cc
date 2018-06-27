@@ -39,7 +39,10 @@ TestController::TestController()
       data_dispatcher_(nullptr),
       transaction_dispatcher_(nullptr) {}
 
-TestController::~TestController() { Stop(); }
+TestController::~TestController() {
+  EXPECT_TRUE(cmd_transactions_.empty()) << "Expected transactions remaining!";
+  Stop();
+}
 
 void TestController::QueueCommandTransaction(CommandTransaction transaction) {
   cmd_transactions_.push(std::move(transaction));

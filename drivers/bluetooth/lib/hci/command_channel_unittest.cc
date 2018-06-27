@@ -38,13 +38,11 @@ class TestCallbackObject
   fit::closure deletion_cb_;
 };
 
-class CommandChannelTest : public TestingBase {
+class HCI_CommandChannelTest : public TestingBase {
  public:
-  CommandChannelTest() = default;
-  ~CommandChannelTest() override = default;
+  HCI_CommandChannelTest() = default;
+  ~HCI_CommandChannelTest() override = default;
 };
-
-using HCI_CommandChannelTest = CommandChannelTest;
 
 TEST_F(HCI_CommandChannelTest, SingleRequestResponse) {
   // Set up expectations:
@@ -63,8 +61,7 @@ TEST_F(HCI_CommandChannelTest, SingleRequestResponse) {
       StatusCode::kHardwareFailure);
   // clang-format on
   test_device()->QueueCommandTransaction(CommandTransaction(req, {&rsp}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   // Send a HCI_Reset command. We attach an instance of TestCallbackObject to
   // the callbacks to verify that it gets cleaned up as expected.
@@ -126,8 +123,7 @@ TEST_F(HCI_CommandChannelTest, SingleAsynchronousRequest) {
   // clang-format on
   test_device()->QueueCommandTransaction(
       CommandTransaction(req, {&rsp0, &rsp1}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   // Send HCI_Inquiry
   CommandChannel::TransactionId id;
@@ -179,8 +175,7 @@ TEST_F(HCI_CommandChannelTest, SingleRequestWithStatusResponse) {
       );
   // clang-format on
   test_device()->QueueCommandTransaction(CommandTransaction(req, {&rsp}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   // Send HCI_Reset
   CommandChannel::TransactionId id;
@@ -242,8 +237,7 @@ TEST_F(HCI_CommandChannelTest, OneSentUntilStatus) {
   // clang-format on
   test_device()->QueueCommandTransaction(CommandTransaction(req1, {&rsp1}));
   test_device()->QueueCommandTransaction(CommandTransaction(req2, {&rsp2}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   CommandChannel::TransactionId reset_id, inquiry_id;
   size_t cb_event_count = 0u;
@@ -329,8 +323,7 @@ TEST_F(HCI_CommandChannelTest, QueuedCommands) {
   test_device()->QueueCommandTransaction(CommandTransaction(req_inqcancel, {}));
   test_device()->QueueCommandTransaction(
       CommandTransaction(req_reset, {&rsp_reset}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   size_t transaction_count = 0u;
   size_t reset_count = 0u;
@@ -430,8 +423,7 @@ TEST_F(HCI_CommandChannelTest, AsynchronousCommands) {
       CommandTransaction(req_reset, {&rsp_resetstatus}));
   test_device()->QueueCommandTransaction(
       CommandTransaction(req_inqcancel, {&rsp_inqstatus}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   CommandChannel::TransactionId id1, id2;
   size_t cb_count = 0u;
@@ -536,8 +528,7 @@ TEST_F(HCI_CommandChannelTest, AsyncQueueWhenBlocked) {
 
   test_device()->QueueCommandTransaction(
       CommandTransaction(req_reset, {&rsp_resetstatus, &rsp_bogocomplete}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   test_device()->SendCommandChannelPacket(rsp_nocommandsavail);
 
@@ -641,8 +632,7 @@ TEST_F(HCI_CommandChannelTest, EventHandlerBasic) {
 
   EXPECT_EQ(0u, transaction_id);
 
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
   test_device()->SendCommandChannelPacket(cmd_status);
   test_device()->SendCommandChannelPacket(cmd_complete);
   test_device()->SendCommandChannelPacket(event1);
@@ -728,8 +718,7 @@ TEST_F(HCI_CommandChannelTest, EventHandlerEventWhileTransactionPending) {
   // after the pending transaction completes.
   test_device()->QueueCommandTransaction(
       CommandTransaction(req, {&req_complete, &event, &event}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   int event_count = 0;
   auto event_cb = [&event_count, kTestEventCode,
@@ -799,8 +788,7 @@ TEST_F(HCI_CommandChannelTest, LEMetaEventHandler) {
                                                   dispatcher());
   EXPECT_NE(0u, id2);
 
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   test_device()->SendCommandChannelPacket(le_meta_event_bytes0);
   RunLoopUntilIdle();
@@ -851,8 +839,7 @@ TEST_F(HCI_CommandChannelTest, EventHandlerRestrictions) {
 }
 
 TEST_F(HCI_CommandChannelTest, TransportClosedCallback) {
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   bool closed_cb_called = false;
   auto closed_cb = [&closed_cb_called, this] {
@@ -878,6 +865,7 @@ TEST_F(HCI_CommandChannelTest, CommandTimeout) {
       0x00                                   // parameter_total_size
   );
   test_device()->QueueCommandTransaction(CommandTransaction(req_reset, {}));
+  StartTestDevice();
 
   size_t cb_count = 0;
   CommandChannel::TransactionId id1, id2;
@@ -952,8 +940,7 @@ TEST_F(HCI_CommandChannelTest, AsynchronousCommandChaining) {
       CommandTransaction(req_reset, {&rsp_resetstatus}));
   test_device()->QueueCommandTransaction(
       CommandTransaction(req_reset, {&rsp_resetstatus}));
-  test_device()->StartCmdChannel(test_cmd_chan());
-  test_device()->StartAclChannel(test_acl_chan());
+  StartTestDevice();
 
   CommandChannel::TransactionId id1, id2;
   CommandChannel::CommandCallback cb;
