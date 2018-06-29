@@ -10,6 +10,7 @@
 #include "garnet/drivers/bluetooth/lib/hci/transport.h"
 #include "garnet/drivers/bluetooth/lib/hci/util.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/channel_manager.h"
+#include "garnet/drivers/bluetooth/lib/sm/pairing_state.h"
 
 #include "lib/fxl/logging.h"
 #include "lib/fxl/strings/string_printf.h"
@@ -93,8 +94,26 @@ class LowEnergyConnection {
 
       gatt->AddConnection(weak->id(), std::move(att));
 
-      // TODO(armansito): Retain |smp| here. For now we close the channel.
-      smp->Deactivate();
+      // TODO(armansito): Provide correct I/O capabilities. Using DisplayOnly
+      // for now.
+      // TODO(armansito): Refactor so that RegisterLE parameters are passed in
+      // the constructor. Each sm::PairingState should always have a LE bearer.
+      auto pairing = std::make_unique<sm::PairingState>(sm::IOCapability::kDisplayOnly);
+      pairing->RegisterLE(weak->link_->WeakPtr(), std::move(smp));
+      pairing->set_le_ltk_callback([weak](const sm::LTK& ltk) {
+        weak->OnNewLTK(ltk);
+      });
+
+      // TODO(armansito): Don't pair automatically. Do this in response to a
+      // service request instead.
+      pairing->UpdateSecurity(
+          sm::SecurityLevel::kEncrypted,
+          [](sm::Status status, const auto& props) {
+            FXL_LOG(INFO) << "gap: Pairing status: " << status.ToString()
+                          << ", properties: " << props.ToString();
+          });
+
+      weak->pairing_ = std::move(pairing);
     };
 
     l2cap->RegisterLE(link_->handle(), link_->role(), std::move(cp_cb),
@@ -109,6 +128,13 @@ class LowEnergyConnection {
   hci::Connection* link() const { return link_.get(); }
 
  private:
+  // Called when a new LTK is received for this connection.
+  void OnNewLTK(const sm::LTK& ltk) {
+    FXL_VLOG(1) << "gap: Connection has new LTK";
+
+    // TODO(armansito): Store key with remote device cache.
+  }
+
   void CloseRefs() {
     for (auto* ref : refs_) {
       ref->MarkClosed();
@@ -121,6 +147,9 @@ class LowEnergyConnection {
   std::unique_ptr<hci::Connection> link_;
   async_t* dispatcher_;
   fxl::WeakPtr<LowEnergyConnectionManager> conn_mgr_;
+
+  // SMP pairing manager.
+  std::unique_ptr<sm::PairingState> pairing_;
 
   // LowEnergyConnectionManager is responsible for making sure that these
   // pointers are always valid.
