@@ -40,10 +40,15 @@ static_library("gap") {
     "//garnet/drivers/bluetooth/lib/gatt",
     "//garnet/drivers/bluetooth/lib/hci",
     "//garnet/drivers/bluetooth/lib/l2cap",
-    "//garnet/public/fidl/fuchsia.bluetooth",
-    "//garnet/public/fidl/fuchsia.bluetooth.le",
+    "//garnet/drivers/bluetooth/lib/sm",
     "//garnet/public/lib/fxl",
     "//zircon/public/lib/fit",
+
+    # TODO(armansito): FIDL dependencies are here for advertising data
+    # parsing utilities. Move this logic to drivers/bluetooth/host and remove
+    # the dependency here.
+    "//garnet/public/fidl/fuchsia.bluetooth",
+    "//garnet/public/fidl/fuchsia.bluetooth.le",
   ]
 }
 
