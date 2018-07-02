@@ -2,14 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::task;
-use futures::{Async, Future, Poll};
+use futures::{task, Async, Future, Poll, try_ready};
 use std::io;
 use std::net::{self, SocketAddr};
 use std::ops::Deref;
-
-use net::{set_nonblock, EventedFd};
 use std::os::unix::io::AsRawFd;
+
+use crate::net::{set_nonblock, EventedFd};
 
 /// An I/O object representing a UDP socket.
 pub struct UdpSocket(EventedFd<net::UdpSocket>);
@@ -123,7 +122,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use Executor;
+    use crate::Executor;
     use futures::{FutureExt, future};
     use super::UdpSocket;
 

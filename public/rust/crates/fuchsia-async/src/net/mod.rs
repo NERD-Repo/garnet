@@ -12,9 +12,9 @@ pub use self::udp::UdpSocket;
 
 use futures::io::{self, AsyncRead, AsyncWrite, Initializer};
 use futures::task::{self, AtomicWaker};
-use futures::{Async, Poll};
+use futures::{Async, Poll, try_ready};
 use libc;
-use zx::{self, AsHandleRef};
+use fuchsia_zircon::{self as zx, AsHandleRef};
 
 use std::io::{Read, Write};
 use std::mem;
@@ -22,7 +22,7 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use executor::{EHandle, PacketReceiver, ReceiverRegistration};
+use crate::executor::{EHandle, PacketReceiver, ReceiverRegistration};
 
 const READABLE: usize = libc::EPOLLIN as usize;
 const WRITABLE: usize = libc::EPOLLOUT as usize;
@@ -350,7 +350,7 @@ where
 mod syscall {
     #![allow(non_camel_case_types, improper_ctypes)]
     use std::os::unix::io::RawFd;
-    pub use zx::sys::{zx_handle_t, zx_signals_t};
+    pub use fuchsia_zircon::sys::{zx_handle_t, zx_signals_t};
 
     // This is the "improper" c type
     pub type fdio_t = ();

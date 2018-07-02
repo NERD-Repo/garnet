@@ -9,8 +9,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use futures::{Async, Future, Poll};
 use futures::task::{self, AtomicWaker};
-use executor::{PacketReceiver, ReceiverRegistration, EHandle};
-use zx::{self, AsHandleRef};
+use fuchsia_zircon::{self as zx, AsHandleRef};
+
+use crate::executor::{PacketReceiver, ReceiverRegistration, EHandle};
 
 struct OnSignalsReceiver {
     maybe_signals: AtomicUsize,

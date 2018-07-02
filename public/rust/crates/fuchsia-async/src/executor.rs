@@ -8,9 +8,7 @@ use futures::executor::{Executor as FutureExecutor, SpawnError};
 use futures::task::AtomicWaker;
 use parking_lot::{Mutex, Condvar};
 use slab::Slab;
-use zx;
-
-use atomic_future::AtomicFuture;
+use fuchsia_zircon as zx;
 
 use std::{cmp, fmt, mem};
 use std::cell::RefCell;
@@ -19,6 +17,8 @@ use std::collections::BinaryHeap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::{usize, u64};
+
+use crate::atomic_future::AtomicFuture;
 
 const EMPTY_WAKEUP_ID: u64 = u64::MAX;
 const TASK_READY_WAKEUP_ID: u64 = u64::MAX - 1;

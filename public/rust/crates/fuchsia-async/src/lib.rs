@@ -7,16 +7,6 @@
 #![deny(warnings)]
 #![deny(missing_docs)]
 
-extern crate bytes;
-extern crate crossbeam;
-#[macro_use]
-pub extern crate futures;
-extern crate fuchsia_zircon as zx;
-extern crate libc;
-extern crate net2;
-extern crate parking_lot;
-extern crate slab;
-
 // Set the system allocator for anything using this crate
 extern crate fuchsia_system_alloc;
 
@@ -24,19 +14,19 @@ extern crate fuchsia_system_alloc;
 pub mod atomic_future;
 
 mod channel;
-pub use channel::{Channel, RecvMsg};
+pub use self::channel::{Channel, RecvMsg};
 mod on_signals;
-pub use on_signals::OnSignals;
+pub use self::on_signals::OnSignals;
 mod rwhandle;
-pub use rwhandle::RWHandle;
+pub use self::rwhandle::RWHandle;
 mod socket;
-pub use socket::Socket;
+pub use self::socket::Socket;
 mod timer;
-pub use timer::{Interval, Timer, TimeoutExt, OnTimeout};
+pub use self::timer::{Interval, Timer, TimeoutExt, OnTimeout};
 mod executor;
-pub use executor::{Executor, EHandle, spawn, spawn_local};
+pub use self::executor::{Executor, EHandle, spawn, spawn_local};
 mod fifo;
-pub use fifo::{Fifo, FifoEntry, FifoReadable, FifoWritable, ReadEntry, WriteEntry};
+pub use self::fifo::{Fifo, FifoEntry, FifoReadable, FifoWritable, ReadEntry, WriteEntry};
 pub mod net;
 
 #[macro_export]
