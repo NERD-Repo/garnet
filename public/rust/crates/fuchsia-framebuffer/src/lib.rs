@@ -197,10 +197,7 @@ impl Frame {
             image_id: image_id,
             pixel_buffer_addr,
             pixel_buffer: unsafe {
-                SharedBuffer::new(
-                    frame_buffer_pixel_ptr,
-                    framebuffer.byte_size(),
-                )
+                SharedBuffer::new(frame_buffer_pixel_ptr, framebuffer.byte_size())
             },
         })
     }
@@ -306,7 +303,6 @@ impl FrameBuffer {
                 if let ControllerEvent::DisplaysChanged { added, .. } = event {
                     let mut display_id;
                     let mut zx_pixel_format = 0;
-                    let mut linear_stride_pixels = 0;
                     let mut pixel_format = PixelFormat::Unknown;
                     let mut pixel_size_bytes = 0;
                     if added.len() > 0 {
@@ -320,13 +316,12 @@ impl FrameBuffer {
                             let mode = &first_added.modes[0];
                             if pixel_format != PixelFormat::Unknown {
                                 pixel_size_bytes = pixel_format_bytes(zx_pixel_format);
-                                linear_stride_pixels = mode.horizontal_resolution;
                             }
                             let calculated_config = Config {
                                 display_id: display_id,
                                 width: mode.horizontal_resolution,
                                 height: mode.vertical_resolution,
-                                linear_stride_pixels,
+                                linear_stride_pixels: 0,
                                 format: pixel_format,
                                 pixel_size_bytes: pixel_size_bytes as u32,
                             };
@@ -343,11 +338,23 @@ impl FrameBuffer {
             .map_err(|(e, _rest_of_stream)| e)?;
 
         let config = config.replace(None);
-        if let Some(config) = config {
+        if let Some(mut config) = config {
+            println!("calling compute_linear_stride {:#?}, {:#?}", config.format, config.width);
+            config.linear_stride_pixels = Self::compute_linear_stride(proxy, config.width as i32, config.format, executor)?;
+            println!("config = {:#?}", config);
             Ok(config)
         } else {
             Err(format_err!("Could not find display"))
         }
+    }
+
+    fn compute_linear_stride(
+        proxy: &ControllerProxy, width: i32, pixel_format: PixelFormat,
+        executor: &mut async::Executor,
+    ) -> Result<u32, Error> {
+        let v: u32 = pixel_format.into();
+        let f = proxy.compute_linear_image_stride(width as u32, v as i32);
+        executor.run_singlethreaded(f).map_err(|e| e.into())
     }
 
     pub fn new(
