@@ -4,11 +4,11 @@
 
 use std::fmt;
 
-use futures::{Async, Poll, task};
+use futures::{Async, Poll, task, try_ready};
 use futures::io::{self, AsyncRead, AsyncWrite, Initializer};
-use zx::{self, AsHandleRef};
+use fuchsia_zircon::{self as zx, AsHandleRef};
 
-use RWHandle;
+use crate::RWHandle;
 
 /// An I/O object representing a `Socket`.
 pub struct Socket(RWHandle<zx::Socket>);
@@ -147,9 +147,9 @@ impl<'a> AsyncWrite for &'a Socket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {Executor, Timer, TimeoutExt};
+    use crate::{Executor, Timer, TimeoutExt};
     use futures::prelude::*;
-    use zx::prelude::*;
+    use fuchsia_zircon::prelude::*;
 
     #[test]
     fn can_read_write() {

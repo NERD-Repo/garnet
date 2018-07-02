@@ -6,10 +6,10 @@ use std::fmt;
 use std::marker::{PhantomData, Sized};
 use std::vec::Vec;
 
-use futures::{task, Async, Future, Poll};
-use zx::{self, AsHandleRef};
+use futures::{task, Async, Future, Poll, try_ready};
+use fuchsia_zircon::{self as zx, AsHandleRef};
 
-use RWHandle;
+use crate::RWHandle;
 
 /// Marker trait for types that can be read/written with a `Fifo`.
 /// Unsafe because not all types may be represented by arbitrary bit patterns.
@@ -262,8 +262,8 @@ impl<F: FifoReadable<R>, R: FifoEntry> Future for ReadEntry<F, R> {
 mod tests {
     use super::*;
     use futures::prelude::*;
-    use zx::prelude::*;
-    use {Executor, TimeoutExt, Timer};
+    use fuchsia_zircon::prelude::*;
+    use crate::{Executor, TimeoutExt, Timer};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[repr(C)]

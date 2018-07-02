@@ -7,10 +7,10 @@ use std::mem;
 use std::fmt;
 use std::borrow::BorrowMut;
 
-use futures::{Async, IntoFuture, Future, Poll, task};
-use zx::{self, AsHandleRef, MessageBuf};
+use futures::{Async, IntoFuture, Future, Poll, task, try_ready};
+use fuchsia_zircon::{self as zx, AsHandleRef, MessageBuf};
 
-use RWHandle;
+use crate::RWHandle;
 
 /// An I/O object representing a `Channel`.
 pub struct Channel(RWHandle<zx::Channel>);
@@ -215,9 +215,12 @@ impl<F> Future for RepeatServer<F>
 
 #[cfg(test)]
 mod tests {
-    use {Executor, Timer, TimeoutExt};
-    use zx::prelude::*;
-    use zx::{self, MessageBuf};
+    use crate::{Executor, Timer, TimeoutExt};
+    use fuchsia_zircon::{
+        self as zx,
+        MessageBuf,
+        prelude::*,
+    };
     use futures::prelude::*;
     use futures::channel::oneshot;
     use futures::executor::Executor as FutureExecutor;

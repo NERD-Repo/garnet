@@ -13,10 +13,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::{Future, Stream, Poll, Async, Never};
 use futures::task::{self, AtomicWaker};
+use fuchsia_zircon as zx;
 
-use executor::EHandle;
-
-use zx;
+use crate::executor::EHandle;
 
 /// A trait which allows futures to be easily wrapped in a timeout.
 pub trait TimeoutExt: Future + Sized {
@@ -156,10 +155,10 @@ impl<E> Stream for Interval<E> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use {Executor, Timer};
+    use crate::{Executor, Timer};
     use futures::prelude::*;
     use futures::future::Either;
-    use zx::prelude::*;
+    use fuchsia_zircon::prelude::*;
 
     #[test]
     fn shorter_fires_first() {
