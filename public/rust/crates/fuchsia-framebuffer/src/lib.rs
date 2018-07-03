@@ -15,11 +15,13 @@ use fdio::make_ioctl;
 use shared_buffer::SharedBuffer;
 use std::cell::RefCell;
 use std::fs::{File, OpenOptions};
+use std::iter;
 use std::mem;
 use std::os::unix::io::AsRawFd;
 use std::ptr;
 use std::rc::Rc;
 use zx::sys::{zx_cache_flush, zx_handle_t, ZX_CACHE_FLUSH_DATA};
+use zx::sys::zx_cache_policy_t::ZX_CACHE_POLICY_WRITE_COMBINING;
 use zx::VmarFlags;
 use zx::{Handle, Status, Vmar, Vmo};
 
@@ -117,6 +119,7 @@ impl Config {
 
 pub struct Frame {
     config: Config,
+    layer_id: u64,
     image_id: u64,
     pixel_buffer_addr: usize,
     pixel_buffer: SharedBuffer,
@@ -177,7 +180,7 @@ impl Frame {
 
     pub fn new(framebuffer: &FrameBuffer, executor: &mut async::Executor) -> Result<Frame, Error> {
         let image_vmo = Self::allocate_image_vmo(framebuffer, executor)?;
-
+        image_vmo.set_cache_policy(ZX_CACHE_POLICY_WRITE_COMBINING)?;
         // map image VMO
         let pixel_buffer_addr = Vmar::root_self().map(
             0,
@@ -194,6 +197,7 @@ impl Frame {
         let frame_buffer_pixel_ptr = pixel_buffer_addr as *mut u8;
         Ok(Frame {
             config: framebuffer.get_config(),
+            layer_id: framebuffer.layer_id,
             image_id: image_id,
             pixel_buffer_addr,
             pixel_buffer: unsafe {
@@ -221,6 +225,15 @@ impl Frame {
     }
 
     pub fn present(&self, framebuffer: &FrameBuffer) -> Result<(), Error> {
+        self.flush()?;
+        framebuffer
+            .controller
+            .set_layer_image(self.layer_id, self.image_id, 0, 0)?;
+        framebuffer.controller.apply_config()?;
+        Ok(())
+    }
+
+    pub fn flush(&self) -> Result<(), Error> {
         // TODO: This explicitly violates the safety constraints of SharedBuffer.
         let frame_buffer_pixel_ptr = self.pixel_buffer_addr as *mut u8;
         let result = unsafe {
@@ -233,11 +246,8 @@ impl Frame {
         if result != 0 {
             return Err(format_err!("zx_cache_flush failed: {}", result));
         }
-        framebuffer
-            .controller
-            .set_display_image(self.config.display_id, self.image_id, 0, 0, 0)?;
-        framebuffer.controller.apply_config()?;
         Ok(())
+
     }
 
     fn byte_size(&self) -> usize {
@@ -262,6 +272,7 @@ pub struct FrameBuffer {
     display_controller: File,
     controller: ControllerProxy,
     config: Config,
+    layer_id: u64,
 }
 
 impl FrameBuffer {
@@ -339,9 +350,8 @@ impl FrameBuffer {
 
         let config = config.replace(None);
         if let Some(mut config) = config {
-            println!("calling compute_linear_stride {:#?}, {:#?}", config.format, config.width);
-            config.linear_stride_pixels = Self::compute_linear_stride(proxy, config.width as i32, config.format, executor)?;
-            println!("config = {:#?}", config);
+            config.linear_stride_pixels =
+                Self::compute_linear_stride(proxy, config.width as i32, config.format, executor)?;
             Ok(config)
         } else {
             Err(format_err!("Could not find display"))
@@ -357,6 +367,23 @@ impl FrameBuffer {
         executor.run_singlethreaded(f).map_err(|e| e.into())
     }
 
+    fn create_layer(proxy: &ControllerProxy, executor: &mut async::Executor) -> Result<u64, Error> {
+        let f = proxy.create_layer();
+        let (status, layer_id) = executor.run_singlethreaded(f)?;
+        if status != Status::OK {
+            return Err(status.into());
+        }
+        Ok(layer_id)
+    }
+
+    fn set_layer_config(
+        proxy: &ControllerProxy, display_id: u64, layer_id: u64,
+    ) -> Result<(), Error> {
+        proxy
+            .set_display_layers(display_id, &mut iter::once(layer_id))
+            .map_err(|e| e.into())
+    }
+
     pub fn new(
         display_index: Option<usize>, executor: &mut async::Executor,
     ) -> Result<FrameBuffer, Error> {
@@ -369,11 +396,23 @@ impl FrameBuffer {
         let channel = async::Channel::from_channel(zx_handle.into())?;
         let proxy = ControllerProxy::new(channel);
         let config = Self::create_config_from_event_stream(&proxy, executor)?;
+        let layer_id = Self::create_layer(&proxy, executor)?;
+        proxy.set_display_layers(config.display_id, &mut iter::once(layer_id))?;
+        let raw_format: u32 = config.format.into();
+
+        let mut image_config = ImageConfig {
+            width: config.width,
+            height: config.height,
+            pixel_format: raw_format as i32,
+            type_: 0,
+        };
+        proxy.set_layer_primary_config(layer_id, &mut image_config)?;
 
         Ok(FrameBuffer {
             display_controller: file,
             controller: proxy,
             config: config,
+            layer_id,
         })
     }
 
