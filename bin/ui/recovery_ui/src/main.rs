@@ -1,10 +1,17 @@
+extern crate font_rs;
 extern crate fuchsia_async as async;
 extern crate fuchsia_framebuffer;
 extern crate fuchsia_zircon;
 
+mod text;
+
 use fuchsia_framebuffer::{FrameBuffer, PixelFormat};
 use std::io::{self, Read};
 use std::{thread, time};
+use text::Face;
+
+static FONT_DATA: &'static [u8] =
+    include_bytes!("../../../fonts/third_party/robotoslab/RobotoSlab-Regular.ttf");
 
 /// Convenience function that can be called from main and causes the Fuchsia process being
 /// run over ssh to be terminated when the user hits control-C.
@@ -20,6 +27,8 @@ fn wait_for_close() {
 fn main() {
     println!("Recovery UI");
     wait_for_close();
+
+    let mut face = Face::new(FONT_DATA).unwrap();
 
     let mut executor = async::Executor::new().unwrap();
 
@@ -41,6 +50,14 @@ fn main() {
             }
         }
     }
+
+    face.draw_text_at(
+        &mut pink_frame,
+        (config.width / 2) as i32,
+        (config.height / 2) as i32,
+        256,
+        "Hello",
+    );
 
     pink_frame.present(&fb).unwrap();
     loop {

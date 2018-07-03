@@ -257,6 +257,10 @@ impl Frame {
     fn linear_stride_bytes(&self) -> usize {
         self.config.linear_stride_pixels as usize * self.config.pixel_size_bytes as usize
     }
+
+    pub fn pixel_size_bytes(&self) -> usize {
+        self.config.pixel_size_bytes as usize
+    }
 }
 
 impl Drop for Frame {
