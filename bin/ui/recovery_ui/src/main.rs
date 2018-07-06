@@ -51,13 +51,29 @@ fn main() {
         }
     }
 
+    let sample_text = "Hello-Fjord";
+    let target_size = 256;
+    let (width, height) = face.measure_text(target_size, sample_text);
+
     face.draw_text_at(
         &mut pink_frame,
-        (config.width / 2) as i32,
-        (config.height / 2) as i32,
-        256,
-        "Hello",
+        (config.width / 2) as i32 - width/2,
+        (config.height / 4) as i32 + height/2,
+        target_size,
+        sample_text,
     );
+
+    let sample_text = "go-here-now";
+    let (width, height) = face.measure_text(target_size, sample_text);
+
+    face.draw_text_at(
+        &mut pink_frame,
+        (config.width / 2) as i32 - width/2,
+        (config.height / 2 + config.height / 4) as i32 + height/2,
+        target_size,
+        sample_text,
+    );
+
 
     pink_frame.present(&fb).unwrap();
     loop {

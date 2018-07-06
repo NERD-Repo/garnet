@@ -60,7 +60,11 @@ impl<'a> Face<'a> {
         }
     }
 
-    pub fn draw_text_at(&mut self, frame: &mut Frame, x: i32, y: i32, size: i32, text: &str) {
+    fn draw_text_at_internal(
+        &mut self, mut frame: Option<&mut Frame>, x: i32, y: i32, size: i32, text: &str,
+    ) -> (i32, i32) {
+        let left = x;
+        let mut max_top = 0;
         let mut x = x;
         let padding = max(size / 32, 2);
         for one_char in text.chars() {
@@ -68,8 +72,20 @@ impl<'a> Face<'a> {
             let glyph = self.get_glyph(glyph_id, size as u32);
             let glyph_x = x + glyph.left;
             let glyph_y = y + glyph.top;
-            Self::draw_glyph_at(frame, &glyph, glyph_x, glyph_y);
+            max_top = max(max_top, -glyph.top);
+            if let Some(ref mut frame) = frame {
+                Self::draw_glyph_at(*frame, &glyph, glyph_x, glyph_y);
+            }
             x += glyph.width as i32 + padding;
         }
+        (x - left, max_top)
+    }
+
+    pub fn draw_text_at(&mut self, frame: &mut Frame, x: i32, y: i32, size: i32, text: &str) {
+        self.draw_text_at_internal(Some(frame), x, y, size, text);
+    }
+
+    pub fn measure_text(&mut self, size: i32, text: &str) -> (i32, i32) {
+        self.draw_text_at_internal(None, 0, 0, size, text)
     }
 }
