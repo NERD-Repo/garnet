@@ -207,9 +207,11 @@ impl Frame {
     }
 
     pub fn write_pixel(&mut self, x: u32, y: u32, value: &[u8]) {
-        let pixel_size = self.config.pixel_size_bytes as usize;
-        let offset = self.linear_stride_bytes() * y as usize + x as usize * pixel_size;
-        self.pixel_buffer.write_at(offset, value);
+        if x < self.config.width && y < self.config.height {
+            let pixel_size = self.config.pixel_size_bytes as usize;
+            let offset = self.linear_stride_bytes() * y as usize + x as usize * pixel_size;
+            self.pixel_buffer.write_at(offset, value);
+        }
     }
 
     pub fn fill_rectangle(&mut self, x: u32, y: u32, width: u32, height: u32, value: &[u8]) {

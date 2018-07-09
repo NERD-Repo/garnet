@@ -66,17 +66,22 @@ impl<'a> Face<'a> {
         let left = x;
         let mut max_top = 0;
         let mut x = x;
-        let padding = max(size / 32, 2);
+        let padding = max(size / 16, 2);
         for one_char in text.chars() {
-            let glyph_id = self.font.lookup_glyph_id(one_char as u32).unwrap();
-            let glyph = self.get_glyph(glyph_id, size as u32);
-            let glyph_x = x + glyph.left;
-            let glyph_y = y + glyph.top;
-            max_top = max(max_top, -glyph.top);
-            if let Some(ref mut frame) = frame {
-                Self::draw_glyph_at(*frame, &glyph, glyph_x, glyph_y);
+            if one_char != ' ' {
+                if let Some(glyph_id) = self.font.lookup_glyph_id(one_char as u32) {
+                    let glyph = self.get_glyph(glyph_id, size as u32);
+                    let glyph_x = x + glyph.left;
+                    let glyph_y = y + glyph.top;
+                    max_top = max(max_top, -glyph.top);
+                    if let Some(ref mut frame) = frame {
+                        Self::draw_glyph_at(*frame, &glyph, glyph_x, glyph_y);
+                    }
+                    x += glyph.width as i32 + padding;
+                }
+            } else {
+                x += (size / 3) as i32 + padding;
             }
-            x += glyph.width as i32 + padding;
         }
         (x - left, max_top)
     }
