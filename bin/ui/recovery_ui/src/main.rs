@@ -8,15 +8,13 @@ extern crate fuchsia_zircon as zx;
 
 mod text;
 
-use async::futures::future::empty;
 use async::futures::FutureExt;
-use failure::{Error, Fail};
+use failure::Fail;
 use fuchsia_framebuffer::{Config, Frame, FrameBuffer, PixelFormat};
 use std::cell::RefCell;
 use std::io::{self, Read};
 use std::rc::Rc;
-use std::time::Duration;
-use std::{thread, time};
+use std::{thread};
 use text::Face;
 
 static FONT_DATA: &'static [u8] =
@@ -37,6 +35,7 @@ struct RecoveryUI<'a> {
     face: Face<'a>,
     frame: Frame,
     config: Config,
+    text_size: u32,
 }
 
 impl<'a> RecoveryUI<'a> {
@@ -55,24 +54,23 @@ impl<'a> RecoveryUI<'a> {
             }
         }
 
-        let target_size = 256;
-        let (width, height) = self.face.measure_text(target_size, url);
+        let (width, height) = self.face.measure_text(self.text_size, url);
 
         self.face.draw_text_at(
             &mut self.frame,
             (self.config.width / 2) as i32 - width / 2,
             (self.config.height / 4) as i32 + height / 2,
-            target_size,
+            self.text_size,
             url,
         );
 
-        let (width, height) = self.face.measure_text(target_size, user_code);
+        let (width, height) = self.face.measure_text(self.text_size, user_code);
 
         self.face.draw_text_at(
             &mut self.frame,
             (self.config.width / 2) as i32 - width / 2,
             (self.config.height / 2 + self.config.height / 4) as i32 + height / 2,
-            target_size,
+            self.text_size,
             user_code,
         );
     }
@@ -82,20 +80,21 @@ fn main() {
     println!("Recovery UI");
     wait_for_close();
 
-    let mut face = Face::new(FONT_DATA).unwrap();
+    let face = Face::new(FONT_DATA).unwrap();
 
     let mut executor = async::Executor::new().unwrap();
 
     let fb = FrameBuffer::new(None, &mut executor).unwrap();
     let config = fb.get_config();
 
-    let mut frame = fb.new_frame(&mut executor).unwrap();
+    let frame = fb.new_frame(&mut executor).unwrap();
     frame.present(&fb).unwrap();
 
     let mut ui = RecoveryUI {
         face,
         frame,
         config,
+        text_size: config.height / 12,
     };
 
     ui.draw("Verification URL", "User Code");
@@ -116,9 +115,8 @@ fn main() {
                     .map(move |device_code| println!("device_code = {:#?}", device_code));
                 async::spawn_local(login.recover(move |err| {
                     println!("in login recover {:#?}", err);
-                    let err_str = format!("{:#?}", err);
                     let mut ui_local = ui_login.borrow_mut();
-                    ui_local.draw(&src_list[0].id, &err_str)
+                    ui_local.draw(&src_list[0].id, "Login failed")
                 }));
             } else {
                 ui_fail
@@ -127,11 +125,11 @@ fn main() {
             }
         });
 
-    async::spawn_local(list_srcs.recover(|a| println!("in recover")));
+    async::spawn_local(list_srcs.recover(|err| println!("in list_srcs recover {:#?}", err)));
 
     loop {
         let timeout = async::Timer::<()>::new(zx::Time::INFINITE);
-        executor.run_singlethreaded(timeout);
+        executor.run_singlethreaded(timeout).unwrap();
         println!("tick");
     }
 }

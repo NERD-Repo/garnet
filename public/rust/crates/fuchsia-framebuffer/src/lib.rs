@@ -369,7 +369,7 @@ impl FrameBuffer {
         executor: &mut async::Executor,
     ) -> Result<u32, Error> {
         let v: u32 = pixel_format.into();
-        let f = proxy.compute_linear_image_stride(width as u32, v as i32);
+        let f = proxy.compute_linear_image_stride(width as u32, v);
         executor.run_singlethreaded(f).map_err(|e| e.into())
     }
 
@@ -409,7 +409,7 @@ impl FrameBuffer {
         let mut image_config = ImageConfig {
             width: config.width,
             height: config.height,
-            pixel_format: raw_format as i32,
+            pixel_format: raw_format,
             type_: 0,
         };
         proxy.set_layer_primary_config(layer_id, &mut image_config)?;
