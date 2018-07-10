@@ -56,7 +56,10 @@ class Connection final {
     return remote_service_manager_.get();
   }
 
+  void Initialize();
+
  private:
+  fxl::RefPtr<att::Bearer> att_;
   std::unique_ptr<Server> server_;
   std::unique_ptr<RemoteServiceManager> remote_service_manager_;
 

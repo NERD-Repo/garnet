@@ -59,6 +59,9 @@ class GATT : public fbl::RefCounted<GATT> {
   virtual void AddConnection(const std::string& peer_id,
                              fbl::RefPtr<l2cap::Channel> att_chan) = 0;
 
+  // HACK HACK HACK
+  virtual void DiscoverServices(std::string peer_id) = 0;
+
   // Unregisters the GATT profile connection to the peer with Id |peer_id|.
   virtual void RemoveConnection(std::string peer_id) = 0;
 

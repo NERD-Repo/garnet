@@ -23,6 +23,7 @@ class FakeLayer final : public GATT {
   void ShutDown() override;
   void AddConnection(const std::string& peer_id,
                      fbl::RefPtr<l2cap::Channel> att_chan) override;
+  void DiscoverServices(std::string peer_id) override;
   void RemoveConnection(std::string peer_id) override;
   void RegisterService(ServicePtr service,
                        ServiceIdCallback callback,

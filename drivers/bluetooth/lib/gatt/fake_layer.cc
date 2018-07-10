@@ -21,6 +21,10 @@ void FakeLayer::AddConnection(const std::string& peer_id,
   // TODO: implement
 }
 
+void FakeLayer::DiscoverServices(std::string peer_id) {
+  // TODO: implement
+}
+
 void FakeLayer::RemoveConnection(std::string peer_id) {
   // TODO: implement
 }

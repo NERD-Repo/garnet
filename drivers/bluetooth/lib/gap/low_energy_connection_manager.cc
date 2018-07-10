@@ -116,16 +116,19 @@ class LowEnergyConnection {
         }
       });
 
-      // TODO(armansito): Don't pair automatically. Do this in response to a
-      // service request instead.
+      // TODO(armansito): We register the connection with GATT but don't perform
+      // service discovery until after pairing has completed. Fix this so that
+      // services are discovered immediately and pairing happens in response to
+      // a service request.
+      gatt->AddConnection(self->id(), std::move(att));
       pairing->UpdateSecurity(
           sm::SecurityLevel::kEncrypted,
-          [](sm::Status status, const auto& props) {
+          [gatt, id = self->id()](sm::Status status, const auto& props) {
             FXL_LOG(INFO) << "gap: Pairing status: " << status.ToString()
                           << ", properties: " << props.ToString();
+            gatt->DiscoverServices(id);
           });
 
-      gatt->AddConnection(self->id(), std::move(att));
       self->pairing_ = std::move(pairing);
     };
 
