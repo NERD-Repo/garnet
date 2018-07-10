@@ -14,8 +14,10 @@
 #include "garnet/drivers/bluetooth/lib/sm/util.h"
 
 #include "lib/fxl/logging.h"
+#include "lib/fxl/random/rand.h"
 #include "lib/fxl/strings/string_printf.h"
 
+#include "pairing_delegate.h"
 #include "remote_device.h"
 #include "remote_device_cache.h"
 
@@ -97,8 +99,11 @@ class LowEnergyConnection {
       // for now.
       // TODO(armansito): Refactor so that RegisterLE parameters are passed in
       // the constructor. Each sm::PairingState should always have a LE bearer.
-      auto pairing =
-          std::make_unique<sm::PairingState>(sm::IOCapability::kDisplayOnly);
+      auto io_cap = sm::IOCapability::kNoInputNoOutput;
+      if (self->conn_mgr_->pairing_delegate()) {
+        io_cap = self->conn_mgr_->pairing_delegate()->io_capability();
+      }
+      auto pairing = std::make_unique<sm::PairingState>(io_cap);
       pairing->RegisterLE(self->link_->WeakPtr(), std::move(smp));
       pairing->set_legacy_tk_delegate([self](auto method, auto responder) {
         if (self) {
@@ -129,6 +134,14 @@ class LowEnergyConnection {
                       dispatcher_);
   }
 
+  // Cancels any on going pairing procedures and sets up SMP to use the provided
+  // new I/O capabilities for future pairing procedures.
+  void ResetPairingState(sm::IOCapability ioc) {
+    pairing_->Abort();
+
+    // TODO: assign |pairing_| with new I/O capabilities
+  }
+
   size_t ref_count() const { return refs_.size(); }
 
   const std::string& id() const { return id_; }
@@ -150,9 +163,48 @@ class LowEnergyConnection {
     FXL_VLOG(1) << "gap: TK request - method: "
                 << sm::util::PairingMethodToString(method);
 
-    // TODO(armansito): Call out to the pairing delegate and obtain the key from
-    // it.
-    responder(true /* success */, 0);
+    auto delegate = conn_mgr_->pairing_delegate();
+    if (!delegate) {
+      FXL_LOG(ERROR) << "gap: Rejecting pairing without a PairingDelegate!";
+      responder(false, 0);
+      return;
+    }
+
+    if (method == sm::PairingMethod::kPasskeyEntryInput) {
+      // The TK will be provided by the user.
+      delegate->RequestPasskey(
+          id(), [responder = std::move(responder)](int64_t passkey) {
+            if (passkey < 0) {
+              responder(false, 0);
+            } else {
+              responder(true, static_cast<uint32_t>(passkey));
+            }
+          });
+      return;
+    }
+
+    if (method == sm::PairingMethod::kPasskeyEntryDisplay) {
+      // Randomly generate a 6 digit passkey.
+      // TODO(armansito): Use a uniform prng.
+      uint32_t passkey = fxl::RandUint64() % 1000000;
+      delegate->DisplayPasskey(
+          id(), passkey,
+          [passkey, responder = std::move(responder)](bool confirm) {
+            responder(confirm, passkey);
+          });
+      return;
+    }
+
+    // TODO(armansito): Support providing a TK out of band.
+    // OnTKRequest() should only be called for legacy pairing.
+    FXL_DCHECK(method == sm::PairingMethod::kJustWorks);
+
+    delegate->ConfirmPairing(id(),
+                             [responder = std::move(responder)](bool confirm) {
+                               // The TK for Just Works pairing is 0 (Vol 3,
+                               // Part H, 2.3.5.2).
+                               responder(confirm, 0);
+                             });
   }
 
   void CloseRefs() {
@@ -408,6 +460,16 @@ LowEnergyConnectionManager::RegisterRemoteInitiatedLink(
   // Currently this will refuse the connection and disconnect the link if |peer|
   // is already connected to us by a different local address.
   return InitializeConnection(peer->identifier(), std::move(link));
+}
+
+void LowEnergyConnectionManager::SetPairingDelegate(
+    fxl::WeakPtr<PairingDelegate> delegate) {
+  for (auto& iter : connections_) {
+    iter.second->ResetPairingState(delegate
+                                       ? delegate->io_capability()
+                                       : sm::IOCapability::kNoInputNoOutput);
+  }
+  pairing_delegate_ = delegate;
 }
 
 void LowEnergyConnectionManager::SetConnectionParametersCallbackForTesting(

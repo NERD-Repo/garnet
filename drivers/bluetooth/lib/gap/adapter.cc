@@ -169,6 +169,11 @@ void Adapter::ShutDown() {
   CleanUp();
 }
 
+void Adapter::SetPairingDelegate(fxl::WeakPtr<PairingDelegate> delegate) {
+  // TODO(armansito): Do the same for BR/EDR.
+  le_connection_manager()->SetPairingDelegate(delegate);
+}
+
 bool Adapter::IsDiscovering() const {
   return (le_discovery_manager_ && le_discovery_manager_->discovering()) ||
          (bredr_discovery_manager_ && bredr_discovery_manager_->discovering());

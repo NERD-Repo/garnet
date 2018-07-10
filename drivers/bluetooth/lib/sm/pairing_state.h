@@ -85,6 +85,9 @@ class PairingState final {
       fit::function<void(Status status, const SecurityProperties& sec_props)>;
   void UpdateSecurity(SecurityLevel level, PairingCallback callback);
 
+  // Abort any on-going pairing procedure. TODO: note about callbacks.
+  void Abort();
+
  private:
   static constexpr size_t kPairingRequestSize =
       sizeof(Header) + sizeof(PairingRequestParams);

@@ -190,6 +190,16 @@ void PairingState::BeginLegacyPairingPhase1(SecurityLevel level) {
   le_smp_->InitiateFeatureExchange();
 }
 
+void PairingState::Abort() {
+  if (!le_smp_ || !le_smp_->pairing_started())
+    return;
+
+  FXL_VLOG(1) << "sm: Abort pairing";
+  if (legacy_state_) {
+    AbortLegacyPairing(ErrorCode::kUnspecifiedReason);
+  }
+}
+
 void PairingState::BeginLegacyPairingPhase2(const ByteBuffer& preq,
                                             const ByteBuffer& pres) {
   FXL_DCHECK(legacy_state_);

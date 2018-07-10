@@ -32,7 +32,7 @@ namespace gap {
 
 class BrEdrConnectionManager;
 class BrEdrDiscoveryManager;
-
+class PairingDelegate;
 class LowEnergyAdvertisingManager;
 class LowEnergyConnectionManager;
 class LowEnergyDiscoveryManager;
@@ -133,6 +133,11 @@ class Adapter final {
   RemoteDeviceCache* remote_device_cache() {
     return &device_cache_;
   }
+
+  // Assigns a pairing delegate to this adapter. This PairingDelegate and its
+  // I/O capabilities will be used for all future pairing procedures. Setting a
+  // new PairingDelegate cancels all ongoing pairing procedures.
+  void SetPairingDelegate(fxl::WeakPtr<PairingDelegate> delegate);
 
   // Returns true if any discovery process (LE or BR/EDR) is running on this
   // adapter.
