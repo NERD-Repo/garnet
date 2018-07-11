@@ -1,0 +1,35 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+import("//third_party/protobuf/proto_library.gni")
+
+# import("//build/go/go_library.gni")
+# go_library("go_protos") {
+#     name = "perftest_protos"
+#     deps = [":go_sources"]
+# }
+
+group("go_sources") {
+    public_configs = [ ":proto_config" ]
+    public_deps = [ ":proto_sources" ]
+}
+
+config("proto_config") {
+    include_dirs = [ "$root_gen_dir/garnet/lib/perftest" ]
+}
+
+proto_library("proto_sources") {
+    sources = ["protos/perftest.proto"]
+    proto_in_dir = "."
+    proto_out_dir = "garnet/lib/perftest"
+    extra_configs = [ ":proto_config" ]
+
+    # Languages
+    generate_go = true
+}
+
+package("perftest") {
+    data_deps = [":go_sources"]
+}

@@ -1,6 +1,7 @@
 {
     "packages": [
         "//garnet/bin/benchmarks:garnet_benchmarks",
-        "//garnet/bin/catapult_converter"
+        "//garnet/bin/catapult_converter",
+        "//garnet/lib/perftest"
     ]
 }

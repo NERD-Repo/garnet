@@ -1,0 +1,30 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+syntax = "proto3";
+
+// TestCaseResult represents the result of running a single test case.
+message TestCaseResult {
+    // Unit describes the units of 
+    enum Unit {
+        BYTE = 0;
+        KILOBYTE = 1;
+        MEGABYTE = 2;
+
+        NANOSECOND = 3;
+        MILLISECOND = 4;
+        SECOND = 5;
+    }
+
+    // The name of the test case that generated these results.
+    string name = 1;
+
+    // The name of the test suite containing this test case.
+    string test_suite = 2;
+    
+    // The units of TestCaseResult.values.
+    Unit units = 3;
+
+    // The values collected in this test case.
+    repeated double values = 4;
+}
