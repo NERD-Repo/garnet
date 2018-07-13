@@ -16,17 +16,54 @@ use component::server::ServiceFactory;
 use failure::{Error, ResultExt};
 use fidl::endpoints2::{create_endpoints, RequestStream, ServerEnd, ServiceMarker};
 use fidl_fuchsia_ui_views_v1::ViewProviderRequest::CreateView;
-use fidl_fuchsia_ui_views_v1::{ViewManagerMarker, ViewManagerProxy, ViewMarker,
-                               ViewProviderMarker, ViewProviderRequestStream};
+use fidl_fuchsia_ui_views_v1::{ViewListenerRequest, ViewListenerRequestStream, ViewManagerMarker,
+                               ViewManagerProxy, ViewMarker, ViewProviderMarker,
+                               ViewProviderRequestStream};
 use fidl_fuchsia_ui_views_v1_token::ViewOwnerMarker;
 use futures::{FutureExt, StreamExt};
 use std::sync::{Arc, Mutex};
 
-struct BaseView {}
+struct BaseView {
+    view: fidl_fuchsia_ui_views_v1::ViewProxy,
+    mine: zx::EventPair,
+}
+
+type BaseViewPtr = Arc<Mutex<BaseView>>;
+
+impl BaseView {
+    pub fn new(
+        listener_server: zx::Channel, view: fidl_fuchsia_ui_views_v1::ViewProxy,
+        mine: zx::EventPair,
+    ) -> BaseViewPtr {
+        let view_ptr = Arc::new(Mutex::new(BaseView {
+            view,
+            mine,
+        }));
+        Self::setup(view_ptr.clone(), async::Channel::from_channel(listener_server.into()).unwrap());
+        view_ptr
+    }
+
+    fn setup(view_ptr: BaseViewPtr, listener_server: async::Channel) {
+        async::spawn(
+            ViewListenerRequestStream::from_channel(listener_server)
+                .for_each(move |req| {
+                    let ViewListenerRequest::OnPropertiesChanged { properties, .. } = req;
+                    view_ptr.lock().unwrap().handle_properies_changed(&properties);
+                    futures::future::ok(())
+                })
+                .map(|_| ())
+                .recover(|e| eprintln!("view listener error: {:?}", e)),
+        )
+    }
+
+    fn handle_properies_changed(&mut self, properties: &fidl_fuchsia_ui_views_v1::ViewProperties) {
+        println!("OnPropertiesChanged = {:#?}", properties);
+    }
+}
 
 struct App {
     view_manager: ViewManagerProxy,
-    views: Vec<BaseView>,
+    views: Vec<BaseViewPtr>,
 }
 
 type AppPtr = Arc<Mutex<App>>;
@@ -59,13 +96,15 @@ impl App {
         app.lock().unwrap().create_view(req);
     }
 
-    pub fn create_view(&self, req: ServerEnd<ViewOwnerMarker>) {
+    pub fn create_view(&mut self, req: ServerEnd<ViewOwnerMarker>) {
         let (view, view_server_end) = create_endpoints::<ViewMarker>().unwrap();
         let (listener_client, listener_server) = zx::Channel::create().unwrap();
         let (mine, theirs) = zx::EventPair::create().unwrap();
         self.view_manager
             .create_view(view_server_end, req, listener_client.into(), theirs, None)
             .unwrap();
+        let view_ptr = BaseView::new(listener_server, view, mine);
+        self.views.push(view_ptr);
     }
 }
 
