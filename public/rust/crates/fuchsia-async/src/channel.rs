@@ -7,7 +7,7 @@ use std::mem;
 use std::fmt;
 use std::borrow::BorrowMut;
 
-use futures::{Async, IntoFuture, Future, Poll, task, try_ready};
+use futures::{Future, Poll, task, try_ready};
 use fuchsia_zircon::{self as zx, AsHandleRef, MessageBuf};
 
 use crate::RWHandle;
@@ -50,14 +50,14 @@ impl Channel {
     /// get a notification when the socket does become readable. That is, this
     /// is only suitable for calling in a `Future::poll` method and will
     /// automatically handle ensuring a retry once the socket is readable again.
-    fn poll_read(&self, cx: &mut task::Context) -> Poll<(), zx::Status> {
+    fn poll_read(&self, cx: &mut task::Context) -> Async<Result<(), zx::Status>> {
         self.0.poll_read(cx)
     }
 
     /// Receives a message on the channel and registers this `Channel` as
     /// needing a read on receiving a `zx::Status::SHOULD_WAIT`.
     pub fn recv_from(&self, buf: &mut MessageBuf, cx: &mut task::Context)
-        -> Poll<(), zx::Status>
+        -> Poll<Result<(), zx::Status>>
     {
         try_ready!(self.poll_read(cx));
 
@@ -80,10 +80,10 @@ impl Channel {
     ///
     /// The BorrowMut<MessageBuf> means you can pass either a `MessageBuf`
     /// as well as a `&mut MessageBuf`, as well some other things.
-    pub fn recv_msg<T>(self, buf: T) -> RecvMsg<T>
-        where T: BorrowMut<MessageBuf>,
+    pub fn recv_msg<'a>(&'a self, buf: &'a mut MessageBuf)
+        -> impl Future<Output = Result<(), zx::Status>> + 'a
     {
-        RecvMsg(Some((self, buf)))
+        futures::future::poll_fn(|cx| self.recv_from(buf, cx))
     }
 
     /// Returns a `Future` that continuously reads messages from the channel
@@ -91,23 +91,20 @@ impl Channel {
     /// callback returns a future that serializes the server loop so it won't
     /// read the next message until the future returns and gives it a
     /// channel and buffer back.
-    pub fn chain_server<F,U>(self, callback: F) -> ChainServer<F,U>
-        where F: FnMut((Channel, MessageBuf)) -> U,
-              U: IntoFuture<Item = (Channel, MessageBuf), Error = zx::Status>,
+    pub async fn chain_server<F, Fut>(self, callback: F) -> Result<(Channel, MessageBuf)>
+    where
+        F: FnMut((Channel, MessageBuf)) -> Fut,
+        Fut: Future<Output = Result<(Channel, MessageBuf), zx::Status>>,
     {
-        let buf = MessageBuf::new();
-        let recv = self.recv_msg(buf);
-        let state = ServerState::Waiting(recv);
-        ChainServer { callback, state }
-    }
-
-    /// Returns a `Future` that continuously reads messages from the channel and
-    /// calls the callback with them, re-using the message buffer.
-    pub fn repeat_server<F>(self, callback: F) -> RepeatServer<F>
-        where F: FnMut(&Channel, &mut MessageBuf)
-    {
-        let buf = MessageBuf::new();
-        RepeatServer { callback, buf, chan: self }
+        let mut chan = self;
+        let mut buf = MessageBuf::new();
+        loop {
+            await!(self.recv_msg(&mut buf))?;
+            let res = await!(callback(chan, buf))?;
+            chan = res.0;
+            buf = res.1;
+            buf.clear();
+        }
     }
 
     /// Writes a message into the channel.
@@ -123,93 +120,6 @@ impl Channel {
 impl fmt::Debug for Channel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.0.get_ref().fmt(f)
-    }
-}
-
-/// A future used to receive a message from a channel.
-///
-/// This is created by the `Channel::recv_msg` method.
-#[must_use = "futures do nothing unless polled"]
-pub struct RecvMsg<T>(Option<(Channel, T)>);
-
-impl<T> Future for RecvMsg<T>
-    where T: BorrowMut<MessageBuf>,
-{
-    type Item = (Channel, T);
-    type Error = zx::Status;
-
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-        {
-            let (chan, buf) = self.0.as_mut().expect("polled a RecvMsg after completion");
-            try_ready!(chan.recv_from(buf.borrow_mut(), cx));
-        }
-        let (chan, buf) = self.0.take().unwrap();
-        Ok(Async::Ready((chan, buf)))
-    }
-}
-
-/// Allows repeatedly listening for messages while re-using the message buffer
-/// and receiving the channel and buffer for use in the callback.
-#[must_use = "futures do nothing unless polled"]
-pub struct ChainServer<F,U: IntoFuture> {
-    callback: F,
-    state: ServerState<U>,
-}
-
-enum ServerState<U: IntoFuture> {
-    Waiting(RecvMsg<MessageBuf>),
-    Processing(U::Future),
-}
-
-impl<F,U> Future for ChainServer<F,U>
-    where F: FnMut((Channel, MessageBuf)) -> U,
-          U: IntoFuture<Item = (Channel, MessageBuf), Error = zx::Status>,
-{
-    type Item = ();
-    type Error = U::Error;
-
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-        // loop because we might get a new future we have to poll immediately.
-        // we only return on error or Async::Pending
-        loop {
-            let new_state = match &mut self.state {
-                ServerState::Waiting(recv) => {
-                    let chanbuf = try_ready!(recv.poll(cx));
-                    let fut = (self.callback)(chanbuf).into_future();
-                    ServerState::Processing(fut)
-                },
-                ServerState::Processing(fut) => {
-                    let (chan, buf) = try_ready!(fut.poll(cx));
-                    let recv = chan.recv_msg(buf);
-                    ServerState::Waiting(recv)
-                }
-            };
-            let _ = mem::replace(&mut self.state, new_state);
-        }
-    }
-}
-
-/// Allows repeatedly listening for messages while re-using the message buffer.
-#[must_use = "futures do nothing unless polled"]
-pub struct RepeatServer<F> {
-    chan: Channel,
-    callback: F,
-    buf: MessageBuf,
-}
-
-impl<F> Future for RepeatServer<F>
-    where F: FnMut(&Channel, &mut MessageBuf)
-{
-    type Item = ();
-    type Error = io::Error;
-
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-        loop {
-            try_ready!(self.chan.recv_from(&mut self.buf, cx));
-
-            (self.callback)(&self.chan, &mut self.buf);
-            self.buf.clear();
-        }
     }
 }
 

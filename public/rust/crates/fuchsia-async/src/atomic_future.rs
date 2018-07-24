@@ -2,9 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::{Async, Future, Never};
-use futures::executor::Executor;
-use futures::task::{self, LocalMap, Waker};
+use futures::{task, Future, Poll};
 use std::cell::UnsafeCell;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{AcqRel, Relaxed};
@@ -18,7 +16,7 @@ pub struct AtomicFuture {
     // a transition from ACTIVE or NOTIFIED to INACTIVE or DONE.
     // INVARIANT: this value must be `Some(...)` so long as
     // `state` != `DONE`.
-    future: UnsafeCell<Option<(Box<Future<Item = (), Error = Never> + Send>, task::LocalMap)>>,
+    future: UnsafeCell<Option<FutureObj<()>>>,
 }
 
 /// `AtomicFuture` is safe to access from multiple threads at once.
@@ -82,7 +80,7 @@ impl AtomicFuture {
     ///
     /// `try_poll` ensures that the future is polled at least once more
     /// unless it has already finished.
-    pub fn try_poll(&self, waker: &Waker, executor: &mut Executor) -> AttemptPoll
+    pub fn try_poll(&self, cx: &mut task::Context) -> AttemptPoll
     {
         // AcqRel is used instead of SeqCst in the following code.
         //
@@ -128,21 +126,16 @@ impl AtomicFuture {
                             future.poll(cx)
                         };
 
-                        match poll_res {
-                            Ok(Async::Ready(())) | Err(_) => {
-                                // Take the future so that its innards can be dropped
-                                let future_opt: &mut Option<(Box<_>, LocalMap)> =
-                                    unsafe { &mut *self.future.get() };
-                                future_opt.take();
+                        if poll_res.is_ready() {
+                            // Take the future so that its innards can be dropped
+                            let future_opt: &mut Option<FutureObj<()>> =
+                                unsafe { &mut *self.future.get() };
+                            future_opt.take();
 
-                                // No one else will read `future` unless they see
-                                // `INACTIVE`, which will never happen again.
-                                self.state.store(DONE, Relaxed);
-                                return AttemptPoll::IFinished;
-                            }
-                            Ok(Async::Pending) => {
-                                // Continue on
-                            }
+                            // No one else will read `future` unless they see
+                            // `INACTIVE`, which will never happen again.
+                            self.state.store(DONE, Relaxed);
+                            return AttemptPoll::IFinished;
                         }
 
                         match self.state.compare_and_swap(ACTIVE, INACTIVE, AcqRel) {

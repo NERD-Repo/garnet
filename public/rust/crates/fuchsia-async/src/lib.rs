@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 //! A futures-rs executor design specifically for Fuchsia OS.
+#![feature(arbitrary_self_types, futures_api, pin)]
 
 #![deny(warnings)]
 #![deny(missing_docs)]
@@ -14,7 +15,7 @@ extern crate fuchsia_system_alloc;
 pub mod atomic_future;
 
 mod channel;
-pub use self::channel::{Channel, RecvMsg};
+pub use self::channel::Channel;
 mod on_signals;
 pub use self::on_signals::OnSignals;
 mod rwhandle;
