@@ -3,10 +3,10 @@
 // found in the LICENSE file.
 
 use std::fmt;
-use std::marker::{PhantomData, Sized};
-use std::vec::Vec;
+use std::marker::{PhantomData, Sized, Unpin};
+use std::mem::PinMut;
 
-use futures::{task, Async, Future, Poll, try_ready};
+use futures::{task, Future, Poll, try_ready};
 use fuchsia_zircon::{self as zx, AsHandleRef};
 
 use crate::RWHandle;
@@ -25,7 +25,7 @@ pub trait FifoWritable<W: FifoEntry> where Self: Sized {
     ///
     /// An error during writing will cause the fifo to get
     /// destroyed and the status will be returned.
-    fn write_entries(self, entries: Vec<W>) -> WriteEntry<Self, W> {
+    fn write_entries<'a>(&'a self, entries: &'a [W]) -> WriteEntry<'a, Self, W> {
         WriteEntry::new(self, entries)
     }
 
@@ -33,7 +33,7 @@ pub trait FifoWritable<W: FifoEntry> where Self: Sized {
     /// needing a write on receiving a `zx::Status::SHOULD_WAIT`.
     ///
     /// Returns the number of elements processed.
-    fn write(&self, entries: &[W], cx: &mut task::Context) -> Poll<usize, zx::Status>;
+    fn write(&self, entries: &[W], cx: &mut task::Context) -> Poll<Result<usize, zx::Status>>;
 }
 
 /// Identifies that the object may be used to read entries from a FIFO.
@@ -46,13 +46,13 @@ pub trait FifoReadable<R: FifoEntry> where Self: Sized {
     ///
     /// An error during reading will cause the fifo and entry to get
     /// destroyed and the status will be returned.
-    fn read_entry(self) -> ReadEntry<Self, R> {
+    fn read_entry<'a>(&'a self) -> ReadEntry<'a, Self, R> {
         ReadEntry::new(self)
     }
 
     /// Reads an entry from the fifo and registers this `Fifo` as
     /// needing a read on receiving a `zx::Status::SHOULD_WAIT`.
-    fn read(&self, cx: &mut task::Context) -> Poll<Option<R>, zx::Status>;
+    fn read(&self, cx: &mut task::Context) -> Poll<Result<Option<R>, zx::Status>>;
 }
 
 /// An I/O object representing a `Fifo`.
@@ -96,7 +96,7 @@ impl<R: FifoEntry, W: FifoEntry> Fifo<R, W> {
     /// get a notification when the fifo does become writable. That is, this
     /// is only suitable for calling in a `Future::poll` method and will
     /// automatically handle ensuring a retry once the fifo is writable again.
-    pub fn poll_write(&self, cx: &mut task::Context) -> Poll<(), zx::Status> {
+    pub fn poll_write(&self, cx: &mut task::Context) -> Poll<Result<(), zx::Status>> {
         self.handle.poll_write(cx)
     }
 
@@ -104,7 +104,7 @@ impl<R: FifoEntry, W: FifoEntry> Fifo<R, W> {
     /// needing a write on receiving a `zx::Status::SHOULD_WAIT`.
     ///
     /// Returns the number of elements processed.
-    pub fn try_write(&self, entries: &[W], cx: &mut task::Context) -> Poll<usize, zx::Status> {
+    pub fn try_write(&self, entries: &[W], cx: &mut task::Context) -> Poll<Result<usize, zx::Status>> {
         try_ready!(self.poll_write(cx));
         let elem_size = ::std::mem::size_of::<W>();
         let elembuf = unsafe {
@@ -113,14 +113,15 @@ impl<R: FifoEntry, W: FifoEntry> Fifo<R, W> {
         match self.as_ref().write(elem_size, elembuf) {
             Err(e) => {
                 if e == zx::Status::SHOULD_WAIT {
-                    self.handle.need_write(cx)?;
-                    return Ok(Async::Pending);
+                    if let Err(e) = self.handle.need_write(cx) {
+                        return Poll::Ready(Err(e));
+                    }
+                    Poll::Pending
+                } else {
+                    Poll::Ready(Err(e))
                 }
-                return Err(e);
             }
-            Ok(count) => {
-                return Ok(Async::Ready(count));
-            }
+            Ok(count) => Poll::Ready(Ok(count)),
         }
     }
 
@@ -130,13 +131,13 @@ impl<R: FifoEntry, W: FifoEntry> Fifo<R, W> {
     /// get a notification when the fifo does become readable. That is, this
     /// is only suitable for calling in a `Future::poll` method and will
     /// automatically handle ensuring a retry once the fifo is readable again.
-    pub fn poll_read(&self, cx: &mut task::Context) -> Poll<(), zx::Status> {
+    pub fn poll_read(&self, cx: &mut task::Context) -> Poll<Result<(), zx::Status>> {
         self.handle.poll_read(cx)
     }
 
     /// Reads an entry from the fifo and registers this `Fifo` as
     /// needing a read on receiving a `zx::Status::SHOULD_WAIT`.
-    pub fn try_read(&self, cx: &mut task::Context) -> Poll<Option<R>, zx::Status> {
+    pub fn try_read(&self, cx: &mut task::Context) -> Poll<Result<Option<R>, zx::Status>> {
         try_ready!(self.poll_read(cx));
         let mut element = unsafe { ::std::mem::uninitialized() };
         let elembuf = unsafe {
@@ -150,31 +151,34 @@ impl<R: FifoEntry, W: FifoEntry> Fifo<R, W> {
             Err(e) => {
                 // Ensure `drop` isn't called on uninitialized memory.
                 ::std::mem::forget(element);
-                if e == zx::Status::SHOULD_WAIT {
-                    self.handle.need_read(cx)?;
-                    return Ok(Async::Pending);
+                match e {
+                    zx::Status::SHOULD_WAIT => {
+                        if let Err(e) = self.handle.need_read(cx) {
+                            Poll::Ready(Err(e))
+                        } else {
+                            Poll::Pending
+                        }
+                    }
+                    zx::Status::PEER_CLOSED => Poll::Ready(Ok(None)),
+                    e => Poll::Ready(Err(e)),
                 }
-                if e == zx::Status::PEER_CLOSED {
-                    return Ok(Async::Ready(None));
-                }
-                return Err(e);
             }
             Ok(count) => {
                 debug_assert_eq!(1, count);
-                return Ok(Async::Ready(Some(element)));
+                Poll::Ready(Ok(Some(element)))
             }
         }
     }
 }
 
 impl<R: FifoEntry, W: FifoEntry> FifoReadable<R> for Fifo<R, W> {
-    fn read(&self, cx: &mut task::Context) -> Poll<Option<R>, zx::Status> {
+    fn read(&self, cx: &mut task::Context) -> Poll<Result<Option<R>, zx::Status>> {
         self.try_read(cx)
     }
 }
 
 impl<R: FifoEntry, W: FifoEntry> FifoWritable<W> for Fifo<R, W> {
-    fn write(&self, entries: &[W], cx: &mut task::Context) -> Poll<usize, zx::Status> {
+    fn write(&self, entries: &[W], cx: &mut task::Context) -> Poll<Result<usize, zx::Status>> {
         self.try_write(entries, cx)
     }
 }
@@ -186,81 +190,63 @@ impl<R: FifoEntry, W: FifoEntry> fmt::Debug for Fifo<R, W> {
 }
 
 /// WriteEntry represents the future of one or more writes.
-pub struct WriteEntry<F: FifoWritable<W>, W: FifoEntry> {
-    fifo: Option<F>,
-    vector: Vec<W>,
-    index: usize,
+pub struct WriteEntry<'a, F: 'a, W: 'a> {
+    fifo: &'a F,
+    entries: &'a [W],
 }
 
-impl<F: FifoWritable<W>, W: FifoEntry> WriteEntry<F, W> {
+impl<'a, F: FifoWritable<W>, W: FifoEntry> WriteEntry<'a, F, W> {
     /// Create a new WriteEntry, which owns the `FifoWritable` type
     /// until the future completes.
-    pub fn new(fifo: F, vector: Vec<W>) -> WriteEntry<F, W> {
-        WriteEntry {
-            fifo: Some(fifo),
-            vector,
-            index: 0,
-        }
+    pub fn new(fifo: &'a F, entries: &'a [W]) -> Self {
+        WriteEntry { fifo, entries }
     }
 }
 
-impl<F: FifoWritable<W>, W: FifoEntry> Future for WriteEntry<F, W> {
-    type Item = (F, Option<()>);
-    type Error = zx::Status;
+impl<'a, F: FifoWritable<W>, W: FifoEntry> Future for WriteEntry<'a, F, W> {
+    type Output = Result<(), zx::Status>;
 
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-        {
-            let fifo = self
-                .fifo
-                .as_mut()
-                .expect("polled a WriteEntry after completion");
-            while self.index < self.vector.len() {
-                self.index += try_ready!(fifo.write(&self.vector[self.index..], cx));
-            }
+    fn poll(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
+        while !self.entries.is_empty() {
+            let written = try_ready!(self.fifo.write(self.entries, cx));
+            let (_done, remaining) = self.entries.split_at(written);
+            self.entries = remaining;
         }
-        let fifo = self.fifo.take().unwrap();
-        Ok(Async::Ready((fifo, Some(()))))
+        Poll::Ready(Ok(()))
     }
 }
 
 /// ReadEntry represents the future of a single read.
-pub struct ReadEntry<F: FifoReadable<R>, R: FifoEntry> {
-    fifo: Option<F>,
+pub struct ReadEntry<'a, F: 'a, R> {
+    fifo: &'a F,
     read_marker: PhantomData<R>,
 }
 
-impl<F: FifoReadable<R>, R: FifoEntry> ReadEntry<F, R> {
+impl<'a, F, R> Unpin for ReadEntry<'a, F, R> {}
+
+impl<'a, F: FifoReadable<R>, R: FifoEntry> ReadEntry<'a, F, R> {
     /// Create a new ReadEntry, which owns the `FifoReadable` type
     /// until the future completes.
-    pub fn new(fifo: F) -> ReadEntry<F, R> {
+    pub fn new(fifo: &'a F) -> Self {
         ReadEntry {
-            fifo: Some(fifo),
+            fifo,
             read_marker: PhantomData,
         }
     }
 }
 
-impl<F: FifoReadable<R>, R: FifoEntry> Future for ReadEntry<F, R> {
-    type Item = (F, Option<R>);
-    type Error = zx::Status;
+impl<'a, F: FifoReadable<R>, R: FifoEntry> Future for ReadEntry<'a, F, R> {
+    type Output = Result<Option<R>, zx::Status>;
 
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-        let element: Option<R>;
-        {
-            let fifo = self
-                .fifo
-                .as_mut()
-                .expect("polled a ReadEntry after completion");
-            element = try_ready!(fifo.read(cx));
-        }
-        let fifo = self.fifo.take().unwrap();
-        Ok(Async::Ready((fifo, element)))
+    fn poll(self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
+        self.fifo.read(cx)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::join;
     use futures::prelude::*;
     use fuchsia_zircon::prelude::*;
     use crate::{Executor, TimeoutExt, Timer};
@@ -292,21 +278,23 @@ mod tests {
             Fifo::<entry>::from_fifo(rx).expect("failed to create async rx fifo"),
         );
 
-        let receive_future = rx.read_entry().map(|(_rx, entry)| {
+        let receive_future = async {
+            let entry = await!(rx.read_entry()).unwrap();
             assert_eq!(elements[0], entry.expect("peer closed"));
-        });
+        };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
         let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"))
-            .expect("failed to add timeout to receive future");
+            .on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         // Sends an entry after the timeout has passed
-        let sender = Timer::new(10.millis().after_now()).and_then(|()| tx.write_entries(elements.to_vec()));
+        let sender = async {
+            await!(Timer::new(10.millis().after_now()));
+            await!(tx.write_entries(elements)).unwrap();
+        };
 
         let done = receiver.join(sender);
-        exec.run_singlethreaded(done)
-            .expect("failed to run receive future on executor");
+        exec.run_singlethreaded(done);
     }
 
     #[test]
@@ -321,24 +309,26 @@ mod tests {
             Fifo::<wrong_entry>::from_fifo(rx).expect("failed to create async rx fifo"),
         );
 
-        let receive_future = rx
-            .read_entry()
-            .map(|(_rx, _entry)| panic!("read should have failed"));
+        let receive_future = async {
+            match await!(rx.read_entry()) {
+                Ok(_) => panic!("read should have failed"),
+                Err(zx::Status::OUT_OF_RANGE) => {},
+                Err(e) => panic!("unexpected read error: {:?}", e),
+            }
+        };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
         let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"))
-            .expect("failed to add timeout to receive future");
+            .on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         // Sends an entry after the timeout has passed
-        let sender = Timer::new(10.millis().after_now()).and_then(|()| tx.write_entries(elements.to_vec()));
+        let sender = async {
+            await!(Timer::new(10.millis().after_now()));
+            await!(tx.write_entries(elements)).unwrap();
+        };
 
         let done = receiver.join(sender);
-        let res = exec.run_singlethreaded(done);
-        match res {
-            Err(zx::Status::OUT_OF_RANGE) => (),
-            _ => panic!("did not get out-of-range error"),
-        }
+        exec.run_singlethreaded(done);
     }
 
     #[test]
@@ -353,14 +343,15 @@ mod tests {
             Fifo::<entry>::from_fifo(rx).expect("failed to create async rx fifo"),
         );
 
-        let sender = Timer::new(10.millis().after_now())
-            .and_then(|()| tx.write_entries(elements.to_vec()));
+        let sender = async {
+            await!(Timer::new(10.millis().after_now()));
+            match await!(tx.write_entries(elements)) {
+                Err(zx::Status::OUT_OF_RANGE) => (),
+                _ => panic!("did not get out-of-range error"),
+            }
+        };
 
-        let res = exec.run_singlethreaded(sender);
-        match res {
-            Err(zx::Status::OUT_OF_RANGE) => (),
-            _ => panic!("did not get out-of-range error"),
-        }
+        exec.run_singlethreaded(sender);
     }
 
     #[test]
@@ -384,48 +375,35 @@ mod tests {
         // Use `writes_completed` to verify that not all writes
         // are transmitted at once, and the last write is actually blocked.
         let writes_completed = AtomicUsize::new(0);
-        let sender = tx
-            .write_entries(elements[..2].to_vec())
-            .and_then(|(tx, _)| {
-                writes_completed.fetch_add(1, Ordering::SeqCst);
-                tx.write_entries(elements[2..].to_vec())
-            })
-            .map(|(tx, _)| {
-                writes_completed.fetch_add(1, Ordering::SeqCst);
-                tx
-            });
+        let sender = async {
+            await!(tx.write_entries(&elements[..2])).unwrap();
+            writes_completed.fetch_add(1, Ordering::SeqCst);
+            await!(tx.write_entries(&elements[2..])).unwrap();
+            writes_completed.fetch_add(1, Ordering::SeqCst);
+        };
 
         // Wait 10 ms, then read the messages from the fifo.
-        let receive_future = Timer::new(10.millis().after_now())
-            .and_then(|()| rx.read_entry())
-            .map(|(rx, entry)| {
-                assert_eq!(writes_completed.load(Ordering::SeqCst), 1);
-                assert_eq!(elements[0], entry.expect("peer closed"));
-                rx
-            })
-            .and_then(|rx| rx.read_entry())
-            .map(|(rx, entry)| {
-                // At this point, the last write may or may not have
-                // been written.
-                assert_eq!(elements[1], entry.expect("peer closed"));
-                rx
-            })
-            .and_then(|rx| rx.read_entry())
-            .map(|(rx, entry)| {
-                assert_eq!(writes_completed.load(Ordering::SeqCst), 2);
-                assert_eq!(elements[2], entry.expect("peer closed"));
-                rx
-            });
+        let receive_future = async {
+            await!(Timer::new(10.millis().after_now()));
+            let entry = await!(rx.read_entry()).unwrap();
+            assert_eq!(writes_completed.load(Ordering::SeqCst), 1);
+            assert_eq!(elements[0], entry.expect("peer closed"));
+            let entry = await!(rx.read_entry()).unwrap();
+            // At this point, the last write may or may not have
+            // been written.
+            assert_eq!(elements[1], entry.expect("peer closed"));
+            let entry = await!(rx.read_entry()).unwrap();
+            assert_eq!(writes_completed.load(Ordering::SeqCst), 2);
+            assert_eq!(elements[2], entry.expect("peer closed"));
+        };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
         let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"))
-            .expect("failed to add timeout to receive future");
+            .on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         let done = receiver.join(sender);
 
-        exec.run_singlethreaded(done)
-            .expect("failed to run receive future on executor");
+        exec.run_singlethreaded(done);
     }
 
     #[test]
@@ -444,34 +422,30 @@ mod tests {
             Fifo::<entry>::from_fifo(rx).expect("failed to create async rx fifo"),
         );
 
-        let sender = tx.write_entries(elements.to_vec());
+        let sender = tx.write_entries(elements);
 
         // Wait 10 ms, then read the messages from the fifo.
-        let receive_future = Timer::new(10.millis().after_now())
-            .and_then(|()| rx.read_entry())
-            .map(|(rx, entry)| {
-                assert_eq!(elements[0], entry.expect("peer closed"));
-                rx
-            })
-            .and_then(|rx| rx.read_entry())
-            .map(|(rx, entry)| {
-                assert_eq!(elements[1], entry.expect("peer closed"));
-                rx
-            })
-            .and_then(|rx| rx.read_entry())
-            .map(|(rx, entry)| {
-                assert_eq!(elements[2], entry.expect("peer closed"));
-                rx
-            });
+        let receive_future = async {
+            await!(Timer::new(10.millis().after_now()));
+            let entry = await!(rx.read_entry())?;
+            assert_eq!(elements[0], entry.expect("peer closed"));
+            let entry = await!(rx.read_entry())?;
+            assert_eq!(elements[1], entry.expect("peer closed"));
+            let entry = await!(rx.read_entry())?;
+            assert_eq!(elements[2], entry.expect("peer closed"));
+            Ok::<(), zx::Status>(())
+        };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
         let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"))
-            .expect("failed to add timeout to receive future");
+            .on_timeout(300.millis().after_now(), || panic!("timeout"));
 
-        let done = receiver.join(sender);
+        let done = async {
+            let (receiver_res, sender_res) = join!(receiver, sender);
+            receiver_res.unwrap();
+            sender_res.unwrap();
+        };
 
-        exec.run_singlethreaded(done)
-            .expect("failed to run receive future on executor");
+        exec.run_singlethreaded(done);
     }
 }

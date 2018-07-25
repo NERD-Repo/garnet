@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![feature(async_await, await_macro)]
+
 extern crate ethernet;
 extern crate failure;
 extern crate fuchsia_async as fasync;
@@ -26,19 +28,22 @@ fn main() -> Result<(), Error> {
     println!("status: {:?}", client.get_status()?);
     client.start()?;
     client.tx_listen_start()?;
+    let mut stream = client.get_stream();
 
-    let stream = client.get_stream().for_each(|evt| {
-        println!("{:?}", evt);
-        match evt {
-            ethernet::Event::Receive(rx) => {
-                let mut buf = [0; 64];
-                let r = rx.read(&mut buf);
-                println!("first {} bytes: {:02x?}", r, &buf[0..r]);
-            },
-            _ => (),
+    let fut = async {
+        while let Some(evt) = await!(stream.next()) {
+            let evt = evt?;
+            println!("{:?}", evt);
+            match evt {
+                ethernet::Event::Receive(rx) => {
+                    let mut buf = [0; 64];
+                    let r = rx.read(&mut buf);
+                    println!("first {} bytes: {:02x?}", r, &buf[0..r]);
+                },
+                _ => (),
+            }
         }
-        futures::future::ok(())
-    });
-    executor.run_singlethreaded(stream).map(|_| ())?;
-    Ok(())
+        Ok(())
+    };
+    executor.run_singlethreaded(fut)
 }

@@ -3,9 +3,7 @@
 // found in the LICENSE file.
 
 use std::io;
-use std::mem;
 use std::fmt;
-use std::borrow::BorrowMut;
 
 use futures::{Future, Poll, task, try_ready};
 use fuchsia_zircon::{self as zx, AsHandleRef, MessageBuf};
@@ -50,7 +48,7 @@ impl Channel {
     /// get a notification when the socket does become readable. That is, this
     /// is only suitable for calling in a `Future::poll` method and will
     /// automatically handle ensuring a retry once the socket is readable again.
-    fn poll_read(&self, cx: &mut task::Context) -> Async<Result<(), zx::Status>> {
+    fn poll_read(&self, cx: &mut task::Context) -> Poll<Result<(), zx::Status>> {
         self.0.poll_read(cx)
     }
 
@@ -63,27 +61,22 @@ impl Channel {
 
         let res = self.0.get_ref().read(buf);
         if res == Err(zx::Status::SHOULD_WAIT) {
-            self.0.need_read(cx)?;
-            return Ok(Async::Pending);
+            return match self.0.need_read(cx) {
+                Ok(()) => Poll::Pending,
+                Err(e) => Poll::Ready(Err(e)),
+            };
         }
-        res.map(Async::Ready)
+        Poll::Ready(res)
     }
 
-    /// Creates a future that receive a message to be written to the buffer
-    /// provided.
+    /// Creates a future that reads a message into the buffer provided.
     ///
     /// The returned future will return after a message has been received on
-    /// this socket. The future will resolve to the channel and the buffer.
-    ///
-    /// An error during reading will cause the socket and buffer to get
-    /// destroyed and the status will be returned.
-    ///
-    /// The BorrowMut<MessageBuf> means you can pass either a `MessageBuf`
-    /// as well as a `&mut MessageBuf`, as well some other things.
+    /// this socket or an error has occured.
     pub fn recv_msg<'a>(&'a self, buf: &'a mut MessageBuf)
         -> impl Future<Output = Result<(), zx::Status>> + 'a
     {
-        futures::future::poll_fn(|cx| self.recv_from(buf, cx))
+        futures::future::poll_fn(move |cx| self.recv_from(buf, cx))
     }
 
     /// Returns a `Future` that continuously reads messages from the channel
@@ -91,15 +84,15 @@ impl Channel {
     /// callback returns a future that serializes the server loop so it won't
     /// read the next message until the future returns and gives it a
     /// channel and buffer back.
-    pub async fn chain_server<F, Fut>(self, callback: F) -> Result<(Channel, MessageBuf)>
+    pub async fn chain_server<F, Fut>(self, mut callback: F) -> Result<(Channel, MessageBuf), zx::Status>
     where
-        F: FnMut((Channel, MessageBuf)) -> Fut,
+        F: FnMut(Channel, MessageBuf) -> Fut,
         Fut: Future<Output = Result<(Channel, MessageBuf), zx::Status>>,
     {
         let mut chan = self;
         let mut buf = MessageBuf::new();
         loop {
-            await!(self.recv_msg(&mut buf))?;
+            await!(chan.recv_msg(&mut buf))?;
             let res = await!(callback(chan, buf))?;
             chan = res.0;
             buf = res.1;
@@ -132,9 +125,6 @@ mod tests {
         prelude::*,
     };
     use futures::prelude::*;
-    use futures::channel::oneshot;
-    use futures::executor::Executor as FutureExecutor;
-    use futures::future;
     use super::*;
 
     #[test]
@@ -146,23 +136,24 @@ mod tests {
         let f_rx = Channel::from_channel(rx).unwrap();
 
         let mut buffer = MessageBuf::new();
-        let receiver = f_rx.recv_msg(&mut buffer).map(|(_chan, buf)| {
-            println!("{:?}", buf.bytes());
-            assert_eq!(bytes, buf.bytes());
-        });
+        let receiver = async {
+            await!(f_rx.recv_msg(&mut buffer));
+            assert_eq!(bytes, buffer.bytes());
+        };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
         let receiver = receiver.on_timeout(
                         1000.millis().after_now(),
-                        || panic!("timeout")).unwrap();
+                        || panic!("timeout"));
 
-        let sender = Timer::new(100.millis().after_now()).map(|()| {
+        let sender = async {
+            await!(Timer::new(100.millis().after_now()));
             let mut handles = Vec::new();
             tx.write(bytes, &mut handles).unwrap();
-        });
+        };
 
         let done = receiver.join(sender);
-        exec.run_singlethreaded(done).unwrap();
+        exec.run_singlethreaded(done);
     }
 
     #[test]
@@ -173,85 +164,49 @@ mod tests {
         let f_rx = Channel::from_channel(rx).unwrap();
 
         let mut count = 0;
-        let receiver = f_rx.chain_server(|(chan, buf)| {
+        let receiver = f_rx.chain_server(async move |chan, buf| {
             println!("got bytes: {}: {:?}", count, buf.bytes());
             assert_eq!(1, buf.bytes().len());
             assert_eq!(count, buf.bytes()[0]);
             count += 1;
-            Timer::new(100.millis().after_now())
-                .map(move |()| (chan, buf))
-        });
+            await!(Timer::new(100.millis().after_now()));
+            Ok((chan, buf))
+        }).map(|res| { res.unwrap(); });
 
         // add a timeout to receiver to stop the server eventually
-        let receiver = receiver.on_timeout(400.millis().after_now(), || Ok(())).unwrap();
+        let receiver = receiver.on_timeout(400.millis().after_now(), || ());
 
-        let sender = Timer::new(100.millis().after_now()).map(|()|{
+        let sender = async {
+            await!(Timer::new(100.millis().after_now()));
             let mut handles = Vec::new();
             tx.write(&[0], &mut handles).unwrap();
             tx.write(&[1], &mut handles).unwrap();
             tx.write(&[2], &mut handles).unwrap();
-        });
+        };
 
         let done = receiver.join(sender);
-        exec.run_singlethreaded(done).unwrap();
+        exec.run_singlethreaded(done);
     }
 
     #[test]
     fn chain_server_pre_write() {
         let mut exec = Executor::new().unwrap();
-        let mut ehandle = exec.ehandle();
 
         let (tx, rx) = zx::Channel::create().unwrap();
         tx.write(b"txidhelloworld", &mut vec![]).unwrap();
+        drop(tx);
 
         let f_rx = Channel::from_channel(rx).unwrap();
-        let (completer, completion) = oneshot::channel();
 
-        let mut maybe_completer = Some(completer);
+        let mut received = None;
+        {
+            let receiver = f_rx.chain_server(|chan, buf| {
+                received = Some(buf.bytes().to_owned());
+                futures::future::ready(Ok((chan, buf)))
+            }).map(|res| { res.unwrap(); });
 
-        let receiver = f_rx.chain_server(move |(chan, buf)| {
-            maybe_completer.take().unwrap().send(buf.bytes().to_owned()).unwrap();
-            future::ok((chan, buf))
-        });
-        ehandle.spawn(Box::new(receiver.recover(|e| println!("{:?}", e)))).unwrap();
-
-        let mut got_result = false;
-        exec.run_singlethreaded(completion.map(|b| {
-            assert_eq!(b"txidhelloworld".to_vec(), b);
-            got_result = true;
-        } ).map_err(|e| {
-            assert!(false, format!("unexpected error {:?}", e))
-        })).unwrap();
-
-        assert!(got_result);
-    }
-
-    #[test]
-    fn repeat_server() {
-        let mut exec = Executor::new().unwrap();
-
-        let (tx, rx) = zx::Channel::create().unwrap();
-        let f_rx = Channel::from_channel(rx).unwrap();
-
-        let mut count = 0;
-        let receiver = f_rx.repeat_server(|_chan, buf| {
-            println!("{}: {:?}", count, buf.bytes());
-            assert_eq!(1, buf.bytes().len());
-            assert_eq!(count, buf.bytes()[0]);
-            count += 1;
-        });
-
-        // add a timeout to receiver to stop the server eventually
-        let receiver = receiver.on_timeout(500.millis().after_now(), || Ok(())).unwrap();
-
-        let sender = Timer::new(100.millis().after_now()).map(|()|{
-            let mut handles = Vec::new();
-            tx.write(&[0], &mut handles).unwrap();
-            tx.write(&[1], &mut handles).unwrap();
-            tx.write(&[2], &mut handles).unwrap();
-        });
-
-        let done = receiver.join(sender);
-        exec.run_singlethreaded(done).unwrap();
+            exec.run_singlethreaded(receiver);
+        }
+        assert_eq!(Some(b"txidhelloworld".to_vec()), received);
     }
 }
