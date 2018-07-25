@@ -3,11 +3,12 @@
 // found in the LICENSE file.
 
 use std::fmt;
-use std::mem;
+use std::marker::Unpin;
+use std::mem::{self, PinMut};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use futures::{Async, Future, Poll};
+use futures::{Future, Poll};
 use futures::task::{self, AtomicWaker};
 use fuchsia_zircon::{self as zx, AsHandleRef};
 
@@ -19,7 +20,7 @@ struct OnSignalsReceiver {
 }
 
 impl OnSignalsReceiver {
-    fn get_signals(&self, cx: &mut task::Context) -> Async<zx::Signals> {
+    fn get_signals(&self, cx: &mut task::Context) -> Poll<zx::Signals> {
         let mut signals = self.maybe_signals.load(Ordering::Relaxed);
         if signals == 0 {
             // No signals were received-- register to receive a wakeup when they arrive.
@@ -29,9 +30,9 @@ impl OnSignalsReceiver {
             signals = self.maybe_signals.load(Ordering::SeqCst);
         }
         if signals == 0 {
-            Async::Pending
+            Poll::Pending
         } else {
-            Async::Ready(zx::Signals::from_bits_truncate(signals as u32))
+            Poll::Ready(zx::Signals::from_bits_truncate(signals as u32))
         }
     }
 
@@ -54,6 +55,7 @@ impl PacketReceiver for OnSignalsReceiver {
 /// A future that completes when some set of signals become available on a Handle.
 #[must_use = "futures do nothing unless polled"]
 pub struct OnSignals(Result<ReceiverRegistration<OnSignalsReceiver>, zx::Status>);
+impl Unpin for OnSignals {}
 
 impl OnSignals {
     /// Creates a new `OnSignals` object which will receive notifications when
@@ -79,12 +81,12 @@ impl OnSignals {
 }
 
 impl Future for OnSignals {
-    type Item = zx::Signals;
-    type Error = zx::Status;
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-        self.0.as_mut()
-            .map(|receiver| receiver.receiver().get_signals(cx))
-            .map_err(|e| mem::replace(e, zx::Status::OK))
+    type Output = Result<zx::Signals, zx::Status>;
+    fn poll(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
+        match self.0.as_mut() {
+            Ok(receiver) => receiver.receiver().get_signals(cx).map(Ok),
+            Err(e) => Poll::Ready(Err(mem::replace(e, zx::Status::OK))),
+        }
     }
 }
 

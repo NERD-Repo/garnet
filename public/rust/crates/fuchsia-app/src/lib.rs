@@ -6,6 +6,7 @@
 
 #![deny(warnings)]
 #![deny(missing_docs)]
+#![feature(arbitrary_self_types, futures_api, pin)]
 
 extern crate fuchsia_async as async;
 extern crate fuchsia_zircon as zx;
@@ -30,7 +31,6 @@ use fidl::endpoints2::{ServiceMarker, Proxy};
 #[allow(unused_imports)]
 use failure::{Error, ResultExt, Fail};
 use futures::prelude::*;
-use futures::stream::FuturesUnordered;
 
 /// Tools for starting or connecting to existing Fuchsia applications and services.
 pub mod client {
@@ -132,6 +132,8 @@ pub mod client {
 pub mod server {
     use super::*;
     use futures::{Future, Poll};
+    use std::marker::Unpin;
+    use std::mem::{self, PinMut};
 
     use self::errors::*;
     /// New root-level errors that may occur when using the `fuchsia_component::server` module.
@@ -196,7 +198,8 @@ pub mod server {
             let fdio_channel = async::Channel::from_channel(fdio_handle.into())?;
 
             let mut server = FdioServer{
-                readers: FuturesUnordered::new(),
+                buf: zx::MessageBuf::new(),
+                channels: vec![],
                 factories: self.services,
             };
 
@@ -211,12 +214,16 @@ pub mod server {
     /// newly spawned fidl service produced by the factory F.
     #[must_use = "futures must be polled"]
     pub struct FdioServer {
-        readers: FuturesUnordered<async::RecvMsg<zx::MessageBuf>>,
+        // TODO: optimize to avoid polling every channel every time
+        buf: zx::MessageBuf,
+        channels: Vec<async::Channel>,
         factories: Vec<Box<ServiceFactory>>,
     }
 
+    impl Unpin for FdioServer {}
+
     impl FdioServer {
-        fn dispatch(&mut self, chan: &async::Channel, buf: zx::MessageBuf) -> zx::MessageBuf {
+        fn dispatch(&mut self, chan_index: usize, buf: zx::MessageBuf) -> zx::MessageBuf {
             // TODO(raggi): provide an alternative to the into() here so that we
             // don't need to pass the buf in owned back and forward.
             let mut msg: fdio::rio::Message = buf.into();
@@ -248,7 +255,8 @@ pub mod server {
                 );
 
                 if msg.is_describe() {
-                    let reply_channel = reply_channel.as_ref().unwrap_or(chan.as_ref());
+                    let reply_channel = reply_channel.as_ref().unwrap_or(
+                        self.channels[chan_index].as_ref());
                     let reply_err = validation.err().unwrap_or(zx::Status::NOT_SUPPORTED);
                     fdio::rio::write_object(reply_channel, reply_err, 0, &[], &mut vec![])
                         .unwrap_or_else(|e| {
@@ -287,28 +295,36 @@ pub mod server {
         }
 
         fn serve_channel(&mut self, chan: async::Channel) {
-            let rmsg = chan.recv_msg(zx::MessageBuf::new());
-            self.readers.push(rmsg);
+            self.channels.push(chan);
         }
     }
 
     impl Future for FdioServer {
-        type Item = ();
-        type Error = Error;
+        type Output = Result<(), Error>;
 
-        fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
-            loop {
-                match self.readers.poll_next(cx) {
-                    Ok(Async::Ready(Some((chan, buf)))) => {
-                        let buf = self.dispatch(&chan, buf);
-                        self.readers.push(chan.recv_msg(buf));
-                    },
-                    Ok(Async::Ready(None)) | Ok(Async::Pending) => return Ok(Async::Pending),
-                    Err(_) => {
-                        // errors are ignored, as we assume that the channel should still be read from.
-                    },
+        fn poll(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
+            let this = &mut *self;
+            let mut index = 0;
+            while index < this.channels.len() {
+                loop {
+                    match this.channels[index].recv_from(&mut this.buf, cx) {
+                        Poll::Ready(Ok(())) => {
+                            let buf = mem::replace(&mut this.buf, zx::MessageBuf::new());
+                            this.buf = this.dispatch(index, buf);
+                        },
+                        Poll::Ready(Err(zx::Status::PEER_CLOSED)) => {
+                            this.channels.swap_remove(index);
+                        }
+                        Poll::Pending |
+                        // Ignore errors, as we assume the channel should still be read from.
+                        Poll::Ready(Err(_)) => {
+                            index += 1;
+                            break;
+                        },
+                    }
                 }
             }
+            Poll::Pending
         }
     }
 }

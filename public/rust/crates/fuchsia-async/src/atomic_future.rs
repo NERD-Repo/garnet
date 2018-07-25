@@ -2,8 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::{task, Future, Poll};
+use futures::{task, FutureExt};
 use std::cell::UnsafeCell;
+use std::future::FutureObj;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering::{AcqRel, Relaxed};
 
@@ -16,7 +17,7 @@ pub struct AtomicFuture {
     // a transition from ACTIVE or NOTIFIED to INACTIVE or DONE.
     // INVARIANT: this value must be `Some(...)` so long as
     // `state` != `DONE`.
-    future: UnsafeCell<Option<FutureObj<()>>>,
+    future: UnsafeCell<Option<FutureObj<'static, ()>>>,
 }
 
 /// `AtomicFuture` is safe to access from multiple threads at once.
@@ -66,13 +67,10 @@ pub enum AttemptPoll {
 
 impl AtomicFuture {
     /// Create a new `AtomicFuture`.
-    pub fn new(
-        future: Box<Future<Item = (), Error = Never> + Send>,
-        local_map: LocalMap,
-    ) -> Self {
+    pub fn new(future: FutureObj<'static, ()>) -> Self {
         AtomicFuture {
             state: AtomicUsize::new(INACTIVE),
-            future: UnsafeCell::new(Some((future, local_map))),
+            future: UnsafeCell::new(Some(future)),
         }
     }
 
@@ -110,20 +108,13 @@ impl AtomicFuture {
                             // This `UnsafeCell` access is valid because `self.future.get()`
                             // is only called here, inside the critical section where
                             // we performed the transition from INACTIVE to ACTIVE.
-                            let opt: &mut Option<(Box<_>, LocalMap)> =
+                            let opt: &mut Option<FutureObj<'static, ()>> =
                                 unsafe { &mut *self.future.get() };
 
                             // We know that the future is still there and hasn't completed
                             // because `state` != `DONE`
-                            let (future, map) =
-                                opt.as_mut().expect("Missing future in AtomicFuture");
-
-                            let cx = &mut task::Context::new(
-                                map,
-                                waker,
-                                executor);
-
-                            future.poll(cx)
+                            let future = opt.as_mut().expect("Missing future in AtomicFuture");
+                            future.poll_unpin(cx)
                         };
 
                         if poll_res.is_ready() {
