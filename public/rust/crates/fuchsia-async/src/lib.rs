@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 
 //! A futures-rs executor design specifically for Fuchsia OS.
-#![feature(arbitrary_self_types, futures_api, pin)]
+#![feature(arbitrary_self_types, async_await, await_macro, futures_api, pin)]
 
 #![deny(warnings)]
 #![deny(missing_docs)]
@@ -13,6 +13,12 @@ extern crate fuchsia_system_alloc;
 
 /// A future which can be used by multiple threads at once.
 pub mod atomic_future;
+
+/// Re-export the futures crate for use from macros
+#[doc(hidden)]
+pub mod futures {
+    pub use futures::*;
+}
 
 mod channel;
 pub use self::channel::Channel;
@@ -30,11 +36,11 @@ mod fifo;
 pub use self::fifo::{Fifo, FifoEntry, FifoReadable, FifoWritable, ReadEntry, WriteEntry};
 pub mod net;
 
+// Safety: the resulting type cannot be given an `Unpin` or `Drop` implementation
 #[macro_export]
-macro_rules! many_futures {
+macro_rules! unsafe_many_futures {
     ($future:ident, [$first:ident, $($subfuture:ident $(,)*)*]) => {
-
-        enum $future<$first, $($subfuture,)*> {
+        pub enum $future<$first, $($subfuture,)*> {
             $first($first),
             $(
                 $subfuture($subfuture),
@@ -45,17 +51,24 @@ macro_rules! many_futures {
         where
             $first: $crate::futures::Future,
             $(
-                $subfuture: $crate::futures::Future<Item = $first::Item, Error = $first::Error>,
+                $subfuture: $crate::futures::Future<Output = $first::Output>,
             )*
         {
-            type Item = $first::Item;
-            type Error = $first::Error;
-            fn poll(&mut self, cx: &mut $crate::futures::task::Context) -> $crate::futures::Poll<Self::Item, Self::Error> {
-                match self {
-                    $future::$first(x) => $crate::futures::Future::poll(x, cx),
-                    $(
-                        $future::$subfuture(x) => $crate::futures::Future::poll(x, cx),
-                    )*
+            type Output = $first::Output;
+            fn poll(self: PinMut<Self>, cx: &mut $crate::futures::task::Context)
+                -> $crate::futures::Poll<Self::Output>
+            {
+                // Safety: direct projection of fields is allowed provided that the caller
+                // upholds the required invariants (no `Unpin` or `Drop`)
+                unsafe {
+                    match PinMut::get_mut_unchecked(self) {
+                        $future::$first(x) =>
+                            $crate::futures::Future::poll(PinMut::new_unchecked(x), cx),
+                        $(
+                            $future::$subfuture(x) =>
+                                $crate::futures::Future::poll(PinMut::new_unchecked(x), cx),
+                        )*
+                    }
                 }
             }
         }

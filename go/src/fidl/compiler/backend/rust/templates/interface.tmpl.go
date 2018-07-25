@@ -9,7 +9,7 @@ const Interface = `
 {{- $interface := . -}}
 State,
 OnOpen: FnMut(&mut State, {{ $interface.Name }}ControlHandle) -> OnOpenFut,
-OnOpenFut: Future<Item = (), Error = Never> + Send,
+OnOpenFut: Future<Output = ()> + Send + ::std::marker::Unpin,
 {{- range $method := $interface.Methods }}
 	{{- if $method.HasRequest }}
 	{{ $method.CamelName }}: FnMut(&mut State,
@@ -19,7 +19,7 @@ OnOpenFut: Future<Item = (), Error = Never> + Send,
 	{{- else -}}
 	{{ $interface.Name -}}ControlHandle
 	{{- end }}) -> {{ $method.CamelName }}Fut,
-	{{ $method.CamelName }}Fut: Future<Item = (), Error = Never> + Send,
+	{{ $method.CamelName }}Fut: Future<Output = ()> + Send,
 	{{- end }}
 {{- end -}}
 {{- end -}}
@@ -39,12 +39,12 @@ impl fidl::endpoints2::ServiceMarker for {{ $interface.Name }}Marker {
 pub trait {{ $interface.Name }}ProxyInterface: Send + Sync {
 	{{- range $method := $interface.Methods }}
 	{{- if $method.HasResponse }}
-	type {{ $method.CamelName }}ResponseFut: Future<Item = (
+	type {{ $method.CamelName }}ResponseFut: Future<Output = Result<(
 		{{- range $index, $response := $method.Response -}}
 		{{- if (eq $index 0) -}} {{ $response.Type }}
 		{{- else -}}, {{ $response.Type }} {{- end -}}
 		{{- end -}}
-	), Error = fidl::Error> + Send;
+	), fidl::Error>> + Send;
 	{{- end -}}
 
 	{{- if $method.HasRequest }}
@@ -158,18 +158,21 @@ pub struct {{ $interface.Name }}EventStream {
 }
 
 impl Stream for {{ $interface.Name }}EventStream {
-	type Item = {{ $interface.Name }}Event;
-	type Error = fidl::Error;
+	type Item = Result<{{ $interface.Name }}Event, fidl::Error>;
 
-	fn poll_next(&mut self, cx: &mut futures::task::Context)
-		-> futures::Poll<Option<Self::Item>, Self::Error>
+	fn poll_next(mut self: ::std::mem::PinMut<Self>, cx: &mut futures::task::Context)
+		-> futures::Poll<Option<Self::Item>>
 	{
-		let mut buf = match try_ready!(self.event_receiver.poll_next(cx)) {
-			Some(buf) => buf,
-			None => return Ok(futures::Async::Ready(None)),
+		let mut buf = match ready!(self.event_receiver.poll_next_unpin(cx)) {
+			Some(Ok(buf)) => buf,
+			Some(Err(e)) => return futures::Poll::Ready(Some(Err(e))),
+			None => return futures::Poll::Ready(None),
 		};
 		let (bytes, handles) = buf.split_mut();
-		let (tx_header, body_bytes) = fidl::encoding2::decode_transaction_header(bytes)?;
+		let (tx_header, body_bytes) = match fidl::encoding2::decode_transaction_header(bytes) {
+			Ok(x) => x,
+			Err(e) => return futures::Poll::Ready(Some(Err(e))),
+		};
 		match tx_header.ordinal {
 			{{- range $method := $interface.Methods }}
 			{{- if not $method.HasRequest }}
@@ -181,8 +184,11 @@ impl Stream for {{ $interface.Name }}EventStream {
 					{{- end -}}
 					{{- end -}}
 				) = fidl::encoding2::Decodable::new_empty();
-				fidl::encoding2::Decoder::decode_into(body_bytes, handles, &mut out_tuple)?;
-				Ok(futures::Async::Ready(Some(
+				match fidl::encoding2::Decoder::decode_into(body_bytes, handles, &mut out_tuple) {
+					Ok(()) => (),
+					Err(e) => return futures::Poll::Ready(Some(Err(e))),
+				};
+				futures::Poll::Ready(Some(Ok(
 					{{ $interface.Name }}Event::{{ $method.CamelName }} {
 						{{- range $index, $param := $method.Response -}}
 						{{- if ne 1 (len $method.Response) -}}
@@ -196,10 +202,10 @@ impl Stream for {{ $interface.Name }}EventStream {
 			}
 			{{- end -}}
 			{{- end }}
-			_ => Err(fidl::Error::UnknownOrdinal {
+			_ => futures::Poll::Ready(Some(Err(fidl::Error::UnknownOrdinal {
 				ordinal: tx_header.ordinal,
 				service_name: <{{ $interface.Name }}Marker as fidl::endpoints2::ServiceMarker>::NAME,
-			})
+			})))
 		}
 	}
 }
@@ -218,12 +224,12 @@ pub enum {{ $interface.Name }}Event {
 }
 
 pub trait {{ $interface.Name }} {
-	type OnOpenFut: Future<Item = (), Error = Never> + Send;
+	type OnOpenFut: Future<Output = ()> + Send + ::std::marker::Unpin;
 	fn on_open(&mut self, control_handle: {{ $interface.Name }}ControlHandle) -> Self::OnOpenFut;
 
 	{{- range $method := $interface.Methods }}
 	{{- if $method.HasRequest }}
-	type {{ $method.CamelName }}Fut: Future<Item = (), Error = Never> + Send;
+	type {{ $method.CamelName }}Fut: Future<Output = ()> + Send;
 	fn {{ $method.Name }} (&mut self,
 		{{- range $request := $method.Request }}
 		{{ $request.Name }}: {{ $request.Type }},
@@ -273,6 +279,8 @@ pub struct {{ $interface.Name }}Server<T: {{ $interface.Name }}> {
 	{{- end }}
 }
 
+impl<T: {{ $interface.Name }}> ::std::marker::Unpin for {{ $interface.Name }}Server<T> {}
+
 impl<T: {{ $interface.Name }}> {{ $interface.Name }}Server<T> {
 	pub fn control_handle(&self) -> {{ $interface.Name }}ControlHandle {
 		{{ $interface.Name }}ControlHandle {
@@ -282,21 +290,23 @@ impl<T: {{ $interface.Name }}> {{ $interface.Name }}Server<T> {
 }
 
 impl<T: {{ $interface.Name }}> futures::Future for {{ $interface.Name }}Server<T> {
-	type Item = ();
-	type Error = fidl::Error;
+	type Output = Result<(), fidl::Error>;
 
-	fn poll(&mut self, cx: &mut futures::task::Context) -> futures::Poll<Self::Item, Self::Error> { loop {
+	fn poll(
+		mut self: ::std::mem::PinMut<Self>,
+		cx: &mut futures::task::Context,
+	) -> futures::Poll<Self::Output> { loop {
+		let this = &mut *self;
 		let mut made_progress_this_loop_iter = false;
 
-		if self.inner.poll_shutdown(cx) {
-			return Ok(futures::Async::Ready(()));
+		if this.inner.poll_shutdown(cx) {
+			return futures::Poll::Ready(Ok(()));
 		}
 
-		let completed_on_open = if let Some(on_open_fut) = &mut self.on_open_fut {
-			match on_open_fut.poll(cx) {
-				Ok(futures::Async::Ready(())) => true,
-				Ok(futures::Async::Pending) => false,
-				Err(never) => match never {},
+		let completed_on_open = if let Some(on_open_fut) = &mut this.on_open_fut {
+			match on_open_fut.poll_unpin(cx) {
+				futures::Poll::Ready(()) => true,
+				futures::Poll::Pending => false,
 			}
 		} else {
 			false
@@ -304,37 +314,41 @@ impl<T: {{ $interface.Name }}> futures::Future for {{ $interface.Name }}Server<T
 
 		if completed_on_open {
 			made_progress_this_loop_iter = true;
-			self.on_open_fut.take();
+			this.on_open_fut.take();
 		}
 
 		{{- range $method := $interface.Methods }}
 		{{- if $method.HasRequest -}}
-		match self.{{ $method.Name }}_futures.poll_next(cx).map_err(|never| match never {})? {
-			futures::Async::Ready(Some(())) => made_progress_this_loop_iter = true,
+		match this.{{ $method.Name }}_futures.poll_next_unpin(cx) {
+			futures::Poll::Ready(Some(())) => made_progress_this_loop_iter = true,
 			_ => {},
 		}
 		{{- end -}}
 		{{- end }}
 
-		match self.inner.channel().recv_from(&mut self.msg_buf, cx) {
-			Ok(futures::Async::Ready(())) => {},
-			Ok(futures::Async::Pending) => {
+		match this.inner.channel().recv_from(&mut this.msg_buf, cx) {
+			futures::Poll::Ready(Ok(())) => {},
+			futures::Poll::Pending => {
 				if !made_progress_this_loop_iter {
-					return Ok(futures::Async::Pending);
+					return futures::Poll::Pending;
 				} else {
 					continue;
 				}
 			}
-			Err(zx::Status::PEER_CLOSED) => {
-				return Ok(futures::Async::Ready(()));
+			futures::Poll::Ready(Err(zx::Status::PEER_CLOSED)) => {
+				return futures::Poll::Ready(Ok(()));
 			}
-			Err(e) => return Err(fidl::Error::ServerRequestRead(e)),
+			futures::Poll::Ready(Err(e)) =>
+				return futures::Poll::Ready(Err(fidl::Error::ServerRequestRead(e))),
 		}
 
 		{
 			// A message has been received from the channel
-			let (bytes, handles) = self.msg_buf.split_mut();
-			let (header, body_bytes) = fidl::encoding2::decode_transaction_header(bytes)?;
+			let (bytes, handles) = this.msg_buf.split_mut();
+			let (header, body_bytes) = match fidl::encoding2::decode_transaction_header(bytes) {
+				Ok(x) => x,
+				Err(e) => return futures::Poll::Ready(Err(e)),
+			};
 
 			match header.ordinal {
 				{{- range $method := $interface.Methods }}
@@ -347,12 +361,15 @@ impl<T: {{ $interface.Name }}> futures::Future for {{ $interface.Name }}Server<T
 								{{- end -}}
 							{{- end -}}
 						) = fidl::encoding2::Decodable::new_empty();
-						fidl::encoding2::Decoder::decode_into(body_bytes, handles, &mut req)?;
-						let control_handle = {{ $interface.Name }}ControlHandle {
-							inner: self.inner.clone(),
+						match fidl::encoding2::Decoder::decode_into(body_bytes, handles, &mut req) {
+							Ok(x) => x,
+							Err(e) => return futures::Poll::Ready(Err(e)),
 						};
-						self.{{ $method.Name }}_futures.push(
-							self.server.{{ $method.Name }}(
+						let control_handle = {{ $interface.Name }}ControlHandle {
+							inner: this.inner.clone(),
+						};
+						this.{{ $method.Name }}_futures.push(
+							this.server.{{ $method.Name }}(
 								{{- range $index, $param := $method.Request -}}
 									{{- if ne 1 (len $method.Request) -}}
 									req.{{ $index }},
@@ -374,13 +391,13 @@ impl<T: {{ $interface.Name }}> futures::Future for {{ $interface.Name }}Server<T
 					{{- end }}
 				{{- end }}
 				// TODO(cramertj) handle control/fileio messages
-				_ => return Err(fidl::Error::UnknownOrdinal {
+				_ => return futures::Poll::Ready(Err(fidl::Error::UnknownOrdinal {
 					ordinal: header.ordinal,
 					service_name: "unknown fidl2", // TODO(cramertj)
-				}),
+				})),
 			}
 		}
-		self.msg_buf.clear();
+		this.msg_buf.clear();
 	}}
 }
 
@@ -388,6 +405,8 @@ pub struct {{ $interface.Name }}RequestStream {
 	inner: ::std::sync::Arc<fidl::ServeInner>,
 	msg_buf: zx::MessageBuf,
 }
+
+impl ::std::marker::Unpin for {{ $interface.Name }}RequestStream {}
 
 impl fidl::endpoints2::RequestStream for {{ $interface.Name }}RequestStream {
 	fn from_channel(channel: async::Channel) -> Self {
@@ -404,29 +423,34 @@ impl fidl::endpoints2::RequestStream for {{ $interface.Name }}RequestStream {
 }
 
 impl Stream for {{ $interface.Name }}RequestStream {
-	type Item = {{ $interface.Name }}Request;
-	type Error = fidl::Error;
-	fn poll_next(&mut self, cx: &mut futures::task::Context)
-		-> futures::Poll<Option<Self::Item>, Self::Error>
+	type Item = Result<{{ $interface.Name }}Request, fidl::Error>;
+
+	fn poll_next(mut self: std::mem::PinMut<Self>, cx: &mut futures::task::Context)
+		-> futures::Poll<Option<Self::Item>>
 	{
-		if self.inner.poll_shutdown(cx) {
-			return Ok(futures::Async::Ready(None));
+		let this = &mut *self;
+		if this.inner.poll_shutdown(cx) {
+			return futures::Poll::Ready(None);
 		}
-		match self.inner.channel().recv_from(&mut self.msg_buf, cx) {
-			Ok(futures::Async::Ready(())) => {},
-			Ok(futures::Async::Pending) => return Ok(futures::Async::Pending),
-			Err(zx::Status::PEER_CLOSED) => {
-				return Ok(futures::Async::Ready(None));
+		match this.inner.channel().recv_from(&mut this.msg_buf, cx) {
+			futures::Poll::Ready(Ok(())) => {},
+			futures::Poll::Pending => return futures::Poll::Pending,
+			futures::Poll::Ready(Err(zx::Status::PEER_CLOSED)) => {
+				return futures::Poll::Ready(None);
 			}
-			Err(e) => return Err(fidl::Error::ServerRequestRead(e)),
+			futures::Poll::Ready(Err(e)) =>
+				return futures::Poll::Ready(Some(Err(fidl::Error::ServerRequestRead(e)))),
 		}
 
 		let res = {
 			// A message has been received from the channel
-			let (bytes, handles) = self.msg_buf.split_mut();
-			let (header, body_bytes) = fidl::encoding2::decode_transaction_header(bytes)?;
+			let (bytes, handles) = this.msg_buf.split_mut();
+			let (header, body_bytes) = match fidl::encoding2::decode_transaction_header(bytes) {
+				Ok(x) => x,
+				Err(e) => return futures::Poll::Ready(Some(Err(e))),
+			};
 
-			Ok(futures::Async::Ready(Some(match header.ordinal {
+			futures::Poll::Ready(Some(Ok(match header.ordinal {
 				{{- range $method := $interface.Methods }}
 				{{- if $method.HasRequest }}
 				{{ $method.Ordinal }} => {
@@ -437,9 +461,12 @@ impl Stream for {{ $interface.Name }}RequestStream {
 							{{- end -}}
 						{{- end -}}
 					) = fidl::encoding2::Decodable::new_empty();
-					fidl::encoding2::Decoder::decode_into(body_bytes, handles, &mut req)?;
+					match fidl::encoding2::Decoder::decode_into(body_bytes, handles, &mut req) {
+						Ok(()) => (),
+						Err(e) => return futures::Poll::Ready(Some(Err(e))),
+					};
 					let control_handle = {{ $interface.Name }}ControlHandle {
-						inner: self.inner.clone(),
+						inner: this.inner.clone(),
 					};
 
 					{{ $interface.Name }}Request::{{ $method.CamelName }} {
@@ -462,14 +489,14 @@ impl Stream for {{ $interface.Name }}RequestStream {
 				}
 				{{- end }}
 				{{- end }}
-				_ => return Err(fidl::Error::UnknownOrdinal {
+				_ => return futures::Poll::Ready(Some(Err(fidl::Error::UnknownOrdinal {
 					ordinal: header.ordinal,
 					service_name: <{{ $interface.Name }}Marker as fidl::endpoints2::ServiceMarker>::NAME,
-				}),
+				}))),
 			})))
 		};
 
-		self.msg_buf.clear();
+		this.msg_buf.clear();
 		res
 	}
 }
