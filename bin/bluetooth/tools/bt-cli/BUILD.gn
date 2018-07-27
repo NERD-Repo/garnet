@@ -7,6 +7,7 @@ import("//build/package.gni")
 
 rustc_binary("bin") {
   name = "bt_cli"
+  edition = "2018"
 
   deps = [
     "//garnet/lib/rust/crates/fuchsia-bluetooth",
