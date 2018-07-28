@@ -4,7 +4,7 @@
 
 use crate::host_device;
 use fuchsia_bluetooth as bt;
-use crate::vfs_watcher;
+use fuchsia_vfs_watcher as vfs_watcher;
 use crate::futures::task::Waker;
 use crate::fasync::{self, TimeoutExt};
 use crate::bt::util::clone_host_info;

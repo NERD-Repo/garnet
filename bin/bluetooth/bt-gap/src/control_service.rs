@@ -30,6 +30,7 @@ pub async fn make_control_service(hd: Arc<RwLock<HostDispatcher>>, chan: fasync:
         discoverable_token: None,
     }));
 
+    // TODO capture handle for event_listener
 
     while let Some(res) = await!(requests.next()) {
         match res? {
@@ -42,16 +43,18 @@ pub async fn make_control_service(hd: Arc<RwLock<HostDispatcher>>, chan: fasync:
                 let is_available = hd.get_active_adapter_info().is_some();
                 responder.send(is_available)?
             },
-            ControlRequest::SetPairingDelegate { delegate, responder: _ } => {
+            ControlRequest::SetPairingDelegate { delegate, responder } => {
                 let mut wstate = state.write();
                 if let Some(delegate) = delegate {
                     if let Ok(proxy) = delegate.into_proxy() {
                         wstate.host.write().pairing_delegate = Some(proxy);
-             //           return responder.send(true)?;
+                        responder.send(true)?
+                    } else {
+                        responder.send(false)?
                     }
                 } else {
                     wstate.host.write().pairing_delegate = None;
-            //        return responder.send(true)?;
+                    responder.send(true)?
                 }
             },
             ControlRequest::GetAdapters { responder } => {
