@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #![allow(dead_code)]
+extern crate futures;
 #[macro_use]
 extern crate failure;
 extern crate fdio;
@@ -11,7 +12,7 @@ extern crate fuchsia_async as async;
 extern crate fuchsia_zircon as zx;
 extern crate shared_buffer;
 
-use async::futures::{FutureExt, StreamExt};
+use futures::{TryFutureExt, TryStreamExt};
 use display::{ControllerEvent, ControllerProxy, ImageConfig};
 use failure::Error;
 use fdio::fdio_sys::{fdio_ioctl, IOCTL_FAMILY_DISPLAY_CONTROLLER, IOCTL_KIND_GET_HANDLE};
@@ -135,7 +136,7 @@ impl Frame {
         let vmo_response = framebuffer
             .controller
             .allocate_vmo(framebuffer.byte_size() as u64)
-            .map(|(status, allocated_vmo)| {
+            .map_ok(|(status, allocated_vmo)| {
                 if status == Status::OK {
                     vmo.replace(allocated_vmo);
                 }
@@ -164,7 +165,7 @@ impl Frame {
         let import_response = framebuffer
             .controller
             .import_vmo_image(&mut image_config, image_vmo, 0)
-            .map(|(status, id)| {
+            .map_ok(|(status, id)| {
                 if status == Status::OK {
                     image_id.replace(Some(id));
                 }
@@ -314,35 +315,30 @@ impl FrameBuffer {
         proxy: &ControllerProxy, executor: &mut async::Executor,
     ) -> Result<Config, Error> {
         let display_info: Rc<RefCell<Option<(u64, u32, u32, u32)>>> = Rc::new(RefCell::new(None));
-        let stream = proxy.take_event_stream();
-        let event_listener = stream
-            .filter(|event| {
-                if let ControllerEvent::DisplaysChanged { added, .. } = event {
-                    if added.len() > 0 {
-                        let first_added = &added[0];
-                        if first_added.pixel_format.len() > 0 && first_added.modes.len() > 0 {
-                            let display_id = first_added.id;
-                            let pixel_format = first_added.pixel_format[0];
-                            let width = first_added.modes[0].horizontal_resolution;
-                            let height = first_added.modes[0].vertical_resolution;
-                            display_info.replace(Some((display_id, pixel_format, width, height)));
-                        }
-                    }
-                }
-                Ok(true)
-            })
-            .next();
 
-        executor
-            .run_singlethreaded(event_listener)
-            .map_err(|(e, _rest_of_stream)| e)?;
+        let mut stream = proxy.take_event_stream();
+        let event = executor.run_singlethreaded(stream.try_next())?;
+        drop(stream);
+
+        if let Some(ControllerEvent::DisplaysChanged { added, .. }) = event {
+            if added.len() > 0 {
+                let first_added = &added[0];
+                if first_added.pixel_format.len() > 0 && first_added.modes.len() > 0 {
+                    let display_id = first_added.id;
+                    let pixel_format = first_added.pixel_format[0];
+                    let width = first_added.modes[0].horizontal_resolution;
+                    let height = first_added.modes[0].vertical_resolution;
+                    display_info.replace(Some((display_id, pixel_format, width, height)));
+                }
+            }
+        }
 
         let display_info = display_info.replace(None);
         if let Some((display_id, pixel_format, width, height)) = display_info {
             let stride: Rc<RefCell<u32>> = Rc::new(RefCell::new(0));
             let stride_response = proxy
                 .compute_linear_image_stride(width, pixel_format)
-                .map(|px_stride| {
+                .map_ok(|px_stride| {
                     stride.replace(px_stride);
                 });
 
@@ -372,7 +368,7 @@ impl FrameBuffer {
         let layer_id: Rc<RefCell<Option<u64>>> = Rc::new(RefCell::new(None));
         let layer_id_response = proxy
             .create_layer()
-            .map(|(status, id)| {
+            .map_ok(|(status, id)| {
                 if status == Status::OK {
                     layer_id.replace(Some(id));
                 }
