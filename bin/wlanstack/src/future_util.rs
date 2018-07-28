@@ -12,30 +12,29 @@ pub struct GroupAvailable<S> where S: Stream {
 }
 
 impl<S> Stream for GroupAvailable<S> where S: Stream {
-    type Item = Vec<S::Item>;
-    type Error = S::Error;
+    type Item = Result<Vec<S::Item>, S::Error>;
 
-    fn poll_next(&mut self, cx: &mut task::Context) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll_next(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Option<Self::Item>> {
         if let Some(e) = self.error.take() {
             return Err(e);
         }
         let mut batch = match self.stream.poll_next(cx) {
-            Ok(Async::Ready(Some(item))) => vec![item],
-            Ok(Async::Ready(None)) => return Ok(Async::Ready(None)),
-            Ok(Async::Pending) => return Ok(Async::Pending),
+            Ok(Poll::Ready(Some(item))) => vec![item],
+            Ok(Poll::Ready(None)) => return Ok(Poll::Ready(None)),
+            Ok(Poll::Pending) => return Ok(Poll::Pending),
             Err(e) => return Err(e),
         };
         loop {
             match self.stream.poll_next(cx) {
-                Ok(Async::Ready(Some(item))) => batch.push(item),
-                Ok(Async::Ready(None)) | Ok(Async::Pending) => break,
+                Ok(Poll::Ready(Some(item))) => batch.push(item),
+                Ok(Poll::Ready(None)) | Ok(Poll::Pending) => break,
                 Err(e) => {
                     self.error = Some(e);
                     break;
                 }
             }
         }
-        Ok(Async::Ready(Some(batch)))
+        Ok(Poll::Ready(Some(batch)))
     }
 }
 
@@ -58,7 +57,7 @@ impl<T> GroupAvailableExt for T where T: Stream + ?Sized {}
 
 #[cfg(test)]
 mod tests {
-    use async;
+    use fuchsia_async as fasync;
     use futures::prelude::*;
     use futures::stream;
     use super::GroupAvailableExt;
@@ -66,7 +65,7 @@ mod tests {
 
     #[test]
     fn empty() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (item, _) = exec.run_singlethreaded(stream::empty::<(), Never>().group_available().next())
             .unwrap_or_else(|(e, _)| e.never_into());
         assert!(item.is_none());
@@ -74,7 +73,7 @@ mod tests {
 
     #[test]
     fn pending() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let always_pending = stream::poll_fn::<(), Never, _>(|_cx| Ok(Async::Pending));
         let mut fut = always_pending.group_available().next();
         let a = exec.run_until_stalled(&mut fut)
@@ -84,7 +83,7 @@ mod tests {
 
     #[test]
     fn group_available_items() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (send, recv) = mpsc::unbounded();
 
         send.unbounded_send(10i32).unwrap();
@@ -102,7 +101,7 @@ mod tests {
 
     #[test]
     fn buffer_error() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
 
         let s = stream::iter_result(vec![Ok(10i32), Ok(20i32), Err(-30i32)])
             .group_available();

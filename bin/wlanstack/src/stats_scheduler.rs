@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use fidl_stats::IfaceStats;
-use future_util::GroupAvailableExt;
+use fidl_fuchsia_wlan_stats::IfaceStats;
+use crate::future_util::GroupAvailableExt;
 use futures::channel::{oneshot, mpsc};
 use futures::prelude::*;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use zx;
+use fuchsia_zircon as zx;
 
 // TODO(gbonik): get rid of the Mutex when FIDL APIs make it possible
 // Mutex is a workaround for the fact that Responder.send() takes a &mut.
@@ -55,12 +55,12 @@ impl StatsRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async;
+    use fuchsia_async as fasync;
     use fidl_stats::{Counter, DispatcherStats, IfaceStats, PacketCounter};
 
     #[test]
     fn schedule() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
 
         let (sched, req_stream) = create_scheduler();
         let mut fut1 = sched.get_stats();
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn canceled_if_server_dropped_after_request() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
 
         let (sched, req_stream) = create_scheduler();
         let mut fut = sched.get_stats();
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn canceled_if_server_dropped_before_request() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
 
         let (sched, req_stream) = create_scheduler();
         ::std::mem::drop(req_stream);

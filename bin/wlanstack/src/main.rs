@@ -17,8 +17,6 @@ extern crate fidl_fuchsia_wlan_device as wlan;
 extern crate fidl_fuchsia_wlan_device_service as wlan_service;
 extern crate fidl_fuchsia_wlan_sme as fidl_sme;
 extern crate fidl_fuchsia_wlan_stats as fidl_stats;
-extern crate fuchsia_app as component;
-#[macro_use] extern crate fuchsia_async as async;
 extern crate fuchsia_vfs_watcher as vfs_watcher;
 extern crate fuchsia_wlan_dev as wlan_dev;
 extern crate fuchsia_zircon as zx;
@@ -41,15 +39,16 @@ mod stats_scheduler;
 mod watchable_map;
 mod watcher_service;
 
-use component::server::ServicesServer;
-use device::{PhyDevice, PhyMap, IfaceDevice, IfaceMap};
+use fuchsia_async as fasync;
+use fuchsia_app::server::ServicesServer;
+use crate::device::{PhyDevice, PhyMap, IfaceDevice, IfaceMap};
 use failure::{Error, ResultExt};
 use fidl::endpoints2::ServiceMarker;
 use futures::prelude::*;
 use futures::channel::mpsc::{self, UnboundedReceiver};
 use std::sync::Arc;
-use watchable_map::MapEvent;
-use wlan_service::DeviceServiceMarker;
+use crate::watchable_map::MapEvent;
+use fidl_fuchsia_wlan_device_service::DeviceServiceMarker;
 
 const MAX_LOG_LEVEL: log::LevelFilter = log::LevelFilter::Info;
 
@@ -61,7 +60,7 @@ fn main() -> Result<(), Error> {
 
     info!("Starting");
 
-    let mut exec = async::Executor::new().context("error creating event loop")?;
+    let mut exec = fasync::Executor::new().context("error creating event loop")?;
 
     let (phys, phy_events) = device::PhyMap::new();
     let (ifaces, iface_events) = device::IfaceMap::new();
@@ -82,7 +81,7 @@ fn main() -> Result<(), Error> {
 fn serve_fidl(phys: Arc<PhyMap>, ifaces: Arc<IfaceMap>,
               phy_events: UnboundedReceiver<MapEvent<u16, PhyDevice>>,
               iface_events: UnboundedReceiver<MapEvent<u16, IfaceDevice>>)
-    -> Result<impl Future<Item = Never, Error = Error>, Error>
+    -> Result<impl Future<Item = (), Error = Error>, Error>
 {
     let (sender, receiver) = mpsc::unbounded();
     let fdio_server = ServicesServer::new()
@@ -95,5 +94,5 @@ fn serve_fidl(phys: Arc<PhyMap>, ifaces: Arc<IfaceMap>,
         .map_err(|e| e.context("fdio server terminated with error").into());
     let device_service = service::device_service(phys, ifaces, phy_events, iface_events, receiver);
     Ok(fdio_server.join(device_service)
-        .map(|x: (Never, Never)| x.0))
+        .map(|x: ((), ())| x.0))
 }

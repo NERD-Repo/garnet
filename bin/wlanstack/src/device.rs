@@ -2,20 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use async::TimeoutExt;
-use device_watch::{self, NewIfaceDevice};
+use fuchsia_async::{self as fasync, TimeoutExt};
+use crate::device_watch::{self, NewIfaceDevice};
 use failure::Error;
-use fidl_mlme::{self, DeviceQueryConfirm, MlmeEventStream};
+use fidl_fuchsia_wlan_mlme::{self as fidl_mlme, DeviceQueryConfirm, MlmeEventStream};
 use futures::prelude::*;
 use futures::{stream, channel::mpsc};
-use station;
-use stats_scheduler::{self, StatsScheduler};
+use crate::station;
+use crate::stats_scheduler::{self, StatsScheduler};
 use std::collections::HashSet;
-use watchable_map::WatchableMap;
-use wlan;
-use wlan_dev;
+use crate::watchable_map::WatchableMap;
+use fidl_fuchsia_wlan_device as wlan;
+use fuchsia_wlan_dev as wlan_dev;
 use wlan_sme;
-use zx::prelude::*;
+use fuchsia_zircon::prelude::*;
 
 use std::sync::Arc;
 
