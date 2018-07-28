@@ -1,23 +1,17 @@
 // Copyright 2018 The Fuchsia Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-#![deny(warnings)]
 
-extern crate failure;
-extern crate fidl;
+#![deny(warnings)]
+#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
+
 extern crate fidl_fuchsia_bluetooth as fidl_bt;
 extern crate fidl_fuchsia_bluetooth_le as fidl_ble;
 extern crate fuchsia_app as app;
 extern crate fuchsia_bluetooth as bt;
 extern crate fuchsia_zircon as zx;
-extern crate futures;
-extern crate parking_lot;
-extern crate serde;
-extern crate serde_json;
-extern crate slab;
 
-#[macro_use]
-extern crate fuchsia_async as async;
+extern crate fuchsia_async as fasync;
 
 #[macro_use]
 extern crate fuchsia_syslog as syslog;
@@ -36,8 +30,8 @@ use std::thread;
 
 mod common;
 
-use common::sl4f::{serve, Sl4f};
-use common::sl4f_executor::run_fidl_loop;
+use crate::common::sl4f::{serve, Sl4f};
+use crate::common::sl4f_executor::run_fidl_loop;
 
 // Config, flexible for any ip/port combination
 const SERVER_IP: &str = "0.0.0.0";
