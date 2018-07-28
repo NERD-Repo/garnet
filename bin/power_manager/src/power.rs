@@ -8,8 +8,7 @@ use self::libc::{int32_t, uint32_t};
 
 use async;
 use fdio::{self, fdio_sys};
-use futures::FutureExt;
-use futures::future::{loop_fn, Loop};
+use futures::TryFutureExt;
 use io::{self, Result};
 use std::fs::File;
 use std::marker::Send;
@@ -132,15 +131,8 @@ where
     let file_copy = file.try_clone()
         .map_err(|e| io::Error::new(e.kind(), format!("error copying power device file: {}", e)))?;
 
-    let f = loop_fn((callback, h, file_copy), |(callback, handle, file)| {
-        // TODO: change OnSignals to wrap this so that is is not created again and again.
-        async::OnSignals::new(&handle, Signals::USER_0).and_then(|_| {
-            fx_vlog!(1, "callback called {:?}", file);
-            callback(&file);
-            Ok(Loop::Continue((callback, handle, file)))
-        })
-    });
-    async::spawn(f.recover(|e| {
+    let f = run_listener(file_copy, callback, h);
+    async::spawn(f.unwrap_or_else(|e| {
         fx_log_err!(
             "not able to apply listener to power device, wait failed: {:?}",
             e
@@ -148,4 +140,16 @@ where
     }));
 
     Ok(())
+}
+
+async fn run_listener<F>(file: File, callback: F, handle: zx::Handle) -> Result<()>
+where
+    F: 'static + Send + Fn(&File) + Sync,
+{
+    loop {
+        // TODO: change OnSignals to wrap this so that is is not created again and again.
+        await!(async::OnSignals::new(&handle, Signals::USER_0))?;
+        fx_vlog!(1, "callback called {:?}", file);
+        callback(&file);
+    }
 }
