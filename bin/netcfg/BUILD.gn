@@ -6,6 +6,7 @@ import("//build/rust/rustc_binary.gni")
 import("//build/package.gni")
 
 rustc_binary("bin") {
+  edition = "2018"
   with_unit_tests = true
   deps = [
   "//garnet/public/lib/fidl/rust/fidl",
@@ -15,7 +16,7 @@ rustc_binary("bin") {
   "//garnet/public/rust/crates/fuchsia-async",
   "//garnet/public/rust/crates/fuchsia-zircon",
   "//third_party/rust-crates/rustc_deps:failure",
-  "//third_party/rust-crates/rustc_deps:futures",
+  "//third_party/rust-crates/rustc_deps:futures-preview",
   "//third_party/rust-crates/rustc_deps:serde",
   "//third_party/rust-crates/rustc_deps:serde_derive",
   "//third_party/rust-crates/rustc_deps:serde_json",

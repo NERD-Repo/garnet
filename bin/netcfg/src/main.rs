@@ -2,26 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![feature(async_await, await_macro, futures_api)]
 #![deny(warnings)]
-
-extern crate failure;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate fidl;
-extern crate fidl_fuchsia_devicesettings;
-extern crate fidl_fuchsia_netstack as netstack;
-extern crate fuchsia_app as app;
-extern crate fuchsia_async as async;
-extern crate fuchsia_zircon as zx;
-extern crate futures;
 
 use failure::{Error, ResultExt};
 use fidl_fuchsia_devicesettings::{DeviceSettingsManagerMarker};
-use netstack::{NetstackMarker, NetInterface, NetstackEvent, INTERFACE_FEATURE_SYNTH, INTERFACE_FEATURE_LOOPBACK};
+use fidl_fuchsia_netstack::{NetstackMarker, NetInterface, NetstackEvent, INTERFACE_FEATURE_SYNTH, INTERFACE_FEATURE_LOOPBACK};
+use fuchsia_app as app;
+use fuchsia_async as fasync;
+use futures::StreamExt;
+use serde_derive::Deserialize;
 use std::fs;
 use std::io::Read;
-use futures::{future, FutureExt, StreamExt};
 
 mod device_id;
 
@@ -60,29 +52,30 @@ static DEVICE_NAME_KEY: &str = "DeviceName";
 fn main() -> Result<(), Error> {
     println!("netcfg: started");
     let default_config = parse_config(read_to_string(DEFAULT_CONFIG_FILE)?)?;
-    let mut executor = async::Executor::new().context("error creating event loop")?;
+    let mut executor = fasync::Executor::new().context("error creating event loop")?;
     let netstack = app::client::connect_to_service::<NetstackMarker>().context("failed to connect to netstack")?;
     let device_settings_manager = app::client::connect_to_service::<DeviceSettingsManagerMarker>()
         .context("failed to connect to device settings manager")?;
 
-    let f = match default_config.device_name {
-        Some(name) => device_settings_manager.set_string(DEVICE_NAME_KEY, &name).left_future(),
-        None =>
-            netstack
-                .take_event_stream()
-                .filter_map(|NetstackEvent::OnInterfacesChanged { interfaces: is }| future::ok(derive_device_name(is)))
-                .next()
-                .map_err(|(e, _)| e)
-                .and_then(|(opt, _)| {
-                    match opt {
-                        Some(name) => device_settings_manager.set_string(DEVICE_NAME_KEY, &name).left_future(),
-                        None => future::ok(false).right_future(),
+    let fut = async move || {
+        if let Some(name) = default_config.device_name {
+            await!(device_settings_manager.set_string(DEVICE_NAME_KEY, &name));
+            return Ok(());
+        }
+
+        let mut events = netstack.take_event_stream();
+        while let Some(e) = await!(events.next()) {
+            match e? {
+                NetstackEvent::OnInterfacesChanged { interfaces: is } => {
+                    if let Some(name) = derive_device_name(is) {
+                        await!(device_settings_manager.set_string(DEVICE_NAME_KEY, &name))?;
                     }
-                })
-                .right_future()
+                    return Ok(())
+                }
+            }
+        }
+        Ok(())
     };
 
-    let _ = executor.run_singlethreaded(f)?;
-
-    Ok(())
+    executor.run_singlethreaded(fut())
 }
