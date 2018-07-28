@@ -16,8 +16,8 @@ use rand::Rng;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 
-use bluetooth::hci;
-use zircon::Channel;
+use crate::bluetooth::hci;
+use crate::zircon::Channel;
 
 fn usage(appname: &str) -> (){
     eprintln!("usage: {} [add|rm]", appname);

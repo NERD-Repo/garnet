@@ -2,12 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
+
 extern crate clap;
 #[macro_use]
 extern crate failure;
 
 extern crate byteorder;
-extern crate fuchsia_async as async;
+extern crate fuchsia_async as fasync;
 extern crate fuchsia_bluetooth as bluetooth;
 extern crate fuchsia_zircon as zircon;
 extern crate futures;
@@ -17,16 +19,15 @@ use std::io;
 use std::path::Path;
 use std::str::FromStr;
 
-use async::Executor;
+use crate::fasync::Executor;
 use clap::{App, Arg};
 use failure::Error;
 use futures::StreamExt;
-use futures::future::Either::{Left, Right};
 
-use bluetooth::hci;
-use zircon::Channel;
+use crate::bluetooth::hci;
+use crate::zircon::Channel;
 
-use snooper::*;
+use crate::snooper::*;
 mod snooper;
 
 static HCI_DEVICE: &'static str = "/dev/class/bt-hci/000";
@@ -36,7 +37,7 @@ fn start<W: io::Write>(
 ) -> Result<(), Error> {
     let hci_device = OpenOptions::new().read(true).write(true).open(device_path)?;
     let mut exec = Executor::new().unwrap();
-    let snooper = Snooper::new(Channel::from(hci::open_snoop_channel(&hci_device)?));
+    let mut snooper = Snooper::new(Channel::from(hci::open_snoop_channel(&hci_device)?));
 
     let success = match format {
         Format::Btsnoop => out.write(Snooper::btsnoop_header().as_slice()),
@@ -48,29 +49,31 @@ fn start<W: io::Write>(
     }
     let _ = out.flush();
 
-    // TODO(bwb): this is a temporary solution, we need a keyboard catching solution for Ruschsia
-    let writer_loop = match count {
-        Some(num) => Left(snooper.take(num)),
-        None => Right(snooper),
+    let fut = async {
+        let mut pkt_cnt = 0u64;
+        while let Some(pkt) = await!(snooper.next()) {
+            if let Some(count) = count {
+                if pkt_cnt >= count {
+                    return Ok(())
+                }
+                pkt_cnt += 1;
+            }
+            let wrote = match format {
+                Format::Btsnoop => out.write(pkt.to_btsnoop_fmt().as_slice()),
+                Format::Pcap => out.write(pkt.to_pcap_fmt().as_slice()),
+            };
+            match wrote {
+                Ok(_) => {
+                    let _ = out.flush();
+                }
+                Err(_) => return Err(format_err!("failed to write packet to file")),
+            }
+        };
+        Ok(())
     };
 
-    let writer_loop = writer_loop.for_each(|pkt| {
-        let wrote = match format {
-            Format::Btsnoop => out.write(pkt.to_btsnoop_fmt().as_slice()),
-            Format::Pcap => out.write(pkt.to_pcap_fmt().as_slice()),
-        };
-        match wrote {
-            Ok(_) => {
-                let _ = out.flush();
-                futures::future::ok(())
-            }
-            Err(_) => futures::future::err(format_err!("failed to write packet to file")),
-        }
-    });
-
-    exec.run_singlethreaded(writer_loop)
-        .map(|_| ())
-        .map_err(|e| e.into())
+    exec.run_singlethreaded(fut);
+    Ok(())
 }
 
 fn main() {
