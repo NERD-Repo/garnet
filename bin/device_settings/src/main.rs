@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 // #![deny(warnings)]
+#![feature(futures_api)]
 
 extern crate failure;
 extern crate fdio;
@@ -23,7 +24,7 @@ use app::server::ServicesServer;
 use failure::{Error, ResultExt};
 use fidl::endpoints2::ServiceMarker;
 use futures::prelude::*;
-use futures::future::{FutureResult, ok as fok};
+use futures::future::{self, Ready};
 use futures::io;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -101,22 +102,22 @@ fn read_file(file: &str) -> io::Result<String> {
     Ok(contents)
 }
 
-fn catch_and_log_err<F>(ctx: &'static str, f: F) -> FutureResult<(), Never>
+fn catch_and_log_err<F>(ctx: &'static str, f: F) -> Ready<()>
     where F: FnOnce() -> Result<(), fidl::Error>
 {
     let res = f();
     if let Err(e) = res {
         fx_log_err!("Error running device_settings_server fidl handler {}: {:?}", ctx, e);
     }
-    fok(())
+    future::ready(())
 }
 
 fn device_settings_server(state: DeviceSettingsManagerServer, channel: async::Channel)
-    -> impl Future<Item = (), Error = Never>
+    -> impl Future<Output = ()>
 {
     DeviceSettingsManagerImpl {
         state,
-        on_open: |_,_| fok(()),
+        on_open: |_,_| future::ready(()),
         get_integer: |state, key, res| catch_and_log_err("get_integer", || {
             let file = if let Some(f) = state.setting_file_map.get(&key) {
                 f
@@ -170,7 +171,7 @@ fn device_settings_server(state: DeviceSettingsManagerServer, channel: async::Ch
         set_string: |state, key, val, res| catch_and_log_err("set_string", || {
             fx_log_info!("setting string key: {:?}, val: {:?}", key, val);
             match state.set_key(&key, val.as_bytes(), ValueType::Text) {
-                Ok(mut r) => res.send(r),
+                Ok(r) => res.send(r),
                 Err(e) => {
                     fx_log_err!("setting string: {:?}", e);
                     res.send(false)
@@ -196,7 +197,7 @@ fn device_settings_server(state: DeviceSettingsManagerServer, channel: async::Ch
         }),
     }
     .serve(channel)
-    .recover(|e| fx_log_err!("error running device settings server: {:?}", e))
+    .unwrap_or_else(|e| fx_log_err!("error running device settings server: {:?}", e))
 }
 
 fn main() {
@@ -244,7 +245,7 @@ mod tests {
     fn async_test<F, Fut>(keys: &[&str], f: F)
     where
         F: FnOnce(DeviceSettingsManagerProxy) -> Fut,
-        Fut: Future<Item = (), Error = fidl::Error>,
+        Fut: Future<Output = Result<(), fidl::Error>>,
     {
         let (mut exec, device_settings, _t) = setup(keys).expect("Setup should not have failed");
 
@@ -287,7 +288,7 @@ mod tests {
                 })
                 .and_then(move |response| {
                     assert_eq!(response, (18, Status::Ok));
-                    Ok(())
+                    future::ready(Ok(()))
                 })
         });
     }
@@ -301,9 +302,8 @@ mod tests {
                     assert!(response, "set_string failed");
                     device_settings.get_string("TestKey")
                 })
-                .and_then(move |response| {
+                .map_ok(move |response| {
                     assert_eq!(response, ("mystring".to_string(), Status::Ok));
-                    Ok(())
                 })
         });
     }
@@ -317,9 +317,8 @@ mod tests {
                     assert_eq!(response, ("".to_string(), Status::ErrInvalidSetting));
                     device_settings.get_integer("TestKey")
                 })
-                .and_then(move |response| {
+                .map_ok(move |response| {
                     assert_eq!(response, (0, Status::ErrInvalidSetting));
-                    Ok(())
                 })
         });
     }
@@ -333,9 +332,8 @@ mod tests {
                     assert!(response, "set_string failed");
                     device_settings.get_integer("TestKey")
                 })
-                .and_then(move |response| {
+                .map_ok(move |response| {
                     assert_eq!(response, (0, Status::ErrIncorrectType));
-                    Ok(())
                 })
         });
     }
@@ -349,9 +347,8 @@ mod tests {
                     assert_eq!(response, (0, Status::ErrNotSet));
                     device_settings.get_string("TestKey")
                 })
-                .and_then(move |response| {
+                .map_ok(move |response| {
                     assert_eq!(response, ("".to_string(), Status::ErrNotSet));
-                    Ok(())
                 })
         });
     }
@@ -365,21 +362,20 @@ mod tests {
                     assert!(response, "set_integer failed");
                     device_settings
                         .set_string("TestKey2", "mystring")
-                        .map(move |response| (response, device_settings))
+                        .map_ok(move |response| (response, device_settings))
                 })
                 .and_then(|(response, device_settings)| {
                     assert!(response, "set_string failed");
                     device_settings
                         .get_integer("TestKey1")
-                        .map(move |response| (response, device_settings))
+                        .map_ok(move |response| (response, device_settings))
                 })
                 .and_then(|(response, device_settings)| {
                     assert_eq!(response, (18, Status::Ok));
                     device_settings.get_string("TestKey2")
                 })
-                .and_then(|response| {
+                .map_ok(|response| {
                     assert_eq!(response, ("mystring".to_string(), Status::Ok));
-                    Ok(())
                 })
         });
     }
