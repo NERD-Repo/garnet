@@ -2,11 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use bt::error::Error as BTError;
+use crate::bt::error::Error as BTError;
 use failure::Error;
 use futures::channel::mpsc;
-use futures::future::ok as fok;
-use futures::prelude::*;
 use parking_lot::{Mutex, RwLock};
 use rouille;
 use rouille::{Request, Response};
@@ -19,11 +17,11 @@ use std::io::Read;
 use std::sync::Arc;
 
 // Bluetooth related includes (do the same for each connectivity stack)
-use common::bluetooth_commands::ble_method_to_fidl;
-use common::bluetooth_facade::BluetoothFacade;
+use crate::common::bluetooth_commands::ble_method_to_fidl;
+use crate::common::bluetooth_facade::BluetoothFacade;
 
 // Standardized sl4f types.
-use common::sl4f_types::{AsyncRequest, AsyncResponse, ClientData, CommandRequest, CommandResponse,
+use crate::common::sl4f_types::{AsyncRequest, AsyncResponse, ClientData, CommandRequest, CommandResponse,
                          FacadeType};
 
 /// Sl4f object. This stores all information about state for each connectivity stack.
@@ -255,19 +253,10 @@ fn server_cleanup(request: &Request, sl4f_session: Arc<RwLock<Sl4f>>) -> Respons
     rouille::Response::json(&ack)
 }
 
-pub fn method_to_fidl(
-    method_type: String, method_name: String, args: Value, sl4f_session: Arc<RwLock<Sl4f>>,
-) -> impl Future<Item = Result<Value, Error>, Error = Never> {
-    many_futures!(MethodType, [Bluetooth, Wlan, Error]);
+pub async fn method_to_fidl(method_type: String, method_name: String, args: Value, sl4f_session: Arc<RwLock<Sl4f>>) -> Result<Value, Error> {
     match FacadeType::from_str(method_type) {
-        FacadeType::Bluetooth => MethodType::Bluetooth(ble_method_to_fidl(
-            method_name,
-            args,
-            sl4f_session.write().get_bt_facade().clone(),
-        )),
-        FacadeType::Wlan => MethodType::Wlan(fok(Err(BTError::new(
-            "Nice try. WLAN not implemented yet",
-        ).into()))),
-        _ => MethodType::Error(fok(Err(BTError::new("Invalid FIDL method type").into()))),
+        FacadeType::Bluetooth => Ok(await!(ble_method_to_fidl(method_name, args, sl4f_session.write().get_bt_facade().clone()))?),
+        FacadeType::Wlan => Err(BTError::new("Nice try. WLAN not implemented yet").into()),
+        _ => Err(BTError::new("Invalid FIDL method type").into()),
     }
 }
