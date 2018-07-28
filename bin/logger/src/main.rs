@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #![deny(warnings)]
+#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
 
 extern crate byteorder;
 extern crate failure;
@@ -20,11 +21,7 @@ extern crate futures;
 use app::server::ServicesServer;
 use failure::{Error, ResultExt};
 use fidl::endpoints2::{ClientEnd, ServiceMarker};
-use futures::future::ok as fok;
-use futures::prelude::Never;
-use futures::Future;
-use futures::FutureExt;
-use futures::StreamExt;
+use futures::prelude::*;
 use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::collections::{vec_deque, VecDeque};
@@ -186,13 +183,13 @@ fn run_listeners(listeners: &mut Vec<ListenerWrapper>, log_message: &mut LogMess
 fn log_manager_helper(
     state: &mut LogManager, log_listener: ClientEnd<LogListenerMarker>,
     options: Option<Box<LogFilterOptions>>, dump_logs: bool,
-) -> impl Future<Item = (), Error = Never> {
+) {
     let ll = match log_listener.into_proxy() {
         Ok(ll) => ll,
         Err(e) => {
             eprintln!("Logger: Error getting listener proxy: {:?}", e);
             // TODO: close channel
-            return fok(());
+            return;
         }
     };
 
@@ -208,12 +205,12 @@ fn log_manager_helper(
         lw.tags = options.tags.drain(..).collect();
         if lw.tags.len() > fidl_fuchsia_logger::MAX_TAGS as usize {
             // TODO: close channel
-            return fok(());
+            return;
         }
         for tag in &lw.tags {
             if tag.len() > fidl_fuchsia_logger::MAX_TAG_LEN_BYTES as usize {
                 // TODO: close channel
-                return fok(());
+                return;
             }
         }
         if options.filter_by_pid {
@@ -236,7 +233,7 @@ fn log_manager_helper(
             if lw.filter(msg) {
                 if log_length + s > fidl_fuchsia_logger::MAX_LOG_MANY_SIZE_BYTES as usize {
                     if ListenerStatus::Fine != lw.send_filtered_logs(&mut v) {
-                        return fok(());
+                        return;
                     }
                     v.clear();
                     log_length = 0;
@@ -247,7 +244,7 @@ fn log_manager_helper(
         }
         if v.len() > 0 {
             if ListenerStatus::Fine != lw.send_filtered_logs(&mut v) {
-                return fok(());
+                return;
             }
         }
     }
@@ -257,22 +254,23 @@ fn log_manager_helper(
     } else {
         let _ = lw.listener.done();
     }
-    fok(())
 }
 
 fn spawn_log_manager(state: LogManager, chan: async::Channel) {
     async::spawn(
         LogImpl {
             state,
-            on_open: |_, _| fok(()),
+            on_open: |_, _| future::ready(()),
             dump_logs: |state, log_listener, options, _controller| {
-                log_manager_helper(state, log_listener, options, true)
+                log_manager_helper(state, log_listener, options, true);
+                future::ready(())
             },
             listen: |state, log_listener, options, _controller| {
-                log_manager_helper(state, log_listener, options, false)
+                log_manager_helper(state, log_listener, options, false);
+                future::ready(())
             },
         }.serve(chan)
-            .recover(|e| eprintln!("Log manager failed: {:?}", e)),
+            .unwrap_or_else(|e| eprintln!("Log manager failed: {:?}", e)),
     )
 }
 
@@ -286,31 +284,29 @@ fn spawn_log_sink(state: LogManager, chan: async::Channel) {
     async::spawn(
         LogSinkImpl {
             state,
-            on_open: |_, _| fok(()),
+            on_open: |_, _| future::ready(()),
             connect: |state, socket, _controller| {
                 let ls = match logger::LoggerStream::new(socket) {
                     Err(e) => {
-                        eprintln!("Logger: Failed to create tokio socket: {:?}", e);
+                        eprintln!("Logger: Failed to create async socket: {:?}", e);
                         // TODO: close channel
-                        return fok(());
+                        return future::ready(());
                     }
                     Ok(ls) => ls,
                 };
 
                 let shared_members = state.shared_members.clone();
-                let f = ls.for_each(move |(log_msg, size)| {
+                let f = ls.try_for_each(move |(log_msg, size)| {
                     process_log(shared_members.clone(), log_msg, size);
-                    Ok(())
-                }).map(|_s| ());
+                    future::ready(Ok(()))
+                }).unwrap_or_else(|e| eprintln!("Logger: Stream failed {:?}", e));
 
-                async::spawn(f.recover(|e| {
-                    eprintln!("Logger: Stream failed {:?}", e);
-                }));
+                async::spawn(f);
 
-                fok(())
+                future::ready(())
             },
         }.serve(chan)
-            .recover(|e| eprintln!("Log sink failed: {:?}", e)),
+            .unwrap_or_else(|e| eprintln!("Log sink failed: {:?}", e)),
     )
 }
 
@@ -463,16 +459,16 @@ mod tests {
         async::spawn(
             LogListenerImpl {
                 state: ll,
-                on_open: |_, _| fok(()),
+                on_open: |_, _| future::ready(()),
                 done: |ll, _| {
                     println!("DEBUG: {}: done called", ll.test_name);
                     ll.closed.store(true, Ordering::Relaxed);
-                    fok(())
+                    future::ready(())
                 },
                 log: |ll, msg, _controller| {
                     println!("DEBUG: {}: log called", ll.test_name);
                     ll.log(msg);
-                    fok(())
+                    future::ready(())
                 },
                 log_many: |ll, msgs, _controller| {
                     println!(
@@ -483,10 +479,10 @@ mod tests {
                     for msg in msgs {
                         ll.log(msg);
                     }
-                    fok(())
+                    future::ready(())
                 },
             }.serve(chan)
-                .recover(|e| panic!("test fail {:?}", e)),
+                .unwrap_or_else(|e| panic!("test fail {:?}", e)),
         )
     }
 
@@ -595,8 +591,8 @@ mod tests {
             if done.load(Ordering::Relaxed) || (test_dump_logs && closed.load(Ordering::Relaxed)) {
                 break;
             }
-            let timeout = async::Timer::<()>::new(100.millis().after_now());
-            executor.run(timeout, 2).unwrap();
+            let timeout = async::Timer::new(100.millis().after_now());
+            executor.run(timeout, 2);
         }
 
         if test_dump_logs {
@@ -650,9 +646,9 @@ mod tests {
             if done.load(Ordering::Relaxed) {
                 break;
             }
-            let timeout = async::Timer::<()>::new(100.millis().after_now());
+            let timeout = async::Timer::new(100.millis().after_now());
             println!("DEBUG: {}: wait on executor", test_name);
-            executor.run(timeout, 2).unwrap();
+            executor.run(timeout, 2);
             println!("DEBUG: {}: executor returned", test_name);
         }
         assert!(

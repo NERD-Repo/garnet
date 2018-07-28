@@ -9,7 +9,9 @@ use futures::io;
 use futures::prelude::*;
 use libc::{c_char, c_int, uint32_t, uint64_t, uint8_t};
 use std::cell::RefCell;
-use std::{mem, str};
+use std::marker::Unpin;
+use std::mem::{self, PinMut};
+use std::str;
 use zx;
 
 type FxLogSeverityT = c_int;
@@ -133,21 +135,25 @@ fn convert_to_log_message(bytes: &[u8]) -> Option<(LogMessage, usize)> {
     Some((l, pos))
 }
 
+impl Unpin for LoggerStream {}
 impl Stream for LoggerStream {
     /// It returns log message and the size of the packet received.
     /// The size does not include the metadata size taken by
     /// LogMessage data structure.
-    type Item = (LogMessage, usize);
-    type Error = io::Error;
+    type Item = io::Result<(LogMessage, usize)>;
 
-    fn poll_next(&mut self, cx: &mut task::Context) -> Poll<Option<Self::Item>, Self::Error> {
+    fn poll_next(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Option<Self::Item>> {
+        let this = &mut *self;
         BUFFER.with(|b| {
             let mut b = b.borrow_mut();
-            let len = try_ready!(self.socket.poll_read(cx, &mut *b));
+            let len = match ready!(io::AsyncRead::poll_read(&mut this.socket, cx, &mut *b)) {
+                Ok(len) => len,
+                Err(e) => return Poll::Ready(Some(Err(e))),
+            };
             if len == 0 {
-                return Ok(Async::Ready(None));
+                return Poll::Ready(None);
             }
-            Ok(Async::Ready(convert_to_log_message(&b[0..len])))
+            Poll::Ready(convert_to_log_message(&b[0..len]).map(Ok))
         })
     }
 }
@@ -242,14 +248,14 @@ mod tests {
         expected_p.tags.push(String::from("AAAAA"));
         let calltimes = Arc::new(AtomicUsize::new(0));
         let c = calltimes.clone();
-        let f = ls.for_each(move |(msg, s)| {
+        let f = ls.try_for_each(move |(msg, s)| {
             assert_eq!(msg, expected_p);
             assert_eq!(s, METADATA_SIZE + 6 /* tag */+ 6 /* msg */);
             c.fetch_add(1, Ordering::Relaxed);
-            Ok(())
-        }).map(|_s| ());
+            future::ready(Ok(()))
+        });
 
-        async::spawn(f.recover(|e| {
+        async::spawn(f.unwrap_or_else(|e| {
             panic!("test fail {:?}", e);
         }));
 
@@ -258,8 +264,8 @@ mod tests {
             if calltimes.load(Ordering::Relaxed) == 1 {
                 break;
             }
-            let timeout = async::Timer::<()>::new(100.millis().after_now());
-            executor.run(timeout, 2).unwrap();
+            let timeout = async::Timer::new(100.millis().after_now());
+            executor.run(timeout, 2);
         }
         assert_eq!(1, calltimes.load(Ordering::Relaxed));
 
@@ -270,8 +276,8 @@ mod tests {
             if calltimes.load(Ordering::Relaxed) == 2 {
                 break;
             }
-            let timeout = async::Timer::<()>::new(100.millis().after_now());
-            executor.run(timeout, 2).unwrap();
+            let timeout = async::Timer::new(100.millis().after_now());
+            executor.run(timeout, 2);
         }
         assert_eq!(2, calltimes.load(Ordering::Relaxed));
     }

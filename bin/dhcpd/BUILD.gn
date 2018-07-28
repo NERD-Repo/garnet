@@ -16,21 +16,23 @@ rustc_library("dhcp") {
 
 rustc_binary("dhcpd_bin") {
   source_root = "src/bin/dhcpd.rs"
+  edition = "2018"
   deps = [
     ":dhcp",
     "//garnet/public/rust/crates/fuchsia-async",
     "//third_party/rust-crates/rustc_deps:failure",
-    "//third_party/rust-crates/rustc_deps:futures",
+    "//third_party/rust-crates/rustc_deps:futures-preview",
   ]
 }
 
 rustc_binary("fake_client_bin") {
   source_root = "src/bin/fake_client.rs"
+  edition = "2018"
   deps = [
     ":dhcp",
     "//garnet/public/rust/crates/fuchsia-async",
     "//third_party/rust-crates/rustc_deps:failure",
-    "//third_party/rust-crates/rustc_deps:futures",
+    "//third_party/rust-crates/rustc_deps:futures-preview",
   ]
 }
 
