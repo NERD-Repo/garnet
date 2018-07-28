@@ -2,18 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 #![deny(warnings)]
+#![feature(async_await, await_macro)]
 
-extern crate dhcp;
-extern crate failure;
-extern crate fuchsia_async as async;
-extern crate futures;
-
-use async::{Executor};
-use async::net::{UdpSocket};
-use failure::{Error, ResultExt};
-use futures::prelude::*;
 use dhcp::protocol::{CLIENT_PORT, ConfigOption, Message, MessageType, OptionCode, SERVER_PORT};
-use std::net::{SocketAddr};
+use failure::{Error, ResultExt};
+use fuchsia_async::Executor;
+use fuchsia_async::net::UdpSocket;
+use std::net::SocketAddr;
 
 const TEST_MAC: [u8; 6] = [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF];
 
@@ -24,24 +19,27 @@ fn main() -> Result<(), Error> {
 
     let disc = build_discover();
     println!("Sending discover message: {:?}", disc);
-    let send_msgs = udp_socket.send_to(disc.serialize(), server)
-    .and_then(|sock| {
-        let buf = vec![0u8; 1024];
-        sock.recv_from(buf)
-    }).and_then(|(sock, buf, _bytes_rcvd, _addr)| {
+    let send_msgs = async {
+        {
+            let serialized = disc.serialize();
+            await!(udp_socket.send_to(&serialized, server))?;
+        }
+        let mut buf = vec![0u8; 1024];
+        let (_bytes_rcvd, _addr) = await!(udp_socket.recv_from(&mut buf))?;
         let offer = Message::from_buffer(&buf).unwrap();
         println!("fake_client: msg rcvd {:?}", offer);
         let req = build_request(offer);
         println!("fake_client: sending request msg {:?}", req);
-        sock.send_to(req.serialize(), server)
-    }).and_then(|sock| {
-        let buf = vec![0u8; 1024];
-        sock.recv_from(buf)
-    }).and_then(|(_sock, buf, _rcvd, _addr)| {
+        {
+            let serialized = req.serialize();
+            await!(udp_socket.send_to(&serialized, server))?;
+        }
+        let mut buf = vec![0u8; 1024];
+        let (_bytes_rcvd, _addr) = await!(udp_socket.recv_from(&mut buf))?;
         let ack = Message::from_buffer(&buf).unwrap();
-        println!("fake_client: msg rcvd {:?}", ack); 
-        Ok(())
-    });
+        println!("fake_client: msg rcvd {:?}", ack);
+        Ok::<(), Error>(())
+    };
 
     println!("fake_client: sending messages...");
     exec.run_singlethreaded(send_msgs).context("could not run futures")?;
