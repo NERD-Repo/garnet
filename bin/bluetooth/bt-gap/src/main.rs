@@ -3,35 +3,17 @@
 // found in the LICENSE file.
 
 #![deny(warnings)]
-#![feature(rust_2018_preview)]
-#![feature(async_await, await_macro, futures_api)]
-#![feature(pin)]
-#![feature(arbitrary_self_types)]
+#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
 
-extern crate failure;
-extern crate fdio;
-extern crate fidl;
-extern crate fidl_fuchsia_bluetooth;
-extern crate fidl_fuchsia_bluetooth_control;
-extern crate fidl_fuchsia_bluetooth_gatt;
-extern crate fidl_fuchsia_bluetooth_host;
-extern crate fidl_fuchsia_bluetooth_le;
-extern crate fuchsia_app as app;
 extern crate fuchsia_async as fasync;
 #[macro_use]
 extern crate fuchsia_bluetooth as bt;
-extern crate fuchsia_vfs_watcher as vfs_watcher;
 extern crate fuchsia_zircon as zx;
 #[macro_use]
 extern crate log;
-extern crate slab;
-
 extern crate futures;
-extern crate parking_lot;
 
-use crate::app::server::ServicesServer;
-//use futures::future::ok as fok;
-
+use fuchsia_app::server::ServicesServer;
 use futures::TryFutureExt;
 use crate::bt::util;
 use failure::{Error, ResultExt};
