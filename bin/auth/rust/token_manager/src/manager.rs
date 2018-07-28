@@ -7,7 +7,7 @@ use fidl::Error;
 use fidl::endpoints2::{ClientEnd, ServerEnd};
 use fidl_fuchsia_auth::{AuthProviderConfig, AuthenticationContextProviderMarker,
                         TokenManagerMarker, TokenManagerRequest};
-use futures::future::{self, FutureResult};
+use futures::future;
 use futures::prelude::*;
 use std::sync::Arc;
 
@@ -37,15 +37,14 @@ impl TokenManager {
             }
             Ok(request_stream) => async::spawn(
                 request_stream
-                    .for_each(move |req| manager.handle_request(req))
-                    .map(|_| ())
-                    .recover(|err| warn!("Error running TokenManager {:?}", err)),
+                    .try_for_each(move |req| manager.handle_request(req))
+                    .unwrap_or_else(|err| warn!("Error running TokenManager {:?}", err)),
             ),
         };
     }
 
     /// Handles a single request to the TokenManager.
-    fn handle_request(&self, req: TokenManagerRequest) -> FutureResult<(), Error> {
+    fn handle_request(&self, req: TokenManagerRequest) -> future::Ready<Result<(), Error>> {
         match req {
             // TODO(jsankey): Implment the actual functionality of a TokenManager.
             _ => {
@@ -53,7 +52,7 @@ impl TokenManager {
                     "Received not yet implemented token manager request for user {}",
                     self.user_id
                 );
-                future::ok::<(), Error>(())
+                future::ready(Ok(()))
             }
         }
     }
