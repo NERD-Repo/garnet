@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use async;
 use fidl::encoding2::OutOfLine;
 use fidl_fuchsia_bluetooth;
-use fidl_fuchsia_bluetooth_control::{Control, ControlImpl};
-use futures::{future, Future, FutureExt, Never};
-use futures::future::Either::{Left, Right};
+use crate::fasync;
+use fidl_fuchsia_bluetooth_control::{ControlRequest, ControlRequestStream};
+use fidl::endpoints2::RequestStream;
 use futures::prelude::*;
-use host_dispatcher::*;
+use crate::host_dispatcher::*;
 use parking_lot::RwLock;
 use std::sync::Arc;
+use fidl::Error;
 
 struct ControlServiceState {
     host: Arc<RwLock<HostDispatcher>>,
@@ -21,123 +21,98 @@ struct ControlServiceState {
 
 /// Build the ControlImpl to interact with fidl messages
 /// State is stored in the HostDispatcher object
-pub fn make_control_service(
-    hd: Arc<RwLock<HostDispatcher>>, chan: async::Channel
-) -> impl Future<Item = (), Error = Never> {
-    ControlImpl {
-        state: Arc::new(RwLock::new(ControlServiceState {
-            host: hd,
-            discovery_token: None,
-            discoverable_token: None,
-        })),
-        on_open: |state, handle| {
-            let wstate = state.write();
-            let mut hd = wstate.host.write();
-            hd.event_listeners.push(handle.clone());
-            future::ok(())
-        },
-        connect: |_, _, res| {
-            res.send(&mut bt_fidl_status!(NotSupported))
-                .into_future()
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        set_io_capabilities: |_, _, _, _res| {
-            //TODO(bwb): Implement this method
-            future::ok(())
-        },
-        disconnect: |_, _, res| {
-            res.send(&mut bt_fidl_status!(NotSupported))
-                .into_future()
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        forget: |_, _, res| {
-            res.send(&mut bt_fidl_status!(NotSupported))
-                .into_future()
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        set_name: |state, name, res| {
-            let wstate = state.write();
-            HostDispatcher::set_name(wstate.host.clone(), name)
-                .and_then(move |mut resp| res.send(&mut resp))
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        get_active_adapter_info: |state, res| {
-            let wstate = state.write();
-            let mut hd = wstate.host.write();
-            let mut adap = hd.get_active_adapter_info();
+pub async fn make_control_service(hd: Arc<RwLock<HostDispatcher>>, chan: fasync::Channel) -> Result<(), Error> {
+    let mut requests = ControlRequestStream::from_channel(chan);
 
-            res.send(adap.as_mut().map(OutOfLine))
-                .into_future()
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        get_known_remote_devices: |_state, _res| future::ok(()),
-        get_adapters: |state, res| {
-            let wstate = state.write();
-            let mut hd = wstate.host.clone();
-            HostDispatcher::get_adapters(&mut hd)
-                .and_then(move |mut resp| res.send(Some(&mut resp.iter_mut())))
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        is_bluetooth_available: |state, res| {
-            let rstate = state.read();
-            let mut hd = rstate.host.write();
-            let is_available = hd.get_active_adapter_info().is_some();
-            res.send(is_available)
-                .into_future()
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        request_discovery: |state, discover, res| {
-            let fut = if discover {
-                let stateref = state.clone();
-                Left(
-                    HostDispatcher::start_discovery(state.read().host.clone()).and_then(
-                        move |(mut resp, token)| {
-                            stateref.write().discovery_token = token;
-                            res.send(&mut resp).into_future()
-                        },
-                    ),
-                )
-            } else {
-                state.write().discovery_token = None;
-                Right(res.send(&mut bt_fidl_status!()).into_future())
-            };
-            fut.recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        set_discoverable: |state, discoverable, res| {
-            let fut = if discoverable {
-                let stateref = state.clone();
-                Left(
-                    HostDispatcher::set_discoverable(state.read().host.clone()).and_then(
-                        move |(mut resp, token)| {
-                            stateref.write().discoverable_token = token;
-                            res.send(&mut resp).into_future()
-                        },
-                    ),
-                )
-            } else {
-                state.write().discoverable_token = None;
-                Right(res.send(&mut bt_fidl_status!()).into_future())
-            };
-            fut.recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        set_active_adapter: |state, adapter, res| {
-            let wstate = state.write();
-            let mut success = wstate.host.write().set_active_adapter(adapter.clone());
-            res.send(&mut success)
-                .into_future()
-                .recover(|e| eprintln!("error sending response: {:?}", e))
-        },
-        set_pairing_delegate: |state, delegate, _res| {
-            let mut wstate = state.write();
-            if let Some(delegate) = delegate {
-                if let Ok(proxy) = delegate.into_proxy() {
-                    wstate.host.write().pairing_delegate = Some(proxy);
+    let state = Arc::new(RwLock::new(ControlServiceState {
+        host: hd,
+        discovery_token: None,
+        discoverable_token: None,
+    }));
+
+
+    while let Some(res) = await!(requests.next()) {
+        match res? {
+            ControlRequest::Connect { device_id: _, responder } => {
+                responder.send(&mut bt_fidl_status!(NotSupported))?
+            },
+            ControlRequest::IsBluetoothAvailable { responder } => {
+                let rstate = state.read();
+                let mut hd = rstate.host.write();
+                let is_available = hd.get_active_adapter_info().is_some();
+                responder.send(is_available)?
+            },
+            ControlRequest::SetPairingDelegate { delegate, responder: _ } => {
+                let mut wstate = state.write();
+                if let Some(delegate) = delegate {
+                    if let Ok(proxy) = delegate.into_proxy() {
+                        wstate.host.write().pairing_delegate = Some(proxy);
+             //           return responder.send(true)?;
+                    }
+                } else {
+                    wstate.host.write().pairing_delegate = None;
+            //        return responder.send(true)?;
                 }
-            } else {
-                wstate.host.write().pairing_delegate = None;
-            }
-            future::ok(())
-        },
-    }.serve(chan)
-        .recover(|e| eprintln!("error running service: {:?}", e))
+            },
+            ControlRequest::GetAdapters { responder } => {
+                let wstate = state.write();
+                let mut hd = wstate.host.clone();
+                let mut adapters = await!(HostDispatcher::get_adapters(&mut hd))?;
+                // work around ICE. TODO just return iter_mut of adapters
+                let mut a = vec![];
+                for x in adapters {
+                    a.push(x);
+                }
+                responder.send(Some(&mut a.iter_mut()))?
+            },
+            ControlRequest::SetActiveAdapter { identifier, responder } => {
+                let wstate = state.write();
+                let mut success = wstate.host.write().set_active_adapter(identifier.clone());
+                responder.send(&mut success)?
+            },
+            ControlRequest::RequestDiscovery { discovery, responder } => {
+                if discovery {
+                    let stateref = state.clone();
+                    let (mut resp, token) = await!(HostDispatcher::start_discovery(state.read().host.clone()))?;
+                    stateref.write().discovery_token = token;
+                    responder.send(&mut resp)?
+                } else {
+                    state.write().discovery_token = None;
+                    responder.send(&mut bt_fidl_status!())?
+                }
+            },
+            ControlRequest::GetKnownRemoteDevices { responder: _ } => (),
+            ControlRequest::GetActiveAdapterInfo { responder } => {
+                let wstate = state.write();
+                let mut hd = wstate.host.write();
+                let mut adap = hd.get_active_adapter_info();
+                responder.send(adap.as_mut().map(OutOfLine))?
+            },
+            ControlRequest::SetName { name, responder } => {
+                let wstate = state.write();
+                let mut _resp = await!(HostDispatcher::set_name(wstate.host.clone(), name))?;
+                responder.send(&mut bt_fidl_status!())?
+            },
+            ControlRequest::SetDiscoverable { discoverable, responder } => {
+                if discoverable {
+                    let stateref = state.clone();
+                    let (mut resp, token) = await!(HostDispatcher::set_discoverable(state.read().host.clone()))?;
+                    stateref.write().discoverable_token = token;
+                    responder.send(&mut resp)?
+                } else {
+                    state.write().discoverable_token = None;
+                    responder.send(&mut bt_fidl_status!())?;
+                }
+            },
+            ControlRequest::Disconnect { device_id:_, responder } => {
+                responder.send(&mut bt_fidl_status!(NotSupported))?
+            },
+            ControlRequest::Forget { device_id:_, responder } => {
+                responder.send(&mut bt_fidl_status!(NotSupported))?
+            },
+            ControlRequest::SetIoCapabilities { input:_, output:_, control_handle:_ } => (),
+        };
+    }
+
+    Ok(())
 }
