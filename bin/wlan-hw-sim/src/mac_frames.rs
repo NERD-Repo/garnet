@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+use bitfield::{bitfield, bitfield_fields, bitfield_struct};
 use byteorder::{LittleEndian, WriteBytesExt};
 use std::io;
 

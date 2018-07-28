@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use async::{self, TimeoutExt};
-use wlantap;
+use fuchsia_async::{self as fasync, TimeoutExt};
+use fidl_fuchsia_wlan_tap as wlantap;
 use futures::prelude::*;
 use futures::channel::mpsc;
 use std::sync::Arc;
 use wlantap_client::Wlantap;
-use zx::{self, prelude::*};
+use fuchsia_zircon::{self as zx, prelude::*};
 use futures::task::Context;
 
 type EventStream = wlantap::WlantapPhyEventStream;
@@ -53,7 +53,7 @@ impl<F: Future, H> Future for TestHelperFuture<F, H>
 }
 
 impl TestHelper {
-    pub fn begin_test(exec: &mut async::Executor,
+    pub fn begin_test(exec: &mut fasync::Executor,
                       config: wlantap::WlantapPhyConfig) -> Self {
         let wlantap = Wlantap::open().expect("Failed to open wlantapctl");
         let proxy = wlantap.create_phy(config).expect("Failed to create wlantap PHY");
@@ -67,7 +67,7 @@ impl TestHelper {
         helper
     }
 
-    fn wait_for_wlanmac_start(&mut self, exec: &mut async::Executor) {
+    fn wait_for_wlanmac_start(&mut self, exec: &mut fasync::Executor) {
         let (mut sender, receiver) = mpsc::channel::<()>(1);
         self.run(exec, 5.seconds(), "receive a WlanmacStart event",
             move |event| {
@@ -86,7 +86,7 @@ impl TestHelper {
         self.proxy.clone()
     }
 
-    pub fn run<F: Future, H>(&mut self, exec: &mut async::Executor, timeout: zx::Duration,
+    pub fn run<F: Future, H>(&mut self, exec: &mut fasync::Executor, timeout: zx::Duration,
                              context: &str, event_handler: H, future: F)
         -> Result<F::Item, F::Error>
         where H: FnMut(wlantap::WlantapPhyEvent) -> ()
