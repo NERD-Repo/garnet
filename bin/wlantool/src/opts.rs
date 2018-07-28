@@ -4,7 +4,9 @@
 
 #![allow(deprecated)] // Necessary for AsciiExt usage from clap args_enum macro
 
-use wlan;
+use clap::{arg_enum, _clap_count_exprs};
+use structopt::StructOpt;
+use fidl_fuchsia_wlan_device as wlan;
 
 arg_enum!{
     #[derive(PartialEq, Copy, Clone, Debug)]
