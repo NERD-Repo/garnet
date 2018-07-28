@@ -126,9 +126,9 @@ fn main() -> Result<(), Error> {
                         }
                         Ok(Cmd::GetAdapters) => await!(get_adapters(bt_svc.clone())),
                         Ok(Cmd::ActiveAdapter) =>  await!(get_active_adapter(bt_svc.clone())),
-                        Ok(Cmd::Help) => await!({ async { Ok(Cmd::help_msg()) } }),
-                        Ok(Cmd::Nothing) => await!({async { Ok(String::from("")) }}),
-                        Err(e) => await!({ async { Ok(format!("Error: {:?}", e)) } })
+                        Ok(Cmd::Help) => Ok(Cmd::help_msg()),
+                        Ok(Cmd::Nothing) => Ok(String::from("")),
+                        Err(e) => Ok(format!("Error: {:?}", e)),
                     }
                 };
                 let res = exec.run_singlethreaded(fut)?;
