@@ -5,13 +5,13 @@
 #![deny(warnings)]
 
 use failure::Error;
-use fdio::{fdio_sys, ioctl};
+use fdio::{fdio_sys, ioctl, make_ioctl};
 use std::ffi::{CString, OsStr, OsString};
 use std::fs::File;
 use std::os::raw;
 use std::os::unix::ffi::OsStrExt;
 
-use super::open_rdwr;
+use crate::open_rdwr;
 
 pub fn create_test_device(test_path: &str, dev_name: &str) -> Result<OsString, Error> {
     let test_dev = open_rdwr(test_path)?;
