@@ -2,7 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![deny(warnings)]
+//#![deny(warnings)]
+#![feature(async_await, await_macro, futures_api)]
 
 extern crate failure;
 extern crate fidl;
@@ -10,29 +11,26 @@ extern crate fidl_fuchsia_bluetooth as fidl_bt;
 extern crate fidl_fuchsia_bluetooth_gatt as fidl_gatt;
 extern crate fidl_fuchsia_bluetooth_le as fidl_ble;
 extern crate fuchsia_app as app;
-extern crate fuchsia_async as async;
+extern crate fuchsia_async as fasync;
 extern crate fuchsia_bluetooth as bt;
 extern crate fuchsia_zircon as zx;
 extern crate futures;
 extern crate getopts;
 extern crate parking_lot;
 
-use bt::error::Error as BTError;
+use crate::bt::error::Error as BTError;
 use failure::{Error, Fail, ResultExt};
 use fidl::encoding2::OutOfLine;
-use fidl_ble::{CentralMarker, CentralProxy, ScanFilter};
+use crate::fidl_ble::{CentralMarker, CentralProxy, ScanFilter};
 use futures::future;
-use futures::future::Either::{Left, Right};
 use futures::prelude::*;
 use getopts::Options;
 
 mod common;
 
-use common::central::{listen_central_events, CentralState};
+use crate::common::central::{listen_central_events, CentralState};
 
-fn do_scan(
-    args: &[String], central: &CentralProxy,
-) -> (bool, bool, impl Future<Item = (), Error = Error>) {
+async fn do_scan(args: Vec<String>, central: &CentralProxy,) -> Result<(bool, bool), Error> {
     let mut opts = Options::new();
 
     opts.optflag("h", "help", "");
@@ -52,18 +50,15 @@ fn do_scan(
     let matches = match opts.parse(args) {
         Ok(m) => m,
         Err(fail) => {
-            return (false, false, Left(future::err(fail.into())));
+            return Err(fail.into());
         }
     };
+
 
     if matches.opt_present("h") {
         let brief = "Usage: ble-central-tool scan [options]";
         print!("{}", opts.usage(&brief));
-        return (
-            false,
-            false,
-            Left(future::err(BTError::new("invalid input").into())),
-        );
+        return Err(BTError::new("invalid input").into());
     }
 
     let scan_once: bool = matches.opt_present("o");
@@ -76,11 +71,7 @@ fn do_scan(
             36 => val,
             _ => {
                 println!("invalid service UUID: {}", val);
-                return (
-                    false,
-                    false,
-                    Left(future::err(BTError::new("invalid input").into())),
-                );
+                return Err(BTError::new("invalid input").into());
             }
         }]),
     };
@@ -100,41 +91,31 @@ fn do_scan(
         None
     };
 
-    let fut = Right(
-        central
-            .start_scan(filter.as_mut().map(OutOfLine))
-            .map_err(|e| e.context("failed to initiate scan").into())
-            .and_then(|status| match status.error {
-                None => Ok(()),
-                Some(e) => Err(BTError::from(*e).into()),
-            }),
-    );
-
-    (scan_once, connect, fut)
+    let status = await!(central.start_scan(filter.as_mut().map(OutOfLine)))?;
+    match status.error {
+        None => Ok((scan_once, connect)),
+        Some(e) => Err(BTError::from(*e).into()),
+    }
 }
 
-fn do_connect(args: &[String], central: &CentralProxy) -> impl Future<Item = (), Error = Error> {
+async fn do_connect(args: Vec<String>, central: &CentralProxy) -> Result<(), Error> {
     if args.len() != 1 {
         println!("connect: peer-id is required");
-        return Left(future::err(BTError::new("invalid input").into()));
+        return Err(BTError::new("invalid input").into());
     }
 
     let (_, server_end) = match fidl::endpoints2::create_endpoints() {
         Err(e) => {
-            return Left(future::err(e.into()));
+            return Err(e.into());
         }
         Ok(x) => x,
     };
 
-    Right(
-        central
-            .connect_peripheral(&mut args[0].clone(), server_end)
-            .map_err(|e| e.context("failed to connect to peripheral").into())
-            .and_then(|status| match status.error {
-                None => Ok(()),
-                Some(e) => Err(BTError::from(*e).into()),
-            }),
-    )
+    let status = await!(central.connect_peripheral(&args[0].clone(), server_end))?;
+    match status.error {
+        None => Ok(()),
+        Some(e) => Err(BTError::from(*e).into()),
+    }
 }
 
 fn usage(appname: &str) -> () {
@@ -157,30 +138,33 @@ fn main() -> Result<(), Error> {
         return Ok(());
     }
 
-    let mut executor = async::Executor::new().context("error creating event loop")?;
+    let mut executor = fasync::Executor::new().context("error creating event loop")?;
     let central_svc = app::client::connect_to_service::<CentralMarker>()
         .context("Failed to connect to BLE Central service")?;
 
     let state = CentralState::new(central_svc);
 
     let command = &args[1];
-    let command_fut = match command.as_str() {
-        "scan" => {
-            let mut central = state.write();
-            let (scan_once, connect, fut) = do_scan(&args[2..], central.get_svc());
-            central.scan_once = scan_once;
-            central.connect = connect;
-            Left(fut)
-        }
-        "connect" => Right(do_connect(&args[2..], state.read().get_svc())),
-        _ => {
-            println!("Invalid command: {}", command);
-            usage(appname);
-            return Err(BTError::new("invalid input").into());
-        }
+    let fut = async {
+        match command.as_str() {
+            "scan" => {
+                let mut central = state.write();
+                if let Ok((scan_once, connect)) = await!(do_scan(args[2..].to_vec(), central.get_svc())) {
+                    central.scan_once = scan_once;
+                    central.connect = connect;
+                }
+            },
+            "connect" => {
+                let state = state.read();
+                await!(do_connect(args[2..].to_vec(), state.get_svc()));
+            },
+            _ => {
+                println!("Invalid command: {}", command);
+                usage(appname);
+            }
+        };
+        await!(listen_central_events(state))
     };
 
-    let event_fut = listen_central_events(state).map_err(|_| unreachable!("Listening to events should never fail"));
-    let fut = command_fut.and_then(|_| event_fut);
-    executor.run_singlethreaded(fut).map_err(Into::into)
+    executor.run_singlethreaded(fut)
 }

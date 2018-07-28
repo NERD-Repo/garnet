@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use fidl_gatt;
-use fidl_gatt::{Characteristic as FidlCharacteristic, ServiceInfo};
+use crate::fidl_gatt::{self, Characteristic as FidlCharacteristic, ServiceInfo};
 use std::fmt;
 
 // TODO(armansito): Make these objects stateful so that GATT operations can be performed through

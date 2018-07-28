@@ -5,13 +5,13 @@
 // TODO(armansito): Remove this once a server channel can be killed using a Controller
 #![allow(unreachable_code)]
 
-use bt::error::Error as BTError;
-use common::gatt::start_gatt_loop;
+use crate::bt::error::Error as BTError;
+use crate::fidl_gatt::ClientProxy;
+use crate::common::gatt::start_gatt_loop;
 use failure::Error;
 use fidl::endpoints2;
-use fidl_ble::{CentralEvent, CentralProxy, RemoteDevice};
+use crate::fidl_ble::{CentralEvent, CentralProxy, RemoteDevice};
 use futures::future;
-use futures::future::Either::{Left, Right};
 use futures::prelude::*;
 use parking_lot::RwLock;
 use std::fmt;
@@ -46,98 +46,78 @@ impl CentralState {
     }
 }
 
-pub fn listen_central_events(
-    state: CentralStatePtr,
-) -> impl Future<Item = (), Error = Never> + Send {
-    let evt_stream = state.read().get_svc().take_event_stream();
-    evt_stream
-        .for_each_concurrent(move |evt| {
-            match evt {
-                CentralEvent::OnScanStateChanged { scanning } => {
-                    eprintln!("  scan state changed: {}", scanning);
-                    Left(future::ok(()))
+pub async fn listen_central_events(state: CentralStatePtr) -> Result<(), Error> {
+    let mut events = state.read().get_svc().take_event_stream();
+
+    while let Some(evt) = await!(events.next()) {
+        match evt? {
+            CentralEvent::OnScanStateChanged { scanning } => {
+                eprintln!("  scan state changed: {}", scanning);
+            }
+            CentralEvent::OnDeviceDiscovered { device } => {
+                let id = device.identifier.clone();
+                let connectable = device.connectable;
+
+                eprintln!(" {}", RemoteDeviceWrapper(device));
+
+                let central = state.read();
+                if !central.scan_once && !central.connect {
+                    return Ok(())
                 }
-                CentralEvent::OnDeviceDiscovered { device } => {
-                    let id = device.identifier.clone();
-                    let connectable = device.connectable;
 
-                    eprintln!(" {}", RemoteDeviceWrapper(device));
-
-                    let central = state.read();
-                    if !central.scan_once && !central.connect {
-                        return Left(future::ok(()));
-                    }
-
-                    // Stop scanning.
-                    if let Err(e) = central.svc.stop_scan() {
-                        eprintln!("request to stop scan failed: {}", e);
-                        // TODO(armansito): kill the channel here instead
-                        exit(0);
-                        Left(future::ok(()))
-                    } else if central.connect && connectable {
-                        Right(connect_peripheral(state.clone(), id).recover(|_| {
-                            // TODO(armansito): kill the channel here instead
-                            exit(0);
-                            ()
-                        }))
-                    } else {
-                        // TODO(armansito): kill the channel here instead
-                        exit(0);
-                        Left(future::ok(()))
-                    }
-                }
-                CentralEvent::OnPeripheralDisconnected { identifier } => {
-                    eprintln!("  peer disconnected: {}", identifier);
-                    // TODO(armansito): Close the channel here instead
+                // Stop scanning.
+                if let Err(e) = central.svc.stop_scan() {
+                    eprintln!("request to stop scan failed: {}", e);
+                    // TODO(armansito): kill the channel here instead
                     exit(0);
-                    Left(future::ok(()))
+                } else if central.connect && connectable {
+                    await!(connect_peripheral(state.clone(), id))?
+                } else {
+                    // TODO(armansito): kill the channel here instead
+                    exit(0);
                 }
             }
-        })
-        .map(|_| ())
-        .recover(|e| eprintln!("failed to subscribe to BLE Central events: {:?}", e))
+            CentralEvent::OnPeripheralDisconnected { identifier } => {
+                eprintln!("  peer disconnected: {}", identifier);
+                // TODO(armansito): Close the channel here instead
+                exit(0);
+            }
+        }
+    }
+    Ok(())
 }
-
-// Attempts to connect to the peripheral with the given |id| and begins the
-// GATT REPL if this succeeds.
-fn connect_peripheral(
-    state: CentralStatePtr, mut id: String,
-) -> impl Future<Item = (), Error = Error> {
+/// Attempts to connect to the peripheral with the given |id| and begins the
+/// GATT REPL if this succeeds.
+async fn connect_peripheral(state: CentralStatePtr, mut id: String) -> Result<(), Error> {
     let (proxy, server) = match endpoints2::create_endpoints() {
         Err(_) => {
-            return Left(future::err(
-                BTError::new("Failed to create Client pair").into(),
-            ));
+            return Err(BTError::new("Failed to create Client pair").into());
         }
         Ok(res) => res,
     };
 
-    Right(
-        state
-            .read()
-            .svc
-            .connect_peripheral(&mut id, server)
-            .map_err(|e| {
-                BTError::new(&format!("failed to initiate connect request: {}", e)).into()
-            })
-            .and_then(move |status| match status.error {
+    let status = await!(state.read().svc.connect_peripheral(&mut id, server));
+    let proxy: Result<ClientProxy, Error> = match status {
+        Err(e) => return Err(BTError::new(&format!("failed to initiate connect request: {}", e)).into()),
+        Ok(status) => {
+            match status.error {
                 Some(e) => {
-                    println!(
-                        "  failed to connect to peripheral: {}",
+                    println!("  failed to connect to peripheral: {}",
                         match e.description {
                             None => "unknown error",
                             Some(ref msg) => &msg,
                         }
                     );
                     Err(BTError::from(*e).into())
-                }
+                },
                 None => {
                     println!("  device connected: {}", id);
                     Ok(proxy)
                 }
-            })
-            .and_then(|proxy| start_gatt_loop(proxy)),
-    )
+            }
+        }
+    };
+    Ok(await!(start_gatt_loop(proxy?))?)
 }
 
 struct RemoteDeviceWrapper(RemoteDevice);
