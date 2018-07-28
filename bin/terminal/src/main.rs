@@ -34,8 +34,7 @@ use fidl_fuchsia_ui_viewsv1::{ViewListenerMarker, ViewListenerRequest, ViewManag
 use fidl_fuchsia_ui_viewsv1token::ViewOwnerMarker;
 use fuchsia_scenic::{HostImageCycler, ImportNode, Session, SessionPtr};
 use fuchsia_zircon::{Channel, EventPair};
-use futures::future::ok as fok;
-use futures::{FutureExt, StreamExt};
+use futures::{future, TryFutureExt, TryStreamExt};
 use parking_lot::Mutex;
 use scenic::{ScenicMarker, ScenicProxy, SessionListenerMarker, SessionListenerRequest,
              SessionMarker};
@@ -91,7 +90,7 @@ impl ViewController {
                 session_listener_request
                     .into_stream()
                     .unwrap()
-                    .for_each(move |request| {
+                    .try_for_each(move |request| {
                         match request {
                             SessionListenerRequest::OnEvent {
                                 events,
@@ -99,10 +98,9 @@ impl ViewController {
                             } => view_controller.lock().handle_session_events(events),
                             _ => (),
                         }
-                        fok(())
+                        future::ready(Ok(()))
                     })
-                    .map(|_| ())
-                    .recover(|e| eprintln!("view listener error: {:?}", e)),
+                    .unwrap_or_else(|e| eprintln!("view listener error: {:?}", e)),
             );
         }
         {
@@ -111,17 +109,16 @@ impl ViewController {
                 view_listener_request
                     .into_stream()
                     .unwrap()
-                    .for_each(
+                    .try_for_each(
                         move |ViewListenerRequest::OnPropertiesChanged {
                                   properties,
                                   responder,
                               }| {
                             view_controller.lock().handle_properies_changed(properties);
-                            responder.send()
+                            future::ready(responder.send())
                         },
                     )
-                    .map(|_| ())
-                    .recover(|e| eprintln!("view listener error: {:?}", e)),
+                    .unwrap_or_else(|e| eprintln!("view listener error: {:?}", e)),
             );
         }
         Ok(view_controller)
@@ -198,8 +195,8 @@ impl ViewController {
             self.session
                 .lock()
                 .present(0)
-                .map(|_| ())
-                .recover(|e| eprintln!("present error: {:?}", e)),
+                .map_ok(|_| ())
+                .unwrap_or_else(|e| eprintln!("present error: {:?}", e)),
         );
     }
 
@@ -243,15 +240,14 @@ impl App {
         let app = app.clone();
         async::spawn(
             ViewProviderRequestStream::from_channel(channel)
-                .for_each(move |request| {
+                .try_for_each(move |request| {
                     let CreateView { view_owner, .. } = request;
                     app.lock()
                         .create_view(view_owner)
                         .expect("failed to create view");
-                    fok(())
+                    future::ready(Ok(()))
                 })
-                .map(|_| ())
-                .recover(|e| eprintln!("error running view_provider server: {:?}", e)),
+                .unwrap_or_else(|e| eprintln!("error running view_provider server: {:?}", e)),
         )
     }
 
