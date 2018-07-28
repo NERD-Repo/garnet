@@ -2,20 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#![feature(async_await, await_macro, futures_api)]
 #![deny(warnings)]
 
-#[macro_use]
-extern crate failure;
-#[macro_use]
-extern crate fdio;
-extern crate fidl;
-extern crate fidl_fuchsia_wlan_device as wlan;
-extern crate fuchsia_async as async;
-extern crate fuchsia_wlan_dev as wlan_dev;
-extern crate futures;
+use fidl_fuchsia_wlan_device as wlan;
+use fuchsia_async as fasync;
+use fuchsia_wlan_dev as wlan_dev;
 
-use failure::{Error, ResultExt};
-use futures::prelude::*;
+use failure::{format_err, Error, ResultExt};
 use std::convert::Into;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
@@ -33,14 +27,6 @@ fn usage(appname: &str) {
 
 fn open_rdwr<P: AsRef<Path>>(path: P) -> Result<File, Error> {
     OpenOptions::new().read(true).write(true).open(path).map_err(Into::into)
-}
-
-fn get_proxy() -> Result<(async::Executor, wlan::PhyProxy), Error> {
-    let executor = async::Executor::new().context("error creating event loop")?;
-
-    let phy = wlan_dev::Device::new(DEV_WLANPHY)?;
-    let proxy = wlan_dev::connect_wlan_phy(&phy)?;
-    Ok((executor, proxy))
 }
 
 fn add_wlanphy() -> Result<(), Error> {
@@ -74,33 +60,24 @@ fn rm_wlanphy() -> Result<(), Error> {
         .map(|_| println!("{:?} destroyed", path))
 }
 
-fn query_wlanphy() -> Result<(), Error> {
-    let (mut executor, proxy) = get_proxy()?;
-    let fut = proxy.query().and_then(|resp| {
-       println!("query results: {:?}", resp.info);
-       Ok(())
-    });
-    executor.run_singlethreaded(fut).map_err(Into::into)
+async fn query_wlanphy(proxy: wlan::PhyProxy) -> Result<(), Error> {
+    let resp = await!(proxy.query())?;
+    println!("query results: {:?}", resp.info);
+    Ok(())
 }
 
-fn create_wlanintf() -> Result<(), Error> {
-    let (mut executor, proxy) = get_proxy()?;
+async fn create_wlanintf(proxy: wlan::PhyProxy) -> Result<(), Error> {
     let mut req = wlan::CreateIfaceRequest { role: wlan::MacRole::Client };
-    let fut = proxy.create_iface(&mut req).and_then(|resp| {
-       println!("create results: {:?}", resp);
-       Ok(())
-    });
-    executor.run_singlethreaded(fut).map_err(Into::into)
+    let resp = await!(proxy.create_iface(&mut req))?;
+    println!("create results: {:?}", resp);
+    Ok(())
 }
 
-fn destroy_wlanintf(id: u16) -> Result<(), Error> {
-    let (mut executor, proxy) = get_proxy()?;
+async fn destroy_wlanintf(proxy: wlan::PhyProxy, id: u16) -> Result<(), Error> {
     let mut req = wlan::DestroyIfaceRequest { id: id };
-    let fut = proxy.destroy_iface(&mut req).and_then(|resp| {
-       println!("destroyed intf {} resp: {:?}", id, resp);
-       Ok(())
-    });
-    executor.run_singlethreaded(fut).map_err(Into::into)
+    let resp = await!(proxy.destroy_iface(&mut req))?;
+    println!("destroyed intf {} resp: {:?}", id, resp);
+    Ok(())
 }
 
 fn main() -> Result<(), Error> {
@@ -112,25 +89,32 @@ fn main() -> Result<(), Error> {
     }
     let command = &args[1];
 
-    match command.as_ref() {
-        "add" => add_wlanphy(),
-        "rm" => rm_wlanphy(),
-        "query" => query_wlanphy(),
-        "create" => create_wlanintf(),
-        "destroy" => {
-            if args.len() < 3 {
+    let mut exec = fasync::Executor::new().context("error creating event loop")?;
+    let phy = wlan_dev::Device::new(DEV_WLANPHY)?;
+    let proxy = wlan_dev::connect_wlan_phy(&phy)?;
+
+    let fut = async {
+        match command.as_ref() {
+            "add" => add_wlanphy(),
+            "rm" => rm_wlanphy(),
+            "query" => await!(query_wlanphy(proxy)),
+            "create" => await!(create_wlanintf(proxy)),
+            "destroy" => {
+                if args.len() < 3 {
+                    usage(appname);
+                    Ok(())
+                } else {
+                    let id = u16::from_str_radix(&args[2], 10)?;
+                    await!(destroy_wlanintf(proxy, id))
+                }
+            },
+            _ => {
                 usage(appname);
                 Ok(())
-            } else {
-                let id = u16::from_str_radix(&args[2], 10)?;
-                destroy_wlanintf(id)
             }
-        },
-        _ => {
-            usage(appname);
-            Ok(())
         }
-    }
+    };
+    exec.run_singlethreaded(fut)
 }
 
 
