@@ -5,16 +5,16 @@
 #![allow(dead_code)]
 
 use failure;
-use fidl_mlme;
+use fidl_fuchsia_wlan_mlme as fidl_mlme;
 use futures::prelude::*;
 use std::{io, thread, time};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
-use vfs_watcher::{Watcher, WatchEvent};
-use wlan;
-use wlan_dev;
-use zx::Status as zx_Status;
+use fuchsia_vfs_watcher::{Watcher, WatchEvent};
+use fidl_fuchsia_wlan_device as wlan;
+use fuchsia_wlan_dev as wlan_dev;
+use fuchsia_zircon::Status as zx_Status;
 
 const PHY_PATH: &str = "/dev/class/wlanphy";
 const IFACE_PATH: &str = "/dev/class/wlanif";
@@ -66,7 +66,7 @@ fn handle_open_error<T>(path: &PathBuf, r: Result<T, failure::Error>) -> Option<
 }
 
 fn watch_new_devices<P: AsRef<Path>>(path: P)
-    -> Result<impl Stream<Item = PathBuf, Error = io::Error>, io::Error>
+    -> Result<impl Stream<Item = Result<PathBuf, io::Error>>, io::Error>
 {
     let dir = File::open(&path)?;
     let watcher = Watcher::new(&dir)?;
@@ -105,14 +105,14 @@ fn id_from_path(path: &PathBuf) -> Result<u16, failure::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async::{self, TimeoutExt};
+    use fuchsia_async::{self as fasync, TimeoutExt};
     use fidl_wlantap;
     use wlantap_client;
     use zx::prelude::*;
 
     #[test]
     fn watch_phys() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let new_phy_stream = watch_phy_devices().expect("watch_phy_devices() failed");
         let wlantap = wlantap_client::Wlantap::open().expect("Failed to connect to wlantapctl");
         let _tap_phy = wlantap.create_phy(create_wlantap_config(*b"wtchph"));

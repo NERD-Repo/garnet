@@ -2,32 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use async;
-use device::{self, PhyDevice, PhyMap, IfaceDevice, IfaceMap};
+use fuchsia_async::{self as fasync, unsafe_many_futures};
+use crate::device::{self, PhyDevice, PhyMap, IfaceDevice, IfaceMap};
 use failure;
 use fidl::encoding2::OutOfLine;
 use fidl::endpoints2::RequestStream;
 use futures::channel::mpsc::UnboundedReceiver;
-use futures::{future, Future, FutureExt, Never, stream};
+use futures::{future, Future, FutureExt, stream};
 use futures::prelude::*;
-use station;
-use stats_scheduler::StatsRef;
+use crate::station;
+use crate::stats_scheduler::StatsRef;
+use std::mem::PinMut;
 use std::sync::Arc;
-use watchable_map::MapEvent;
-use watcher_service;
-use wlan_service::{self, DeviceServiceRequest};
-use wlan;
-use zx;
+use crate::watchable_map::MapEvent;
+use crate::watcher_service;
+use fidl_fuchsia_wlan_device_service::{self as wlan_service, DeviceServiceRequest};
+use fidl_fuchsia_wlan_device as wlan;
+use fuchsia_zircon as zx;
 
-many_futures!(ServiceFut,
+unsafe_many_futures!(ServiceFut,
  [ListPhys, QueryPhy, ListIfaces, CreateIface, GetClientSme, GetIfaceStats, WatchDevices]);
 
 pub fn device_service<S>(phys: Arc<PhyMap>, ifaces: Arc<IfaceMap>,
                          phy_events: UnboundedReceiver<MapEvent<u16, PhyDevice>>,
                          iface_events: UnboundedReceiver<MapEvent<u16, IfaceDevice>>,
                          new_clients: S)
-    -> impl Future<Item = Never, Error = failure::Error>
-    where S: Stream<Item = async::Channel, Error = Never>
+    -> impl Future<Item = (), Error = failure::Error>
+    where S: Stream<Item = fasync::Channel, Error = ()>
 {
     let (watcher_service, watcher_fut) = watcher_service::serve_watchers(
         phys.clone(), ifaces.clone(), phy_events, iface_events);
@@ -40,13 +41,13 @@ pub fn device_service<S>(phys: Arc<PhyMap>, ifaces: Arc<IfaceMap>,
         })
         .and_then(|_| Err(format_err!("device_service server future exited unexpectedly")));
     server.join(watcher_fut)
-        .map(|x: (Never, Never)| x.0)
+        .map(|x: ((), ())| x.0)
 }
 
 fn serve_channel(phys: Arc<PhyMap>, ifaces: Arc<IfaceMap>,
                  watcher_service: watcher_service::WatcherService<PhyDevice, IfaceDevice>,
-                 channel: async::Channel)
-    -> impl Future<Item = (), Error = Never>
+                 channel: fasync::Channel)
+    -> impl Future<Item = (), Error = ()>
 {
     // Note that errors from responder.send() are propagated intentionally.
     // If we fail to send a response, the only way to recover is to stop serving the client
@@ -113,7 +114,7 @@ fn list_phys(phys: &Arc<PhyMap>) -> wlan_service::ListPhysResponse {
 }
 
 fn query_phy(phys: &Arc<PhyMap>, id: u16)
-    -> impl Future<Item = (zx::Status, Option<wlan_service::QueryPhyResponse>), Error = Never>
+    -> impl Future<Item = (zx::Status, Option<wlan_service::QueryPhyResponse>), Error = ()>
 {
     info!("query_phy(id = {})", id);
     let phy = phys.get(&id)
@@ -163,7 +164,7 @@ fn list_ifaces(ifaces: &Arc<IfaceMap>) -> wlan_service::ListIfacesResponse {
 
 fn create_iface(phys: &Arc<PhyMap>, req: wlan_service::CreateIfaceRequest)
     -> impl Future<Item = (zx::Status, Option<wlan_service::CreateIfaceResponse>),
-                   Error = Never>
+                   Error = ()>
 {
     phys.get(&req.phy_id)
         .map(|phy| phy.proxy.clone())
@@ -220,7 +221,7 @@ fn get_iface_stats(ifaces: &Arc<IfaceMap>, iface_id: u16)
 
 #[cfg(test)]
 mod tests {
-    use async;
+    use fuchsia_async as fasync;
     use device::{self, PhyDevice, PhyMap, IfaceDevice, IfaceMap};
     use fidl::endpoints2::create_endpoints;
     use fidl_sme;
@@ -236,7 +237,7 @@ mod tests {
 
     #[test]
     fn list_two_phys() {
-        let _exec = async::Executor::new().expect("Failed to create an executor");
+        let _exec = fasync::Executor::new().expect("Failed to create an executor");
         let (phy_map, _phy_map_events) = PhyMap::new();
         let phy_map = Arc::new(phy_map);
         let (phy_null, _phy_null_stream) = fake_phy("/dev/null");
@@ -253,7 +254,7 @@ mod tests {
 
     #[test]
     fn query_phy_success() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (phy_map, _phy_map_events) = PhyMap::new();
         let phy_map = Arc::new(phy_map);
         let (phy, phy_stream) = fake_phy("/dev/null");
@@ -287,7 +288,7 @@ mod tests {
 
     #[test]
     fn query_phy_not_found() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (phy_map, _phy_map_events) = PhyMap::new();
         let phy_map = Arc::new(phy_map);
 
@@ -298,7 +299,7 @@ mod tests {
 
     #[test]
     fn list_two_ifaces() {
-        let _exec = async::Executor::new().expect("Failed to create an executor");
+        let _exec = fasync::Executor::new().expect("Failed to create an executor");
         let (iface_map, _iface_map_events) = IfaceMap::new();
         let iface_map = Arc::new(iface_map);
         let iface_null = fake_client_iface("/dev/null");
@@ -315,7 +316,7 @@ mod tests {
 
     #[test]
     fn create_iface_success() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (phy_map, _phy_map_events) = PhyMap::new();
         let phy_map = Arc::new(phy_map);
 
@@ -360,7 +361,7 @@ mod tests {
 
     #[test]
     fn create_iface_not_found() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (phy_map, _phy_map_events) = PhyMap::new();
         let phy_map = Arc::new(phy_map);
 
@@ -374,7 +375,7 @@ mod tests {
 
     #[test]
     fn get_client_sme_success() {
-        let mut exec = async::Executor::new().expect("Failed to create an executor");
+        let mut exec = fasync::Executor::new().expect("Failed to create an executor");
         let (iface_map, _iface_map_events) = IfaceMap::new();
         let iface_map = Arc::new(iface_map);
 
@@ -404,7 +405,7 @@ mod tests {
 
     #[test]
     fn get_client_sme_not_found() {
-        let mut _exec = async::Executor::new().expect("Failed to create an executor");
+        let mut _exec = fasync::Executor::new().expect("Failed to create an executor");
         let (iface_map, _iface_map_events) = IfaceMap::new();
         let iface_map = Arc::new(iface_map);
 
@@ -414,7 +415,7 @@ mod tests {
 
     #[test]
     fn get_client_sme_wrong_role() {
-        let mut _exec = async::Executor::new().expect("Failed to create an executor");
+        let mut _exec = fasync::Executor::new().expect("Failed to create an executor");
         let (iface_map, _iface_map_events) = IfaceMap::new();
         let iface_map = Arc::new(iface_map);
 
@@ -435,7 +436,7 @@ mod tests {
 
     struct FakeClientIface {
         iface: IfaceDevice,
-        _stats_requests: Box<Stream<Item = StatsRequest, Error = Never>>,
+        _stats_requests: Box<Stream<Item = StatsRequest, Error = ()>>,
         new_sme_clients: mpsc::UnboundedReceiver<station::ClientSmeEndpoint>,
     }
 
@@ -458,7 +459,7 @@ mod tests {
 
     struct FakeApIface {
         iface: IfaceDevice,
-        _stats_requests: Box<Stream<Item = StatsRequest, Error = Never>>,
+        _stats_requests: Box<Stream<Item = StatsRequest, Error = ()>>,
     }
 
     fn fake_ap_iface(path: &str) -> FakeApIface {

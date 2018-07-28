@@ -7,16 +7,16 @@
 
 use failure;
 use fidl::{self, endpoints2::RequestStream, endpoints2::ServerEnd};
-use fidl_mlme::{self, MlmeEvent, MlmeEventStream, MlmeProxy};
-use fidl_sme::{self, ClientSmeRequest};
-use fidl_stats::IfaceStats;
+use fidl_fuchsia_wlan_mlme::{self as fidl_mlme, MlmeEvent, MlmeEventStream, MlmeProxy};
+use fidl_fuchsia_wlan_sme::{self as fidl_sme, ClientSmeRequest};
+use fidl_fuchsia_wlan_stats::IfaceStats;
 use futures::{prelude::*, stream};
 use futures::channel::mpsc;
-use stats_scheduler::StatsRequest;
+use crate::stats_scheduler::StatsRequest;
 use std::sync::{Arc, Mutex};
 use wlan_sme::{client, DeviceInfo, Station, MlmeRequest, MlmeStream};
 use wlan_sme::client::{BssInfo, ConnectResult, DiscoveryError, DiscoveryResult, EssInfo};
-use zx;
+use fuchsia_zircon as zx;
 
 struct ClientTokens;
 
