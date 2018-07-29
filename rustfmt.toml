@@ -1,6 +1,7 @@
 # This file was originally created by running the command
 # rustfmt --print-config default rustfmt.toml && sort -u rustfmt.toml -o rustfmt.toml.
 # Changes from the defaults are marked with comments.
+
 binop_separator = "Front"
 blank_lines_lower_bound = 0
 blank_lines_upper_bound = 1
@@ -11,6 +12,7 @@ comment_width = 100 # Fuchsia uses 100
 condense_wildcard_suffixes = false
 control_brace_style = "AlwaysSameLine"
 disable_all_formatting = false
+edition = "Edition2018"
 emit_mode = "Files"
 empty_item_single_line = true
 error_on_line_overflow = false
