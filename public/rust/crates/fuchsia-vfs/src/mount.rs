@@ -2,8 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use zx;
-use zx::{DurationNum, HandleBased};
+use fuchsia_zircon::{self as zx, DurationNum, HandleBased};
 use fdio;
 
 use std;
@@ -93,9 +92,7 @@ pub fn mount(path: &Path, chan: zx::Channel) -> Result<Mount, zx::Status> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use zx::AsHandleRef;
-
-    extern crate tempdir;
+    use fuchsia_zircon::AsHandleRef;
 
     #[test]
     fn test_mount_unmount() {

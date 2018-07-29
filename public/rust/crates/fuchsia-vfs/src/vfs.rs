@@ -5,11 +5,13 @@
 use libc::PATH_MAX;
 use futures::io;
 use futures::prelude::*;
+use futures::try_ready;
 
-use async;
-use zx;
-use fdio;
+use fuchsia_async as fasync;
+use fuchsia_zircon as zx;
 
+use std::marker::Unpin;
+use std::mem::PinMut;
 use std::path::PathBuf;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -31,7 +33,7 @@ pub trait Vfs: 'static + Send + Sync {
     }
 
     fn register_connection(&self, c: Connection) {
-        async::spawn(c.recover(
+        fasync::spawn(c.unwrap_or_else(
             |e| eprintln!("fuchsia-vfs: connection error {:?}", e),
         ));
     }
@@ -45,7 +47,7 @@ pub trait Vnode: 'static + Send + Sync {
         zx::Status::OK
     }
 
-    fn serve(&self, _vfs: Arc<Vfs>, _chan: async::Channel, _flags: i32) {
+    fn serve(&self, _vfs: Arc<Vfs>, _chan: fasync::Channel, _flags: i32) {
         // TODO(raggi): ...
         // TODO(raggi): ...
         // TODO(raggi): ...
@@ -59,7 +61,7 @@ pub trait Vnode: 'static + Send + Sync {
 pub struct Connection {
     vfs: Arc<Vfs>,
     vn: Arc<Vnode>,
-    chan: async::Channel,
+    chan: fasync::Channel,
 }
 
 impl Connection {
@@ -71,7 +73,7 @@ impl Connection {
         let c = Connection {
             vfs: vfs,
             vn: vn,
-            chan: async::Channel::from_channel(chan)?,
+            chan: fasync::Channel::from_channel(chan)?,
         };
 
         Ok(c)
@@ -89,7 +91,7 @@ impl Connection {
 
         match msg.op() {
             fdio::fdio_sys::ZXRIO_OPEN => {
-                let chan = async::Channel::from_channel(
+                let chan = fasync::Channel::from_channel(
                     zx::Channel::from(
                         msg.take_handle(0).expect("vfs: handle disappeared"),
                     ),
@@ -121,7 +123,7 @@ impl Connection {
 
     fn open(
         &self,
-        chan: async::Channel,
+        chan: fasync::Channel,
         path: PathBuf,
         flags: i32,
         mode: u32,
@@ -172,7 +174,7 @@ impl Connection {
 
     fn reply_status(
         &self,
-        chan: &async::Channel,
+        chan: &fasync::Channel,
         status: zx::Status,
     ) -> Result<(), io::Error> {
         println!("{:?} -> {:?}", &chan, status);
@@ -180,18 +182,20 @@ impl Connection {
     }
 }
 
-impl Future for Connection {
-    type Item = ();
-    type Error = io::Error;
+impl Unpin for Connection {}
 
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
+impl Future for Connection {
+    type Output = Result<(), io::Error>;
+
+    fn poll(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
+        let this = &mut *self;
         let mut buf = zx::MessageBuf::new();
         buf.ensure_capacity_bytes(fdio::fdio_sys::ZXRIO_MSG_SZ);
         loop {
-            try_ready!(self.chan.recv_from(&mut buf, cx));
+            try_ready!(this.chan.recv_from(&mut buf, cx));
             let mut msg = buf.into();
             // Note: ignores errors, as they are sent on the protocol
-            let _ = self.dispatch(&mut msg);
+            let _ = this.dispatch(&mut msg);
             buf = msg.into();
             buf.clear();
         }
