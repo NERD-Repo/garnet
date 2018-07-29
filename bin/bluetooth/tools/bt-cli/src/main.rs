@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-
-#![feature(rust_2018_preview)]
 #![feature(async_await, await_macro, futures_api)]
 #![deny(warnings)]
 
