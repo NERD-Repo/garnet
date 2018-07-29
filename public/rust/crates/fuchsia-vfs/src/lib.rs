@@ -4,24 +4,19 @@
 
 //! Fuchsia VFS Server Bindings
 
+#![feature(arbitrary_self_types, futures_api, pin)]
 #![deny(warnings)]
 
-extern crate bytes;
-extern crate fdio;
-extern crate fuchsia_async as async;
-extern crate fuchsia_zircon as zx;
-#[macro_use]
-extern crate futures;
-extern crate libc;
+use fuchsia_zircon as zx;
 
 use std::path::Path;
 use std::sync::Arc;
-use zx::AsHandleRef;
+use fuchsia_zircon::AsHandleRef;
 
 mod mount;
 
 pub mod vfs;
-pub use vfs::*;
+pub use crate::vfs::*;
 
 pub fn mount(
     path: &Path,
@@ -42,12 +37,11 @@ pub fn mount(
 #[cfg(test)]
 mod test {
     use super::*;
+    use fuchsia_async as fasync;
     use futures::channel::oneshot;
     use futures::io;
     use std::fs;
     use std::thread;
-
-    extern crate tempdir;
 
     struct BasicFS {}
 
@@ -59,7 +53,7 @@ mod test {
 
     #[test]
     fn mount_basic() {
-        let mut executor = async::Executor::new().unwrap();
+        let mut executor = fasync::Executor::new().unwrap();
 
         let bfs = Arc::new(BasicFS {});
         let bvn = Arc::new(BasicVnode {});
