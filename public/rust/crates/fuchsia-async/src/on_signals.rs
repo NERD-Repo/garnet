@@ -5,14 +5,14 @@
 use std::fmt;
 use std::marker::Unpin;
 use std::mem::{self, PinMut};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-use futures::{Future, Poll};
-use futures::task::{self, AtomicWaker};
 use fuchsia_zircon::{self as zx, AsHandleRef};
+use futures::task::{self, AtomicWaker};
+use futures::{Future, Poll};
 
-use crate::executor::{PacketReceiver, ReceiverRegistration, EHandle};
+use crate::executor::{EHandle, PacketReceiver, ReceiverRegistration};
 
 struct OnSignalsReceiver {
     maybe_signals: AtomicUsize,
@@ -37,7 +37,8 @@ impl OnSignalsReceiver {
     }
 
     fn set_signals(&self, signals: zx::Signals) {
-        self.maybe_signals.store(signals.bits() as usize, Ordering::SeqCst);
+        self.maybe_signals
+            .store(signals.bits() as usize, Ordering::SeqCst);
         self.task.wake();
     }
 }
@@ -46,7 +47,9 @@ impl PacketReceiver for OnSignalsReceiver {
     fn receive_packet(&self, packet: zx::Packet) {
         let observed = if let zx::PacketContents::SignalOne(p) = packet.contents() {
             p.observed()
-        } else { return };
+        } else {
+            return;
+        };
 
         self.set_signals(observed);
     }
@@ -61,7 +64,8 @@ impl OnSignals {
     /// Creates a new `OnSignals` object which will receive notifications when
     /// any signals in `signals` occur on `handle`.
     pub fn new<T>(handle: &T, signals: zx::Signals) -> Self
-        where T: AsHandleRef
+    where
+        T: AsHandleRef,
     {
         let ehandle = EHandle::local();
         let receiver = ehandle.register_receiver(Arc::new(OnSignalsReceiver {

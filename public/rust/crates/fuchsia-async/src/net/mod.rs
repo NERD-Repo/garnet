@@ -10,11 +10,11 @@ pub use self::tcp::{TcpListener, TcpStream};
 mod udp;
 pub use self::udp::UdpSocket;
 
+use fuchsia_zircon::{self as zx, AsHandleRef};
 use futures::io::{self, AsyncRead, AsyncWrite, Initializer};
 use futures::task::{self, AtomicWaker};
-use futures::{Poll, ready};
+use futures::{ready, Poll};
 use libc;
-use fuchsia_zircon::{self as zx, AsHandleRef};
 
 use std::io::{Read, Write};
 use std::marker::Unpin;
@@ -85,16 +85,8 @@ pub struct EventedFd<T> {
 
 impl<T> Unpin for EventedFd<T> {}
 
-unsafe impl<T> Send for EventedFd<T>
-where
-    T: Send,
-{
-}
-unsafe impl<T> Sync for EventedFd<T>
-where
-    T: Sync,
-{
-}
+unsafe impl<T> Send for EventedFd<T> where T: Send {}
+unsafe impl<T> Sync for EventedFd<T> where T: Sync {}
 
 impl<T> Drop for EventedFd<T> {
     fn drop(&mut self) {
@@ -353,8 +345,8 @@ where
 
 mod syscall {
     #![allow(non_camel_case_types, improper_ctypes)]
-    use std::os::unix::io::RawFd;
     pub use fuchsia_zircon::sys::{zx_handle_t, zx_signals_t};
+    use std::os::unix::io::RawFd;
 
     // This is the "improper" c type
     pub type fdio_t = ();

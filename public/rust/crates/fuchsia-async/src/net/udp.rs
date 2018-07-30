@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use futures::{task, Future, Poll, ready};
+use futures::{ready, task, Future, Poll};
 use std::io;
 use std::net::{self, SocketAddr};
 use std::ops::Deref;
@@ -33,10 +33,9 @@ impl UdpSocket {
         unsafe { Ok(UdpSocket(EventedFd::new(socket)?)) }
     }
 
-
-    pub fn recv_from<'a>(&'a self, buf: &'a mut [u8])
-        -> impl Future<Output = Result<(usize, SocketAddr), io::Error>> + 'a
-    {
+    pub fn recv_from<'a>(
+        &'a self, buf: &'a mut [u8],
+    ) -> impl Future<Output = Result<(usize, SocketAddr), io::Error>> + 'a {
         futures::future::poll_fn(move |cx| self.async_recv_from(buf, cx))
     }
 
@@ -83,8 +82,8 @@ impl UdpSocket {
 
 #[cfg(test)]
 mod tests {
-    use crate::Executor;
     use super::*;
+    use crate::Executor;
 
     #[test]
     fn send_recv() {
@@ -103,6 +102,7 @@ mod tests {
             Ok::<(), io::Error>(())
         };
 
-        exec.run_singlethreaded(fut).expect("failed to run udp socket test");
+        exec.run_singlethreaded(fut)
+            .expect("failed to run udp socket test");
     }
 }

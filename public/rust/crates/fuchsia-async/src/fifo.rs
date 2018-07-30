@@ -6,8 +6,8 @@ use std::fmt;
 use std::marker::{PhantomData, Sized, Unpin};
 use std::mem::PinMut;
 
-use futures::{task, Future, Poll, try_ready};
 use fuchsia_zircon::{self as zx, AsHandleRef};
+use futures::{task, try_ready, Future, Poll};
 
 use crate::RWHandle;
 
@@ -16,7 +16,10 @@ use crate::RWHandle;
 pub unsafe trait FifoEntry {}
 
 /// Identifies that the object may be used to write entries into a FIFO.
-pub trait FifoWritable<W: FifoEntry> where Self: Sized {
+pub trait FifoWritable<W: FifoEntry>
+where
+    Self: Sized,
+{
     /// Creates a future that transmits entries to be written.
     ///
     /// The returned future will return after an entry has been received on
@@ -37,7 +40,10 @@ pub trait FifoWritable<W: FifoEntry> where Self: Sized {
 }
 
 /// Identifies that the object may be used to read entries from a FIFO.
-pub trait FifoReadable<R: FifoEntry> where Self: Sized {
+pub trait FifoReadable<R: FifoEntry>
+where
+    Self: Sized,
+{
     /// Creates a future that receives an entry to be written to the element
     /// provided.
     ///
@@ -104,7 +110,9 @@ impl<R: FifoEntry, W: FifoEntry> Fifo<R, W> {
     /// needing a write on receiving a `zx::Status::SHOULD_WAIT`.
     ///
     /// Returns the number of elements processed.
-    pub fn try_write(&self, entries: &[W], cx: &mut task::Context) -> Poll<Result<usize, zx::Status>> {
+    pub fn try_write(
+        &self, entries: &[W], cx: &mut task::Context,
+    ) -> Poll<Result<usize, zx::Status>> {
         try_ready!(self.poll_write(cx));
         let elem_size = ::std::mem::size_of::<W>();
         let elembuf = unsafe {
@@ -246,10 +254,10 @@ impl<'a, F: FifoReadable<R>, R: FifoEntry> Future for ReadEntry<'a, F, R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{Executor, TimeoutExt, Timer};
+    use fuchsia_zircon::prelude::*;
     use futures::join;
     use futures::prelude::*;
-    use fuchsia_zircon::prelude::*;
-    use crate::{Executor, TimeoutExt, Timer};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
     #[repr(C)]
@@ -284,8 +292,7 @@ mod tests {
         };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
-        let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"));
+        let receiver = receive_future.on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         // Sends an entry after the timeout has passed
         let sender = async {
@@ -312,14 +319,13 @@ mod tests {
         let receive_future = async {
             match await!(rx.read_entry()) {
                 Ok(_) => panic!("read should have failed"),
-                Err(zx::Status::OUT_OF_RANGE) => {},
+                Err(zx::Status::OUT_OF_RANGE) => {}
                 Err(e) => panic!("unexpected read error: {:?}", e),
             }
         };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
-        let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"));
+        let receiver = receive_future.on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         // Sends an entry after the timeout has passed
         let sender = async {
@@ -398,8 +404,7 @@ mod tests {
         };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
-        let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"));
+        let receiver = receive_future.on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         let done = receiver.join(sender);
 
@@ -437,8 +442,7 @@ mod tests {
         };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
-        let receiver = receive_future
-            .on_timeout(300.millis().after_now(), || panic!("timeout"));
+        let receiver = receive_future.on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         let done = async {
             let (receiver_res, sender_res) = join!(receiver, sender);

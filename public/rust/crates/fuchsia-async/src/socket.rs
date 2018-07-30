@@ -4,9 +4,9 @@
 
 use std::fmt;
 
-use futures::{Poll, task, try_ready};
-use futures::io::{self, AsyncRead, AsyncWrite, Initializer};
 use fuchsia_zircon::{self as zx, AsHandleRef};
+use futures::io::{self, AsyncRead, AsyncWrite, Initializer};
+use futures::{task, try_ready, Poll};
 
 use crate::RWHandle;
 
@@ -59,7 +59,9 @@ impl Socket {
 
     // Private helper for reading without `&mut` self.
     // This is used in the impls of `Read` for `Socket` and `&Socket`.
-    fn read_nomut(&self, buf: &mut [u8], cx: &mut task::Context) -> Poll<Result<usize, zx::Status>> {
+    fn read_nomut(
+        &self, buf: &mut [u8], cx: &mut task::Context,
+    ) -> Poll<Result<usize, zx::Status>> {
         try_ready!(self.poll_read(cx));
         let res = self.0.get_ref().read(buf);
         if res == Err(zx::Status::SHOULD_WAIT) {
@@ -151,14 +153,14 @@ impl<'a> AsyncWrite for &'a Socket {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Executor, Timer, TimeoutExt};
-    use futures::prelude::*;
+    use crate::{Executor, TimeoutExt, Timer};
     use fuchsia_zircon::prelude::*;
+    use futures::prelude::*;
 
     #[test]
     fn can_read_write() {
         let mut exec = Executor::new().unwrap();
-        let bytes = &[0,1,2,3];
+        let bytes = &[0, 1, 2, 3];
 
         let (tx, rx) = zx::Socket::create(zx::SocketOpts::STREAM).unwrap();
         let (mut tx, mut rx) = (
@@ -173,9 +175,7 @@ mod tests {
         };
 
         // add a timeout to receiver so if test is broken it doesn't take forever
-        let receiver = receive_future.on_timeout(
-                            300.millis().after_now(),
-                            || panic!("timeout"));
+        let receiver = receive_future.on_timeout(300.millis().after_now(), || panic!("timeout"));
 
         // Sends a message after the timeout has passed
         let sender = async {
