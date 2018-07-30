@@ -34,13 +34,14 @@ fn main() -> Result<(), Error> {
 async fn do_if(cmd: opts::IfCmd, stack: StackProxy) -> Result<(), Error> {
     match cmd {
         IfCmd::List => {
-            let response = await!(stack .list_interfaces()).context("error getting response")?;
+            let response = await!(stack.list_interfaces()).context("error getting response")?;
             for info in response {
                 println!("{}", pretty::InterfaceInfo::from(info));
             }
         }
         IfCmd::Get { id } => {
-            let response = await!(stack.get_interface_info(id)).context("error getting response")?;
+            let response =
+                await!(stack.get_interface_info(id)).context("error getting response")?;
             if let Some(e) = response.1 {
                 println!("Error getting interface {}: {:?}", id, e)
             } else {
@@ -70,7 +71,8 @@ async fn do_if(cmd: opts::IfCmd, stack: StackProxy) -> Result<(), Error> {
                 prefix_len: prefix,
                 peer_address: None,
             };
-            let response = await!(stack.add_interface_address(id, &mut fidl_addr)).context("error setting interface address")?;
+            let response = await!(stack.add_interface_address(id, &mut fidl_addr))
+                .context("error setting interface address")?;
             if let Some(e) = response {
                 println!("Error adding interface address {}: {:?}", id, e)
             } else {
@@ -78,7 +80,7 @@ async fn do_if(cmd: opts::IfCmd, stack: StackProxy) -> Result<(), Error> {
                     "Address {} added to interface {}",
                     pretty::InterfaceAddress::from(&fidl_addr),
                     id
-                    )
+                )
             }
         }
         IfCmd::Addr(AddrCmd::Del { .. }) => println!("{:?} not implemented!", cmd),
@@ -89,7 +91,8 @@ async fn do_if(cmd: opts::IfCmd, stack: StackProxy) -> Result<(), Error> {
 async fn do_fwd(cmd: opts::FwdCmd, stack: StackProxy) -> Result<(), Error> {
     match cmd {
         FwdCmd::List => {
-            let response = await!(stack.get_forwarding_table()).context("error retrieving forwarding table")?;
+            let response = await!(stack.get_forwarding_table())
+                .context("error retrieving forwarding table")?;
             for entry in response {
                 println!("{}", pretty::ForwardingEntry::from(entry));
             }
