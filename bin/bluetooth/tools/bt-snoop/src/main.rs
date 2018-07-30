@@ -2,7 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
+#![feature(
+    async_await,
+    await_macro,
+    futures_api,
+    pin,
+    arbitrary_self_types
+)]
 
 extern crate clap;
 #[macro_use]
@@ -19,8 +25,8 @@ use std::io;
 use std::path::Path;
 use std::str::FromStr;
 
-use crate::fasync::Executor;
 use clap::{App, Arg};
+use crate::fasync::Executor;
 use failure::Error;
 use futures::StreamExt;
 
@@ -33,9 +39,12 @@ mod snooper;
 static HCI_DEVICE: &'static str = "/dev/class/bt-hci/000";
 
 fn start<W: io::Write>(
-    device_path: &Path, mut out: W, format: Format, count: Option<u64>
+    device_path: &Path, mut out: W, format: Format, count: Option<u64>,
 ) -> Result<(), Error> {
-    let hci_device = OpenOptions::new().read(true).write(true).open(device_path)?;
+    let hci_device = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(device_path)?;
     let mut exec = Executor::new().unwrap();
     let mut snooper = Snooper::new(Channel::from(hci::open_snoop_channel(&hci_device)?));
 
@@ -54,7 +63,7 @@ fn start<W: io::Write>(
         while let Some(pkt) = await!(snooper.next()) {
             if let Some(count) = count {
                 if pkt_cnt >= count {
-                    return Ok(())
+                    return Ok(());
                 }
                 pkt_cnt += 1;
             }
@@ -68,7 +77,7 @@ fn start<W: io::Write>(
                 }
                 Err(_) => return Err(format_err!("failed to write packet to file")),
             }
-        };
+        }
         Ok(())
     };
 
@@ -88,32 +97,28 @@ fn main() {
                 .value_name("DEVICE")
                 .help("path to bt-hci device")
                 .takes_value(true),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("format")
                 .short("f")
                 .long("format")
                 .value_name("FORMAT")
                 .help("file format. options: [btsnoop, pcap]")
                 .takes_value(true),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("count")
                 .short("c")
                 .long("count")
                 .value_name("COUNT")
                 .help("number of packets to record. Default: infinite")
                 .takes_value(true),
-        )
-        .arg(
+        ).arg(
             Arg::with_name("output")
                 .short("o")
                 .long("file")
                 .value_name("FILE")
                 .help("output location (default is stdout)")
                 .takes_value(true),
-        )
-        .get_matches();
+        ).get_matches();
 
     let device_path = Path::new(args.value_of("device").unwrap_or(HCI_DEVICE));
     let count = match args.value_of("count") {
