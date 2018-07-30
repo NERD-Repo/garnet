@@ -3,27 +3,25 @@
 // found in the LICENSE file.
 
 use async::Interval;
-use futures::{prelude::*, future};
+use futures::prelude::*;
 use zx;
 
-pub fn retry_until<T, E, FUNC, FUT>(retry_interval: zx::Duration, mut f: FUNC)
-    -> impl Future<Item = T, Error = E>
+pub async fn retry_until<T, E, FUNC, FUT>(retry_interval: zx::Duration, mut f: FUNC)
+    -> Result<T, E>
     where FUNC: FnMut() -> FUT,
-          FUT: Future<Item = Option<T>, Error = E>
+          FUT: Future<Output = Result<Option<T>, E>>
 {
-    let fut = f();
-    fut.and_then(move |maybe_item| match maybe_item {
-        Some(item) => future::ok(item).left_future(),
-        None => Interval::new(retry_interval)
-                    .and_then(move |()| f())
-                    .filter_map(|x| Ok(x))
-                    .next()
-                    .map_err(|(e, _stream)| e)
-                    .map(|(x, _stream)| {
-                        x.expect("Interval stream is not expected to ever end")
-                    })
-                    .right_future()
-    })
+    if let Some(res) = await!(f())? {
+        return Ok(res);
+    }
+
+    let mut interval = Interval::new(retry_interval);
+    while let Some(()) = await!(interval.next()) {
+        if let Some(res) = await!(f())? {
+            return Ok(res);
+        }
+    }
+    unreachable!()
 }
 
 #[cfg(test)]

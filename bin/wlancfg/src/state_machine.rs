@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use futures::future::FutureObj;
 use futures::prelude::*;
+use std::mem::PinMut;
 
-pub struct State<E>(Box<Future<Item = State<E>, Error = E> + Send>);
+pub struct State<E>(FutureObj<'static, Result<State<E>, E>>);
 
 impl<E> State<E> {
     pub fn into_future(self) -> StateMachine<E> {
@@ -16,30 +18,35 @@ pub struct StateMachine<E>{
     cur_state: State<E>
 }
 
-impl<E> Future for StateMachine<E> {
-    type Item = Never;
-    type Error = E;
+#[derive(Copy, Clone, Debug)]
+pub enum Never {}
 
-    fn poll(&mut self, cx: &mut task::Context) -> Poll<Self::Item, Self::Error> {
+impl Never {
+    pub fn never_into<T>(self) -> T {
+        match self {}
+    }
+}
+
+impl<E> Future for StateMachine<E> {
+    type Output = Result<Never, E>;
+
+    fn poll(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
         loop {
-            match self.cur_state.0.poll(cx) {
-                Ok(Async::Ready(next)) => self.cur_state = next,
-                Ok(Async::Pending) => return Ok(Async::Pending),
-                Err(e) => return Err(e)
-            }
+            let next = try_ready!(PinMut::new(&mut self.cur_state.0).poll(cx));
+            self.cur_state = next;
         }
     }
 }
 
-pub trait IntoStateExt<E>: Future<Item = State<E>, Error = E> {
+pub trait IntoStateExt<E>: Future<Output = Result<State<E>, E>> {
     fn into_state(self) -> State<E>
         where Self: Sized + Send + 'static
     {
-        State(Box::new(self))
+        State(FutureObj::new(Box::new(self)))
     }
 }
 
-impl<F, E> IntoStateExt<E> for F where F: Future<Item = State<E>, Error = E> {}
+impl<F, E> IntoStateExt<E> for F where F: Future<Output = Result<State<E>, E>> {}
 
 #[cfg(test)]
 mod tests {
