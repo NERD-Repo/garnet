@@ -3,7 +3,13 @@
 // found in the LICENSE file.
 
 #![deny(warnings)]
-#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
+#![feature(
+    async_await,
+    await_macro,
+    futures_api,
+    pin,
+    arbitrary_self_types
+)]
 
 extern crate fidl_fuchsia_bluetooth as fidl_bt;
 extern crate fidl_fuchsia_bluetooth_le as fidl_ble;

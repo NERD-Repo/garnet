@@ -2,20 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::marker::Unpin;
-use std::mem::PinMut;
-use crate::fasync;
-use crate::bt::error::Error as BTError;
 use crate::app::client::connect_to_service;
+use crate::bt::error::Error as BTError;
 use crate::common::constants::*;
-use failure::{Error, ResultExt};
-use fidl::encoding2::OutOfLine;
+use crate::fasync;
 use crate::fidl_ble::{AdvertisingData, PeripheralMarker, PeripheralProxy, RemoteDevice};
 use crate::fidl_ble::{CentralEvent, CentralMarker, CentralProxy, ScanFilter};
+use failure::{Error, ResultExt};
+use fidl::encoding2::OutOfLine;
 use futures::prelude::*;
 use parking_lot::RwLock;
 use slab::Slab;
 use std::collections::HashMap;
+use std::marker::Unpin;
+use std::mem::PinMut;
 use std::sync::Arc;
 
 // BluetoothFacade: Stores Central and Peripheral proxies used for
@@ -76,8 +76,8 @@ impl BluetoothFacade {
             }
             None => {
                 let peripheral_svc: PeripheralProxy = connect_to_service::<PeripheralMarker>()
-                        .context("Failed to connect to BLE Peripheral service.")
-                        .unwrap();
+                    .context("Failed to connect to BLE Peripheral service.")
+                    .unwrap();
                 Some(peripheral_svc)
             }
         };
@@ -109,10 +109,13 @@ impl BluetoothFacade {
         // Only spawn if a central hadn't been created
         let facade = bt_facade.clone();
         if !central_modified {
-            fasync::spawn(async {
-                await!(BluetoothFacade::listen_central_events(facade))
-                    .unwrap_or_else(|e| eprintln!("Failed to listen to bluetooth events {:?}", e))
-            })
+            fasync::spawn(
+                async {
+                    await!(BluetoothFacade::listen_central_events(facade)).unwrap_or_else(|e| {
+                        eprintln!("Failed to listen to bluetooth events {:?}", e)
+                    })
+                },
+            )
         }
     }
 
@@ -268,8 +271,8 @@ impl BluetoothFacade {
                     }
                     None => Ok(()),
                 }
-            },
-            None => Err(BTError::new("No peripheral proxy created.").into())
+            }
+            None => Err(BTError::new("No peripheral proxy created.").into()),
         }
     }
 
@@ -287,8 +290,8 @@ impl BluetoothFacade {
                     None => Ok(()),
                     Some(e) => Err(BTError::from(*e).into()),
                 }
-            },
-            None => Err(BTError::new("No central proxy created.").into())
+            }
+            None => Err(BTError::new("No central proxy created.").into()),
         }
     }
 
@@ -337,7 +340,10 @@ impl BluetoothFacade {
     pub async fn new_devices_found_future(
         bt_facade: Arc<RwLock<BluetoothFacade>>, count: u64,
     ) -> Result<(), Error> {
-        Ok(await!(OnDeviceFoundFuture::new(bt_facade.clone(), count as usize))?)
+        Ok(await!(OnDeviceFoundFuture::new(
+            bt_facade.clone(),
+            count as usize
+        ))?)
     }
 }
 
@@ -419,7 +425,7 @@ impl OnDeviceFoundFuture {
     }
 }
 
-impl Unpin for OnDeviceFoundFuture{}
+impl Unpin for OnDeviceFoundFuture {}
 
 impl Future for OnDeviceFoundFuture {
     type Output = Result<(), Error>;
@@ -429,12 +435,7 @@ impl Future for OnDeviceFoundFuture {
         if self.bt_facade.read().devices.len() < self.device_count {
             let bt_facade = self.bt_facade.clone();
             if self.waker_key.is_none() {
-                self.waker_key = Some(
-                    bt_facade
-                        .write()
-                        .host_requests
-                        .insert(ctx.waker().clone()),
-                );
+                self.waker_key = Some(bt_facade.write().host_requests.insert(ctx.waker().clone()));
             }
             Poll::Pending
         } else {

@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use crate::fasync::{Timer, TimeoutExt};
 use crate::bt::error::Error as BTError;
 use crate::common::bluetooth_facade::BluetoothFacade;
 use crate::common::constants::*;
-use failure::Error;
+use crate::fasync::{TimeoutExt, Timer};
 use crate::fidl_ble::{AdvertisingData, ScanFilter};
+use crate::zx::prelude::*;
+use failure::Error;
 use parking_lot::RwLock;
 use serde_json::{to_value, Value};
 use std::sync::Arc;
-use crate::zx::prelude::*;
 
 use crate::common::bluetooth_facade::{BleAdvertiseResponse, BluetoothMethod};
 
@@ -104,7 +104,9 @@ fn ble_stop_advertise_to_fidl(
 
 // Takes ACTS method command and executes corresponding FIDL method
 // Packages result into serde::Value
-pub async fn ble_method_to_fidl(method_name: String, args: Value, bt_facade: Arc<RwLock<BluetoothFacade>>) -> Result<Value, Error> {
+pub async fn ble_method_to_fidl(
+    method_name: String, args: Value, bt_facade: Arc<RwLock<BluetoothFacade>>,
+) -> Result<Value, Error> {
     match BluetoothMethod::from_str(method_name) {
         BluetoothMethod::BleAdvertise => {
             let (ad, interval) = match ble_advertise_to_fidl(args) {
@@ -118,16 +120,24 @@ pub async fn ble_method_to_fidl(method_name: String, args: Value, bt_facade: Arc
                 Ok((f, t, c)) => (f, t, c),
                 Err(e) => return Err(e),
             };
-            Ok(await!(start_scan_async(bt_facade.clone(), filter, timeout, count))?)
+            Ok(await!(start_scan_async(
+                bt_facade.clone(),
+                filter,
+                timeout,
+                count
+            ))?)
         }
         BluetoothMethod::BleStopAdvertise => {
             let advertisement_id = match ble_stop_advertise_to_fidl(args, bt_facade.clone()) {
                 Ok(aid) => aid,
                 Err(e) => return Err(e),
             };
-            Ok(await!(stop_adv_async(bt_facade.clone(), advertisement_id.clone()))?)
+            Ok(await!(stop_adv_async(
+                bt_facade.clone(),
+                advertisement_id.clone()
+            ))?)
         }
-        _ => Err(BTError::new("Invalid BLE FIDL method").into())
+        _ => Err(BTError::new("Invalid BLE FIDL method").into()),
     }
 }
 
@@ -147,7 +157,8 @@ async fn start_adv_async(
 }
 
 async fn stop_adv_async(
-    bt_facade: Arc<RwLock<BluetoothFacade>>, adv_id: String) -> Result<Value, Error> {
+    bt_facade: Arc<RwLock<BluetoothFacade>>, adv_id: String,
+) -> Result<Value, Error> {
     let facade = bt_facade.write();
     let res = await!(facade.stop_adv(adv_id))?;
     BluetoothFacade::cleanup_peripheral(bt_facade.clone());
@@ -170,15 +181,21 @@ async fn start_scan_async(
     if count.is_none() {
         await!(Timer::new(timeout_ms.after_now()))
     } else {
-        await!(BluetoothFacade::new_devices_found_future(bt_facade.clone(), count.unwrap())
-               .on_timeout(timeout_ms.after_now(), || Ok(())))?
+        await!(
+            BluetoothFacade::new_devices_found_future(bt_facade.clone(), count.unwrap())
+                .on_timeout(timeout_ms.after_now(), || Ok(()))
+        )?
     };
 
     // After futures resolve, grab set of devices discovered and stop the scan
     let devices = bt_facade.read().get_devices();
 
     // Grab the central proxy created
-    let central = bt_facade.read().get_central_proxy().clone().expect("No central proxy.");
+    let central = bt_facade
+        .read()
+        .get_central_proxy()
+        .clone()
+        .expect("No central proxy.");
 
     if let Err(e) = central.stop_scan() {
         Err(e.into())
