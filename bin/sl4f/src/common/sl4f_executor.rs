@@ -42,7 +42,8 @@ pub fn run_fidl_loop(
                         method_type.clone(),
                         name.clone(),
                         params.clone(),
-                        curr_sl4f_session.clone()));
+                        curr_sl4f_session.clone()
+                    ));
                     let response = AsyncResponse::new(resp);
 
                     // Ignore any tx sending errors, other requests can still be outstanding
