@@ -6,11 +6,11 @@
 #![allow(unreachable_code)]
 
 use crate::bt::error::Error as BTError;
-use crate::fidl_gatt::ClientProxy;
 use crate::common::gatt::start_gatt_loop;
+use crate::fidl_ble::{CentralEvent, CentralProxy, RemoteDevice};
+use crate::fidl_gatt::ClientProxy;
 use failure::Error;
 use fidl::endpoints2;
-use crate::fidl_ble::{CentralEvent, CentralProxy, RemoteDevice};
 use futures::future;
 use futures::prelude::*;
 use parking_lot::RwLock;
@@ -62,7 +62,7 @@ pub async fn listen_central_events(state: CentralStatePtr) -> Result<(), Error> 
 
                 let central = state.read();
                 if !central.scan_once && !central.connect {
-                    return Ok(())
+                    return Ok(());
                 }
 
                 // Stop scanning.
@@ -98,24 +98,25 @@ async fn connect_peripheral(state: CentralStatePtr, mut id: String) -> Result<()
 
     let status = await!(state.read().svc.connect_peripheral(&mut id, server));
     let proxy: Result<ClientProxy, Error> = match status {
-        Err(e) => return Err(BTError::new(&format!("failed to initiate connect request: {}", e)).into()),
-        Ok(status) => {
-            match status.error {
-                Some(e) => {
-                    println!("  failed to connect to peripheral: {}",
-                        match e.description {
-                            None => "unknown error",
-                            Some(ref msg) => &msg,
-                        }
-                    );
-                    Err(BTError::from(*e).into())
-                },
-                None => {
-                    println!("  device connected: {}", id);
-                    Ok(proxy)
-                }
-            }
+        Err(e) => {
+            return Err(BTError::new(&format!("failed to initiate connect request: {}", e)).into())
         }
+        Ok(status) => match status.error {
+            Some(e) => {
+                println!(
+                    "  failed to connect to peripheral: {}",
+                    match e.description {
+                        None => "unknown error",
+                        Some(ref msg) => &msg,
+                    }
+                );
+                Err(BTError::from(*e).into())
+            }
+            None => {
+                println!("  device connected: {}", id);
+                Ok(proxy)
+            }
+        },
     };
     Ok(await!(start_gatt_loop(proxy?))?)
 }

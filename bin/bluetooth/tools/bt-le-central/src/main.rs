@@ -19,9 +19,9 @@ extern crate getopts;
 extern crate parking_lot;
 
 use crate::bt::error::Error as BTError;
+use crate::fidl_ble::{CentralMarker, CentralProxy, ScanFilter};
 use failure::{Error, Fail, ResultExt};
 use fidl::encoding2::OutOfLine;
-use crate::fidl_ble::{CentralMarker, CentralProxy, ScanFilter};
 use futures::future;
 use futures::prelude::*;
 use getopts::Options;
@@ -30,7 +30,7 @@ mod common;
 
 use crate::common::central::{listen_central_events, CentralState};
 
-async fn do_scan(args: Vec<String>, central: &CentralProxy,) -> Result<(bool, bool), Error> {
+async fn do_scan(args: Vec<String>, central: &CentralProxy) -> Result<(bool, bool), Error> {
     let mut opts = Options::new();
 
     opts.optflag("h", "help", "");
@@ -53,7 +53,6 @@ async fn do_scan(args: Vec<String>, central: &CentralProxy,) -> Result<(bool, bo
             return Err(fail.into());
         }
     };
-
 
     if matches.opt_present("h") {
         let brief = "Usage: ble-central-tool scan [options]";
@@ -149,15 +148,17 @@ fn main() -> Result<(), Error> {
         match command.as_str() {
             "scan" => {
                 let mut central = state.write();
-                if let Ok((scan_once, connect)) = await!(do_scan(args[2..].to_vec(), central.get_svc())) {
+                if let Ok((scan_once, connect)) =
+                    await!(do_scan(args[2..].to_vec(), central.get_svc()))
+                {
                     central.scan_once = scan_once;
                     central.connect = connect;
                 }
-            },
+            }
             "connect" => {
                 let state = state.read();
                 await!(do_connect(args[2..].to_vec(), state.get_svc()));
-            },
+            }
             _ => {
                 println!("Invalid command: {}", command);
                 usage(appname);
