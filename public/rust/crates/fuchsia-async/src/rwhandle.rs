@@ -2,18 +2,18 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
-use futures::Poll;
-use futures::task::{self, AtomicWaker};
 use fuchsia_zircon::{self as zx, AsHandleRef};
+use futures::task::{self, AtomicWaker};
+use futures::Poll;
 
-use crate::executor::{PacketReceiver, ReceiverRegistration, EHandle};
+use crate::executor::{EHandle, PacketReceiver, ReceiverRegistration};
 
 const READABLE: usize = 0b001;
 const WRITABLE: usize = 0b010;
-const CLOSED:   usize = 0b100;
+const CLOSED: usize = 0b100;
 
 struct RWPacketReceiver {
     signals: AtomicUsize,
@@ -25,12 +25,24 @@ impl PacketReceiver for RWPacketReceiver {
     fn receive_packet(&self, packet: zx::Packet) {
         let observed = if let zx::PacketContents::SignalOne(p) = packet.contents() {
             p.observed()
-        } else { return };
+        } else {
+            return;
+        };
 
-        let new = 0 |
-            (if observed.contains(zx::Signals::OBJECT_READABLE) { READABLE } else { 0 }) |
-            (if observed.contains(zx::Signals::OBJECT_WRITABLE) { WRITABLE } else { 0 }) |
-            (if observed.contains(zx::Signals::OBJECT_PEER_CLOSED) { CLOSED } else { 0 });
+        let new =
+            0 | (if observed.contains(zx::Signals::OBJECT_READABLE) {
+                READABLE
+            } else {
+                0
+            }) | (if observed.contains(zx::Signals::OBJECT_WRITABLE) {
+                WRITABLE
+            } else {
+                0
+            }) | (if observed.contains(zx::Signals::OBJECT_PEER_CLOSED) {
+                CLOSED
+            } else {
+                0
+            });
 
         let old = self.signals.fetch_or(new, Ordering::SeqCst);
 
@@ -53,7 +65,10 @@ pub struct RWHandle<T> {
     receiver: ReceiverRegistration<RWPacketReceiver>,
 }
 
-impl<T> RWHandle<T> where T: AsHandleRef {
+impl<T> RWHandle<T>
+where
+    T: AsHandleRef,
+{
     /// Creates a new `RWHandle` object which will receive notifications when
     /// the underlying handle becomes readable, writable, or closes.
     pub fn new(handle: T) -> Result<Self, zx::Status> {
@@ -71,10 +86,7 @@ impl<T> RWHandle<T> where T: AsHandleRef {
             write_task: AtomicWaker::new(),
         }));
 
-        let rwhandle = RWHandle {
-            handle,
-            receiver,
-        };
+        let rwhandle = RWHandle { handle, receiver };
 
         // Make sure we get notifications when the handle closes.
         rwhandle.schedule_packet(zx::Signals::OBJECT_PEER_CLOSED)?;
@@ -138,7 +150,10 @@ impl<T> RWHandle<T> where T: AsHandleRef {
     /// "readable" signal arrives.
     pub fn need_read(&self, cx: &mut task::Context) -> Result<(), zx::Status> {
         self.receiver().read_task.register(cx.waker());
-        let old = self.receiver().signals.fetch_and(!READABLE, Ordering::SeqCst);
+        let old = self
+            .receiver()
+            .signals
+            .fetch_and(!READABLE, Ordering::SeqCst);
         // We only need to schedule a new packet if one isn't already scheduled.
         // If READABLE was already false, a packet was already scheduled.
         if (old & READABLE) != 0 {
@@ -151,7 +166,10 @@ impl<T> RWHandle<T> where T: AsHandleRef {
     /// "writable" signal arrives.
     pub fn need_write(&self, cx: &mut task::Context) -> Result<(), zx::Status> {
         self.receiver().write_task.register(cx.waker());
-        let old = self.receiver().signals.fetch_and(!WRITABLE, Ordering::SeqCst);
+        let old = self
+            .receiver()
+            .signals
+            .fetch_and(!WRITABLE, Ordering::SeqCst);
         // We only need to schedule a new packet if one isn't already scheduled.
         // If WRITABLE was already false, a packet was already scheduled.
         if (old & WRITABLE) != 0 {

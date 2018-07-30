@@ -9,12 +9,12 @@
 
 use std::marker::Unpin;
 use std::mem::PinMut;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-use futures::{Future, FutureExt, Stream, Poll, unsafe_unpinned, unsafe_pinned};
-use futures::task::{self, AtomicWaker};
 use fuchsia_zircon as zx;
+use futures::task::{self, AtomicWaker};
+use futures::{unsafe_pinned, unsafe_unpinned, Future, FutureExt, Poll, Stream};
 
 use crate::executor::EHandle;
 
@@ -22,10 +22,9 @@ use crate::executor::EHandle;
 pub trait TimeoutExt: Future + Sized {
     /// Wraps the future in a timeout, calling `on_timeout` to produce a result
     /// when the timeout occurs.
-    fn on_timeout<OT>(self, time: zx::Time, on_timeout: OT)
-        -> OnTimeout<Self, OT>
+    fn on_timeout<OT>(self, time: zx::Time, on_timeout: OT) -> OnTimeout<Self, OT>
     where
-        OT: FnOnce() -> Self::Output
+        OT: FnOnce() -> Self::Output,
     {
         OnTimeout {
             timer: Timer::new(time),
@@ -55,7 +54,8 @@ impl<F, OT> OnTimeout<F, OT> {
 }
 
 impl<F: Future, OT> Future for OnTimeout<F, OT>
-    where OT: FnOnce() -> F::Output
+where
+    OT: FnOnce() -> F::Output,
 {
     type Output = F::Output;
     fn poll(mut self: PinMut<Self>, cx: &mut task::Context) -> Poll<Self::Output> {
@@ -63,7 +63,8 @@ impl<F: Future, OT> Future for OnTimeout<F, OT>
             return Poll::Ready(item);
         }
         if let Poll::Ready(()) = self.timer().poll_unpin(cx) {
-            let ot = OnTimeout::on_timeout(&mut self).take()
+            let ot = OnTimeout::on_timeout(&mut self)
+                .take()
                 .expect("polled withtimeout after completion");
             let item = (ot)();
             return Poll::Ready(item);
@@ -150,9 +151,7 @@ impl Stream for Interval {
                 self.timer.reset(next);
                 Poll::Ready(Some(()))
             }
-            Poll::Pending => {
-                Poll::Pending
-            }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
@@ -161,9 +160,9 @@ impl Stream for Interval {
 mod test {
     use super::*;
     use crate::{Executor, Timer};
-    use futures::{pin_mut, select};
-    use futures::prelude::*;
     use fuchsia_zircon::prelude::*;
+    use futures::prelude::*;
+    use futures::{pin_mut, select};
 
     #[test]
     fn shorter_fires_first() {
@@ -226,7 +225,9 @@ mod test {
         assert_eq!(0, counter.load(Ordering::SeqCst));
 
         // Pretend to wait until the next timer
-        let first_deadline = exec.wake_next_timer().expect("Expected a pending timeout (1)");
+        let first_deadline = exec
+            .wake_next_timer()
+            .expect("Expected a pending timeout (1)");
         assert!(first_deadline >= start + 5.seconds());
         assert_eq!(Poll::Pending, exec.run_until_stalled(future.reborrow()));
         assert_eq!(1, counter.load(Ordering::SeqCst));
@@ -236,7 +237,9 @@ mod test {
         assert_eq!(1, counter.load(Ordering::SeqCst));
 
         // "Wait" until the next timeout and poll again: expect another item from the stream
-        let second_deadline = exec.wake_next_timer().expect("Expected a pending timeout (2)");
+        let second_deadline = exec
+            .wake_next_timer()
+            .expect("Expected a pending timeout (2)");
         assert_eq!(Poll::Pending, exec.run_until_stalled(future.reborrow()));
         assert_eq!(2, counter.load(Ordering::SeqCst));
 
