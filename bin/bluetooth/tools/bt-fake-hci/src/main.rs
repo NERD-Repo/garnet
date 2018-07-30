@@ -19,20 +19,23 @@ use std::path::Path;
 use crate::bluetooth::hci;
 use crate::zircon::Channel;
 
-fn usage(appname: &str) -> (){
+fn usage(appname: &str) -> () {
     eprintln!("usage: {} [add|rm]", appname);
 }
 
 fn open_rdwr<P: AsRef<Path>>(path: P) -> Result<File, Error> {
-    OpenOptions::new().read(true).write(true).open(path).map_err(|e| e.into())
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|e| e.into())
 }
 
 fn rm_device(dev_name: &str) -> Result<(), Error> {
     let path = Path::new(hci::DEV_TEST).join(dev_name);
     let dev = open_rdwr(path.clone())?;
 
-    hci::destroy_device(&dev)
-        .map(|_| println!("{:?} destroyed", path))
+    hci::destroy_device(&dev).map(|_| println!("{:?} destroyed", path))
 }
 
 fn main() {

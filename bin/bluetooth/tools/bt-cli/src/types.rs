@@ -3,8 +3,8 @@
 // found in the LICENSE file.
 
 use crate::bluetooth::types::Bool;
-use crate::bluetooth::util::clone_host_state;
 use crate::bluetooth::util::clone_bt_fidl_bool;
+use crate::bluetooth::util::clone_host_state;
 use fidl_fuchsia_bluetooth_control as fidl_control;
 use std::fmt;
 

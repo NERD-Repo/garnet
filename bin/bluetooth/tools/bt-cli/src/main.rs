@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-
-#![feature(rust_2018_preview)]
 #![feature(async_await, await_macro, futures_api)]
 #![deny(warnings)]
 
@@ -14,16 +12,16 @@ extern crate fuchsia_bluetooth as bluetooth;
 use crate::app::client::connect_to_service;
 use crate::bluetooth::types::Status;
 use crate::commands::{Cmd, CmdCompleter};
-use failure::ResultExt;
+use crate::fasync::futures::{StreamExt, TryFutureExt};
+use crate::types::AdapterInfo;
 use failure::Error;
-use fidl_fuchsia_bluetooth_control::{ControlEvent, ControlMarker, ControlProxy, ControlEventStream};
-use crate::fasync::futures::{TryFutureExt, StreamExt};
+use failure::ResultExt;
+use fidl_fuchsia_bluetooth_control::{ControlEvent, ControlEventStream, ControlMarker, ControlProxy};
 use parking_lot::RwLock;
-use rustyline::{CompletionType, Config, EditMode, Editor};
 use rustyline::error::ReadlineError;
+use rustyline::{CompletionType, Config, EditMode, Editor};
 use std::fmt::Write;
 use std::sync::Arc;
-use crate::types::AdapterInfo;
 
 mod commands;
 mod types;
@@ -32,7 +30,7 @@ static PROMPT: &'static str = "\x1b[34mbt>\x1b[0m ";
 
 async fn get_active_adapter(control_svc: Arc<RwLock<ControlProxy>>) -> Result<String, Error> {
     if let Some(adapter) = await!(control_svc.read().get_active_adapter_info())? {
-        return Ok(AdapterInfo::from(*adapter).to_string())
+        return Ok(AdapterInfo::from(*adapter).to_string());
     }
     Ok(String::from("No Active Adapter"))
 }
@@ -43,7 +41,7 @@ async fn get_adapters(control_svc: Arc<RwLock<ControlProxy>>) -> Result<String, 
         for adapter in adapters {
             let _ = writeln!(string, "{}", AdapterInfo::from(adapter));
         }
-        return Ok(string)
+        return Ok(string);
     }
     Ok(String::from("No adapters detected"))
 }
@@ -58,7 +56,9 @@ async fn stop_discovery(control_svc: Arc<RwLock<ControlProxy>>) -> Result<String
     Ok(Status::from(response).to_string())
 }
 
-async fn set_discoverable(discoverable: bool, control_svc: Arc<RwLock<ControlProxy>>) -> Result<String, Error> {
+async fn set_discoverable(
+    discoverable: bool, control_svc: Arc<RwLock<ControlProxy>>,
+) -> Result<String, Error> {
     let response = await!(control_svc.read().set_discoverable(discoverable))?;
     Ok(Status::from(response).to_string())
 }
@@ -92,13 +92,18 @@ fn main() -> Result<(), Error> {
     rl.set_completer(Some(c));
 
     let mut exec = fasync::Executor::new().context("error creating event loop")?;
-    let bt_svc = Arc::new(RwLock::new(connect_to_service::<ControlMarker>()
-        .context("failed to connect to bluetooth control interface")?));
+    let bt_svc = Arc::new(RwLock::new(
+        connect_to_service::<ControlMarker>()
+            .context("failed to connect to bluetooth control interface")?,
+    ));
 
     let bt_svc_thread = bt_svc.clone();
     let evt_stream = bt_svc_thread.read().take_event_stream();
 
-    fasync::spawn(run_listeners(evt_stream).unwrap_or_else(|e| eprintln!("Failed to subscribe to bluetooth events {:?}", e)));
+    fasync::spawn(
+        run_listeners(evt_stream)
+            .unwrap_or_else(|e| eprintln!("Failed to subscribe to bluetooth events {:?}", e)),
+    );
 
     // start the repl
     loop {
@@ -125,7 +130,7 @@ fn main() -> Result<(), Error> {
                             await!(set_discoverable(false, bt_svc.clone()))
                         }
                         Ok(Cmd::GetAdapters) => await!(get_adapters(bt_svc.clone())),
-                        Ok(Cmd::ActiveAdapter) =>  await!(get_active_adapter(bt_svc.clone())),
+                        Ok(Cmd::ActiveAdapter) => await!(get_active_adapter(bt_svc.clone())),
                         Ok(Cmd::Help) => Ok(Cmd::help_msg()),
                         Ok(Cmd::Nothing) => Ok(String::from("")),
                         Err(e) => Ok(format!("Error: {:?}", e)),

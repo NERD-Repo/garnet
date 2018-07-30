@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::mem::PinMut;
 use std::io::Read;
+use std::mem::PinMut;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use std::marker::Unpin;
-use crate::fasync;
 use byteorder::{BigEndian, WriteBytesExt};
+use crate::fasync;
 use failure::Error;
 use futures::{task, Poll, Stream};
+use std::marker::Unpin;
 
 use crate::zircon::{Channel, MessageBuf};
 
@@ -155,11 +155,13 @@ impl Snooper {
     }
 }
 
-impl Unpin for Snooper{}
+impl Unpin for Snooper {}
 impl Stream for Snooper {
     type Item = SnooperPacket;
 
-    fn poll_next(mut self: PinMut<Self>, cx: &mut futures::task::Context) -> Poll<Option<Self::Item>> {
+    fn poll_next(
+        mut self: PinMut<Self>, cx: &mut futures::task::Context,
+    ) -> Poll<Option<Self::Item>> {
         let mut buf = MessageBuf::new();
         match self.chan.recv_from(&mut buf, cx) {
             Poll::Ready(_t) => Poll::Ready(Snooper::build_pkt(buf)),

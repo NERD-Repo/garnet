@@ -3,7 +3,13 @@
 // found in the LICENSE file.
 
 #![deny(warnings)]
-#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
+#![feature(
+    async_await,
+    await_macro,
+    futures_api,
+    pin,
+    arbitrary_self_types
+)]
 
 extern crate fuchsia_async as fasync;
 #[macro_use]
@@ -13,15 +19,15 @@ extern crate fuchsia_zircon as zx;
 extern crate log;
 extern crate futures;
 
-use fuchsia_app::server::ServicesServer;
-use futures::TryFutureExt;
 use crate::bt::util;
 use failure::{Error, ResultExt};
 use fidl::endpoints2::{ServerEnd, ServiceMarker};
 use fidl_fuchsia_bluetooth_control::ControlMarker;
 use fidl_fuchsia_bluetooth_gatt::Server_Marker;
 use fidl_fuchsia_bluetooth_le::{CentralMarker, PeripheralMarker};
+use fuchsia_app::server::ServicesServer;
 use futures::FutureExt;
+use futures::TryFutureExt;
 use parking_lot::RwLock;
 use std::sync::Arc;
 
@@ -50,44 +56,51 @@ fn main() -> Result<(), Error> {
     let server = ServicesServer::new()
         .add_service((ControlMarker::NAME, move |chan: fasync::Channel| {
             trace!("Spawning Control Service");
-            fasync::spawn(control_service::make_control_service(control_hd.clone(), chan).unwrap_or_else(|e| {
-                eprintln!("Error running control service: {:?}", e)
-            }))
-        }))
-        .add_service((CentralMarker::NAME, move |chan: fasync::Channel| {
+            fasync::spawn(
+                control_service::make_control_service(control_hd.clone(), chan)
+                    .unwrap_or_else(|e| eprintln!("Error running control service: {:?}", e)),
+            )
+        })).add_service((CentralMarker::NAME, move |chan: fasync::Channel| {
             trace!("Connecting Control Service to Adapter");
             let central_hd = central_hd.clone();
-            fasync::spawn(async move {
-                let adapter = await!(HostDispatcher::get_active_adapter(central_hd.clone())).unwrap();
-                let remote = ServerEnd::<CentralMarker>::new(chan.into());
-                if let Some(adapter) = adapter {
-                    let _ = adapter.read().get_host().request_low_energy_central(remote);
-                }
-            })
-        }))
-        .add_service((PeripheralMarker::NAME, move |chan: fasync::Channel| {
+            fasync::spawn(
+                async move {
+                    let adapter =
+                        await!(HostDispatcher::get_active_adapter(central_hd.clone())).unwrap();
+                    let remote = ServerEnd::<CentralMarker>::new(chan.into());
+                    if let Some(adapter) = adapter {
+                        let _ = adapter.read().get_host().request_low_energy_central(remote);
+                    }
+                },
+            )
+        })).add_service((PeripheralMarker::NAME, move |chan: fasync::Channel| {
             trace!("Connecting Peripheral Service to Adapter");
             let hd = peripheral_hd.clone();
-            fasync::spawn(async move {
-                let adapter = await!(HostDispatcher::get_active_adapter(hd.clone())).unwrap();
-                let remote = ServerEnd::<PeripheralMarker>::new(chan.into());
-                if let Some(adapter) = adapter {
-                    let _ = adapter.read().get_host().request_low_energy_peripheral(remote);
-                }
-            })
-        }))
-        .add_service((Server_Marker::NAME, move |chan: fasync::Channel| {
+            fasync::spawn(
+                async move {
+                    let adapter = await!(HostDispatcher::get_active_adapter(hd.clone())).unwrap();
+                    let remote = ServerEnd::<PeripheralMarker>::new(chan.into());
+                    if let Some(adapter) = adapter {
+                        let _ = adapter
+                            .read()
+                            .get_host()
+                            .request_low_energy_peripheral(remote);
+                    }
+                },
+            )
+        })).add_service((Server_Marker::NAME, move |chan: fasync::Channel| {
             trace!("Connecting Gatt Service to Adapter");
             let hd = gatt_hd.clone();
-            fasync::spawn(async move {
-                let adapter = await!(HostDispatcher::get_active_adapter(hd.clone())).unwrap();
-                let remote = ServerEnd::<Server_Marker>::new(chan.into());
-                if let Some(adapter) = adapter {
-                    let _ = adapter.read().get_host().request_gatt_server_(remote);
-                }
-            })
-        }))
-        .start()
+            fasync::spawn(
+                async move {
+                    let adapter = await!(HostDispatcher::get_active_adapter(hd.clone())).unwrap();
+                    let remote = ServerEnd::<Server_Marker>::new(chan.into());
+                    if let Some(adapter) = adapter {
+                        let _ = adapter.read().get_host().request_gatt_server_(remote);
+                    }
+                },
+            )
+        })).start()
         .context("error starting bt-gap service")?;
 
     executor.run_singlethreaded(server.join(host_watcher));

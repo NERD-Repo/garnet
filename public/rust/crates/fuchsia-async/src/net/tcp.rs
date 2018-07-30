@@ -3,9 +3,9 @@
 // found in the LICENSE file.
 
 use bytes::{Buf, BufMut};
-use futures::io::{AsyncRead, AsyncWrite, Initializer};
-use futures::{task, Future, Poll, Stream, ready};
 use futures::future::poll_fn;
+use futures::io::{AsyncRead, AsyncWrite, Initializer};
+use futures::{ready, task, Future, Poll, Stream};
 use libc;
 use std::io::{self, Read, Write};
 use std::mem::PinMut;
@@ -51,7 +51,9 @@ impl TcpListener {
         unsafe { Ok(TcpListener(EventedFd::new(listener)?)) }
     }
 
-    pub fn accept<'a>(&'a mut self) -> impl Future<Output = io::Result<(TcpStream, SocketAddr)>> + 'a {
+    pub fn accept<'a>(
+        &'a mut self,
+    ) -> impl Future<Output = io::Result<(TcpStream, SocketAddr)>> + 'a {
         poll_fn(move |cx| self.async_accept(cx))
     }
 
@@ -127,18 +129,16 @@ impl TcpStream {
         let stream = unsafe { EventedFd::new(stream)? };
 
         Ok(async move {
-            await!(poll_fn(|cx| {
-                match stream.as_ref().connect(addr) {
-                    Err(e) => {
-                        if e.raw_os_error() == Some(libc::EINPROGRESS) {
-                            stream.need_write(cx);
-                            Poll::Pending
-                        } else {
-                            Poll::Ready(Err(e))
-                        }
+            await!(poll_fn(|cx| match stream.as_ref().connect(addr) {
+                Err(e) => {
+                    if e.raw_os_error() == Some(libc::EINPROGRESS) {
+                        stream.need_write(cx);
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(Err(e))
                     }
-                    Ok(()) => Poll::Ready(Ok(())),
                 }
+                Ok(()) => Poll::Ready(Ok(())),
             }))?;
 
             await!(poll_fn(|cx| stream.poll_writable(cx)));
@@ -165,7 +165,9 @@ impl TcpStream {
         }
     }
 
-    pub fn write_buf<B: Buf>(&self, buf: &mut B, cx: &mut task::Context) -> Poll<io::Result<usize>> {
+    pub fn write_buf<B: Buf>(
+        &self, buf: &mut B, cx: &mut task::Context,
+    ) -> Poll<io::Result<usize>> {
         match (&self.stream).as_ref().write(buf.bytes()) {
             Ok(n) => {
                 buf.advance(n);

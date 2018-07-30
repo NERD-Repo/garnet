@@ -21,8 +21,8 @@ use crate::common::bluetooth_commands::ble_method_to_fidl;
 use crate::common::bluetooth_facade::BluetoothFacade;
 
 // Standardized sl4f types.
-use crate::common::sl4f_types::{AsyncRequest, AsyncResponse, ClientData, CommandRequest, CommandResponse,
-                         FacadeType};
+use crate::common::sl4f_types::{AsyncRequest, AsyncResponse, ClientData, CommandRequest,
+                                CommandResponse, FacadeType};
 
 /// Sl4f object. This stores all information about state for each connectivity stack.
 /// Every session will have a new Sl4f object.
@@ -253,9 +253,15 @@ fn server_cleanup(request: &Request, sl4f_session: Arc<RwLock<Sl4f>>) -> Respons
     rouille::Response::json(&ack)
 }
 
-pub async fn method_to_fidl(method_type: String, method_name: String, args: Value, sl4f_session: Arc<RwLock<Sl4f>>) -> Result<Value, Error> {
+pub async fn method_to_fidl(
+    method_type: String, method_name: String, args: Value, sl4f_session: Arc<RwLock<Sl4f>>,
+) -> Result<Value, Error> {
     match FacadeType::from_str(method_type) {
-        FacadeType::Bluetooth => Ok(await!(ble_method_to_fidl(method_name, args, sl4f_session.write().get_bt_facade().clone()))?),
+        FacadeType::Bluetooth => Ok(await!(ble_method_to_fidl(
+            method_name,
+            args,
+            sl4f_session.write().get_bt_facade().clone()
+        ))?),
         FacadeType::Wlan => Err(BTError::new("Nice try. WLAN not implemented yet").into()),
         _ => Err(BTError::new("Invalid FIDL method type").into()),
     }

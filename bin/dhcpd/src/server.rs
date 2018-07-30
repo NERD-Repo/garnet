@@ -218,7 +218,7 @@ impl AddressPool {
     }
 }
 
-/// A collection of the basic configuration parameters needed by the server. 
+/// A collection of the basic configuration parameters needed by the server.
 #[derive(Debug)]
 pub struct ServerConfig {
     /// The IPv4 address of the host running the server.
@@ -289,7 +289,8 @@ fn is_assigned(
     req: &Message, requested_ip: Ipv4Addr, cache: &CachedClients, pool: &AddressPool,
 ) -> bool {
     if let Some(client_config) = cache.get(&req.chaddr) {
-        return client_config.client_addr == requested_ip && !client_config.expired
+        return client_config.client_addr == requested_ip
+            && !client_config.expired
             && pool.addr_is_allocated(requested_ip);
     }
     false
@@ -355,9 +356,7 @@ fn get_client_state(msg: &Message) -> ClientState {
     let maybe_requested_ip = get_requested_ip_addr(&msg);
     let zero_ciaddr = Ipv4Addr::new(0, 0, 0, 0);
 
-    if maybe_server_id.is_some()
-        && maybe_requested_ip.is_none()
-        && msg.ciaddr != zero_ciaddr {
+    if maybe_server_id.is_some() && maybe_requested_ip.is_none() && msg.ciaddr != zero_ciaddr {
         return ClientState::Selecting;
     } else if maybe_requested_ip.is_some() && msg.ciaddr == zero_ciaddr {
         return ClientState::InitReboot;
@@ -369,7 +368,8 @@ fn get_client_state(msg: &Message) -> ClientState {
 }
 
 fn get_requested_ip_addr(req: &Message) -> Option<Ipv4Addr> {
-    let req_ip_opt = req.options
+    let req_ip_opt = req
+        .options
         .iter()
         .find(|opt| opt.code == OptionCode::RequestedIpAddr)?;
     let raw_ip = BigEndian::read_u32(&req_ip_opt.value);
@@ -377,7 +377,8 @@ fn get_requested_ip_addr(req: &Message) -> Option<Ipv4Addr> {
 }
 
 fn get_server_id_from(req: &Message) -> Option<Ipv4Addr> {
-    let server_id_opt = req.options
+    let server_id_opt = req
+        .options
         .iter()
         .find(|opt| opt.code == OptionCode::ServerId)?;
     let raw_server_id = BigEndian::read_u32(&server_id_opt.value);
