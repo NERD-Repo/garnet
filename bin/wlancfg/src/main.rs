@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #![deny(warnings)]
+#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types, use_extern_macros)]
 
 #[macro_use]
 extern crate failure;
@@ -14,9 +15,9 @@ extern crate fidl_fuchsia_wlan_stats as fidl_wlan_stats;
 extern crate fidl_fuchsia_wlan_device as wlan;
 extern crate fidl_fuchsia_wlan_device_service as wlan_service;
 extern crate fuchsia_app as app;
-#[macro_use]
 extern crate fuchsia_async as async;
 extern crate fuchsia_zircon as zx;
+#[macro_use]
 extern crate futures;
 #[macro_use]
 extern crate log;
@@ -45,10 +46,8 @@ use futures::prelude::*;
 use std::sync::Arc;
 use wlan_service::DeviceServiceMarker;
 
-fn serve_fidl(_client_ref: shim::ClientRef)
-    -> impl Future<Item = Never, Error = Error>
-{
-    ServicesServer::new()
+async fn serve_fidl(_client_ref: shim::ClientRef) -> Result<(), Error> {
+    await!(ServicesServer::new()
         // To test the legacy API server, change
         //     "fuchsia.wlan.service.Wlan": "wlanstack"
         // to
@@ -70,10 +69,9 @@ fn serve_fidl(_client_ref: shim::ClientRef)
             async::spawn(fut)
         }))
         */
-        .start()
-        .into_future()
-        .and_then(|fut| fut)
-        .and_then(|()| Err(format_err!("FIDL server future exited unexpectedly")))
+        .start()?)?;
+
+    Err(format_err!("FIDL server future exited unexpectedly"))
 }
 
 fn main() -> Result<(), Error> {
@@ -91,11 +89,34 @@ fn main() -> Result<(), Error> {
     let listener = device::Listener::new(wlan_svc, cfg, legacy_client);
     let ess_store = Arc::new(KnownEssStore::new()?);
     let fut = watcher_proxy.take_event_stream()
-        .for_each(move |evt| device::handle_event(&listener, evt, &ess_store))
+        .try_for_each(move |evt| {
+            device::handle_event(listener.clone(), evt, ess_store.clone())
+                .map(Ok)
+        })
         .err_into()
-        .and_then(|_| Err(format_err!("Device watcher future exited unexpectedly")));
+        .map(|res| if res.is_ok() {
+            Err(format_err!("Device watcher future exited unexpectedly"))
+        } else {
+            res
+        });
 
-    executor
-        .run_singlethreaded(fidl_fut.join(fut))
-        .map(|_: (Never, Never)| ())
+    executor.run_singlethreaded(try_join(fidl_fut, fut))
+}
+
+async fn try_join<A, B>(a: A, b: B) -> Result<(), Error>
+where
+    A: Future<Output = Result<(), Error>>,
+    B: Future<Output = Result<(), Error>>,
+{
+    pin_mut!(a, b);
+    select! {
+        a => {
+            a?;
+            await!(b)
+        },
+        b => {
+            b?;
+            await!(a)
+        },
+    }
 }

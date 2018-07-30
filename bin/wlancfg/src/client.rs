@@ -7,8 +7,8 @@ use failure;
 use fidl::endpoints2::create_endpoints;
 use fidl_sme;
 use future_util::retry_until;
-use futures::{prelude::*, channel::oneshot, channel::mpsc, future::Either, stream};
-use state_machine::{self, IntoStateExt};
+use futures::{prelude::*, channel::oneshot, channel::mpsc, stream};
+use state_machine::{self, IntoStateExt, Never};
 use std::sync::Arc;
 use zx::prelude::*;
 
@@ -40,7 +40,7 @@ enum ManualRequest {
 pub fn new_client(iface_id: u16,
                   sme: fidl_sme::ClientSmeProxy,
                   ess_store: Arc<KnownEssStore>)
-    -> (Client, impl Future<Item = (), Error = Never>)
+    -> (Client, impl Future<Output = ()>)
 {
     let (req_sender, req_receiver) = mpsc::unbounded();
     let sme_event_stream = sme.take_event_stream();
@@ -48,19 +48,28 @@ pub fn new_client(iface_id: u16,
         sme,
         ess_store: Arc::clone(&ess_store)
     };
-    let state_machine = auto_connect_state(services, req_receiver.next()).into_future()
-        .map(Never::never_into::<()>)
-        .recover::<Never, _>(move |e| eprintln!("wlancfg: Client station state machine \
+    let state_machine = auto_connect_state(services, req_receiver.into_future()).into_future()
+        // The future will never complete without encountering an error.
+        // Set the success type to ().
+        .map_ok(Never::never_into::<()>)
+        .unwrap_or_else(move |e| eprintln!("wlancfg: Client station state machine \
                     for iface {} terminated with an error: {}", iface_id, e));
-    let removal_watcher = sme_event_stream.for_each(|_| Ok(()))
-        .map(move |_| println!("wlancfg: Client station removed (iface {})", iface_id))
-        .recover::<Never, _>(move |e|
-            println!("wlancfg: Removing client station (iface {}) because of an error: {}", iface_id, e));
-    let fut = state_machine.select(removal_watcher)
-        .map(|_| ())
-        .recover(|_| ());
+    let removal_watcher = sme_event_stream.map(|res| res.map(|_| ())).try_collect::<()>()
+        .map_ok(move |_| println!("wlancfg: Client station removed (iface {})", iface_id))
+        .unwrap_or_else(move |e|
+            println!("wlancfg: Removing client station (iface {}) because of an error: {}",
+                iface_id, e));
+    let fut = select2(state_machine, removal_watcher);
     let client = Client { req_sender };
     (client, fut)
+}
+
+async fn select2<A: Future, B: Future>(a: A, b: B) {
+    pin_mut!(a, b);
+    select! {
+        a => (),
+        b => (),
+    }
 }
 
 type State = state_machine::State<failure::Error>;
@@ -73,16 +82,26 @@ struct Services {
 }
 
 fn auto_connect_state(services: Services, next_req: NextReqFut) -> State {
+    auto_connect_state_inner(services, next_req).into_state()
+}
+
+async fn auto_connect_state_inner(services: Services, mut next_req: NextReqFut)
+    -> Result<State, failure::Error>
+{
     println!("wlancfg: Starting auto-connect loop");
-    auto_connect(services.clone()).select(next_req)
-        .map_err(|e| e.either(|(left, _)| left,
-                              |((right, _), _)| right.never_into()))
-        .and_then(move |r| match r {
-            Either::Left((_ssid, next_req)) => Ok(connected_state(services, next_req)),
-            Either::Right(((req, req_stream), _))
-                => handle_manual_request(services, req, req_stream)
-        })
-        .into_state()
+    let conn = auto_connect(services.clone());
+    pin_mut!(conn);
+
+    select! {
+        conn => {
+            let _ssid = conn?;
+            Ok(connected_state(services, next_req))
+        },
+        next_req => {
+            let (req, req_stream) = next_req;
+            handle_manual_request(services, req, req_stream)
+        },
+    }
 }
 
 fn handle_manual_request(services: Services,
@@ -92,107 +111,96 @@ fn handle_manual_request(services: Services,
 {
     match req {
         Some(ManualRequest::Connect(req)) => {
-            Ok(manual_connect_state(services, req_stream.next(), req))
+            Ok(manual_connect_state(services, req_stream.into_future(), req))
         },
         None => bail!("The stream of user requests ended unexpectedly")
     }
 }
 
 fn auto_connect(services: Services)
-    -> impl Future<Item = Vec<u8>, Error = failure::Error>
+    -> impl Future<Output = Result<Vec<u8>, failure::Error>>
 {
     retry_until(AUTO_CONNECT_RETRY_SECONDS.seconds(),
         move || attempt_auto_connect(services.clone()))
 }
 
-fn attempt_auto_connect(services: Services)
-    -> impl Future<Item = Option<Vec<u8>>, Error = failure::Error>
-{
-    start_scan_txn(&services.sme)
-        .into_future()
-        .and_then(fetch_scan_results)
-        .and_then(move |results| {
-            let known_networks = {
-                let services = services.clone();
-                results.into_iter()
-                    .filter_map(move |ess| {
-                        services.ess_store.lookup(&ess.best_bss.ssid)
-                            .map(|known_ess| (ess.best_bss.ssid, known_ess))
-                    })
-            };
-            stream::iter_ok(known_networks)
-                .skip_while(move |(ssid, known_ess)| {
-                    connect_to_known_network(&services.sme, ssid, known_ess)
-                        .map(|connected| !connected)
-                })
-                .next()
-                .map_err(|(e, _stream)| e)
-        })
-        .map(|(item, _)| item.map(|(ssid, _)| ssid))
-}
+async fn attempt_auto_connect(services: Services) -> Result<Option<Vec<u8>>, failure::Error> {
+    let results = await!(fetch_scan_results(start_scan_txn(&services.sme)?))?;
+    let known_networks = {
+        let services = services.clone();
+        results.into_iter()
+            .filter_map(move |ess| {
+                services.ess_store.lookup(&ess.best_bss.ssid)
+                    .map(|known_ess| (ess.best_bss.ssid, known_ess))
+            })
+    };
 
-fn connect_to_known_network(sme: &fidl_sme::ClientSmeProxy, ssid: &[u8], known_ess: &KnownEss)
-    -> impl Future<Item = bool, Error = failure::Error>
-{
-    let ssid_str = String::from_utf8_lossy(ssid).into_owned();
-    println!("wlancfg: Auto-connecting to '{}'", ssid_str);
-    start_connect_txn(sme, &ssid, &known_ess.password)
-        .into_future()
-        .and_then(wait_until_connected)
-        .map(move |r| match r {
+    for (ssid, known_ess) in known_networks {
+        let ssid_str = String::from_utf8_lossy(&ssid);
+        println!("wlancfg: Auto-connecting to '{}'", ssid_str);
+        let connect_txn = start_connect_txn(&services.sme, &ssid, &known_ess.password)?;
+        let r = await!(wait_until_connected(connect_txn))?;
+        match r {
             fidl_sme::ConnectResultCode::Success => {
                 println!("wlancfg: Auto-connected to '{}'", ssid_str);
-                true
+                return Ok(Some(ssid));
             },
             other => {
                 println!("wlancfg: Failed to auto-connect to '{}': {:?}", ssid_str, other);
-                false
-            },
-        })
+            }
+        }
+    }
+    Ok(None)
 }
 
-fn manual_connect_state(services: Services, next_req: NextReqFut, req: ConnectRequest) -> State {
+fn manual_connect_state(
+    services: Services, next_req: NextReqFut, req: ConnectRequest,
+) -> State {
+    manual_connect_state_inner(services, next_req, req).into_state()
+}
+
+async fn manual_connect_state_inner(
+    services: Services, mut next_req: NextReqFut, req: ConnectRequest
+) -> Result<State, failure::Error> {
     println!("wlancfg: Connecting to '{}' because of a manual request from the user",
         String::from_utf8_lossy(&req.ssid));
+
     services.ess_store.store(req.ssid.clone(), KnownEss {
         password: req.password.clone()
     }).unwrap_or_else(|e| eprintln!("wlancfg: Failed to store network password: {}", e));
 
-    let connect_fut = start_connect_txn(&services.sme, &req.ssid, &req.password)
-        .into_future()
-        .and_then(wait_until_connected);
-
-    connect_fut.select(next_req)
-        .map_err(|e| e.either(|(left, _)| left,
-                              |((right, _), _)| right.never_into()))
-        .and_then(move |r| match r {
-            Either::Left((error_code, next_req)) => {
-                req.responder.send(error_code).unwrap_or_else(|_| ());
-                Ok(match error_code {
-                    fidl_sme::ConnectResultCode::Success => {
-                        println!("wlancfg: Successfully connected to '{}'", String::from_utf8_lossy(&req.ssid));
-                        connected_state(services, next_req)
-                    },
-                    other => {
-                        println!("wlancfg: Failed to connect to '{}': {:?}",
-                                 String::from_utf8_lossy(&req.ssid), other);
-                        auto_connect_state(services, next_req)
-                    }
-                })
-            },
-            Either::Right(((new_req, req_stream), _coonect_fut)) => {
-                req.responder.send(fidl_sme::ConnectResultCode::Canceled).unwrap_or_else(|_| ());
-                handle_manual_request(services, new_req, req_stream)
+    let connect_txn = start_connect_txn(&services.sme, &req.ssid, &req.password)?;
+    let connected = wait_until_connected(connect_txn);
+    pin_mut!(connected);
+    select! {
+        connected => {
+            let error_code = connected?;
+            let _ = req.responder.send(error_code);
+            match error_code {
+                fidl_sme::ConnectResultCode::Success => {
+                    println!("wlancfg: Successfully connected to '{}'",
+                             String::from_utf8_lossy(&req.ssid));
+                    Ok(connected_state(services, next_req))
+                },
+                other => {
+                    println!("wlancfg: Failed to connect to '{}': {:?}",
+                             String::from_utf8_lossy(&req.ssid), other);
+                    Ok(auto_connect_state(services, next_req))
+                }
             }
-        })
-        .into_state()
+        },
+        next_req => {
+            let (new_req, req_stream) = next_req;
+            let _ = req.responder.send(fidl_sme::ConnectResultCode::Canceled);
+            handle_manual_request(services, new_req, req_stream)
+        },
+    }
 }
 
 fn connected_state(services: Services, next_req: NextReqFut) -> State {
     // TODO(gbonik): monitor connection status and jump back to auto-connect state when disconnected
     next_req
-        .map_err(|(e, _stream)| e.never_into())
-        .and_then(|(req, req_stream)| {
+        .map(|(req, req_stream)| {
             handle_manual_request(services, req, req_stream)
         }).into_state()
 }
@@ -217,36 +225,37 @@ fn start_connect_txn(sme: &fidl_sme::ClientSmeProxy, ssid: &[u8], password: &[u8
     Ok(connect_txn)
 }
 
-fn wait_until_connected(txn: fidl_sme::ConnectTransactionProxy)
-    -> impl Future<Item = fidl_sme::ConnectResultCode, Error = failure::Error>
+async fn wait_until_connected(txn: fidl_sme::ConnectTransactionProxy)
+    -> Result<fidl_sme::ConnectResultCode, failure::Error>
 {
-    txn.take_event_stream()
-        .filter_map(|e| Ok(match e {
-            fidl_sme::ConnectTransactionEvent::OnFinished{ code } => Some(code),
-        }))
-        .next()
-        .map_err(|(e, _stream)| e.into())
-        .and_then(|(code, _stream)| code.ok_or_else(||
-            format_err!("Server closed the ConnectTransaction channel before sending a response"))
-        )
+    let mut stream = txn.take_event_stream();
+    if let Some(e) = await!(stream.try_next())? {
+        let fidl_sme::ConnectTransactionEvent::OnFinished{ code } = e;
+        Ok(code)
+    } else {
+        Err(format_err!("Server closed the ConnectTransaction channel before sending a response"))
+    }
 }
 
-fn fetch_scan_results(txn: fidl_sme::ScanTransactionProxy)
-    -> impl Future<Item = Vec<fidl_sme::EssInfo>, Error = failure::Error>
+async fn fetch_scan_results(txn: fidl_sme::ScanTransactionProxy)
+    -> Result<Vec<fidl_sme::EssInfo>, failure::Error>
 {
-    txn.take_event_stream().fold(Vec::new(), |mut old_aps, event| {
+    let mut event_stream = txn.take_event_stream();
+    let mut all_aps = vec![];
+
+    while let Some(event) = await!(event_stream.try_next())? {
         match event {
             fidl_sme::ScanTransactionEvent::OnResult { aps } => {
-                old_aps.extend(aps);
-                Ok(old_aps)
+                all_aps.extend(aps);
             },
-            fidl_sme::ScanTransactionEvent::OnFinished { } => Ok(old_aps),
+            fidl_sme::ScanTransactionEvent::OnFinished {} => {},
             fidl_sme::ScanTransactionEvent::OnError { error } => {
                 eprintln!("wlancfg: Scanning failed with error: {:?}", error);
-                Ok(old_aps)
             }
         }
-    }).err_into()
+    }
+
+    Ok(all_aps)
 }
 
 #[cfg(test)]
