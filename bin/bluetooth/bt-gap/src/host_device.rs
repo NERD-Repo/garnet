@@ -2,16 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+use crate::host_dispatcher::HostDispatcher;
+use crate::util::clone_host_state;
 use fidl;
 use fidl_fuchsia_bluetooth::Status;
 use fidl_fuchsia_bluetooth_control::AdapterInfo;
 use fidl_fuchsia_bluetooth_host::{HostEvent, HostProxy};
 use futures::StreamExt;
-use crate::host_dispatcher::HostDispatcher;
 use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::Arc;
-use crate::util::clone_host_state;
 
 pub struct HostDevice {
     pub path: PathBuf,
@@ -22,11 +22,7 @@ pub struct HostDevice {
 
 impl HostDevice {
     pub fn new(path: PathBuf, host: HostProxy, info: AdapterInfo) -> Self {
-        HostDevice {
-            path,
-            host,
-            info,
-        }
+        HostDevice { path, host, info }
     }
 
     pub fn get_host(&self) -> &HostProxy {
@@ -58,7 +54,9 @@ impl HostDevice {
     }
 }
 
-pub async fn run( hd: Arc<RwLock<HostDispatcher>>, host: Arc<RwLock<HostDevice>>) -> Result<(), fidl::Error> {
+pub async fn run(
+    hd: Arc<RwLock<HostDispatcher>>, host: Arc<RwLock<HostDevice>>,
+) -> Result<(), fidl::Error> {
     make_clones!(host => host_stream, host);
     let mut stream = host_stream.read().host.take_event_stream();
     while let Some(evt) = await!(stream.next()) {
@@ -84,6 +82,6 @@ pub async fn run( hd: Arc<RwLock<HostDispatcher>>, host: Arc<RwLock<HostDevice>>
                 unimplemented!("not yet");
             }
         }
-    };
+    }
     Ok(())
 }
