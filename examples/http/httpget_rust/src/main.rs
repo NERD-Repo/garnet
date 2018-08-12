@@ -12,7 +12,7 @@ extern crate fuchsia_zircon as zx;
 extern crate futures;
 extern crate fidl_fuchsia_net_oldhttp as http;
 
-use async::temp::TempFutureExt;
+use async::temp::{copy_into, TempFutureExt};
 use failure::{Error, ResultExt};
 use futures::prelude::*;
 use futures::io::AllowStdIo;
@@ -101,8 +101,9 @@ fn main_res() -> Result<(), Error> {
             println!(">>> Body <<<");
 
             // Copy the bytes from the socket to stdout
-            socket.unwrap().copy_into(&mut AllowStdIo::new(::std::io::stdout()))
-                .map(|_| Ok(println!("\n>>> EOF <<<"))).left_future()
+            copy_into(socket.unwrap(), AllowStdIo::new(::std::io::stdout()))
+                .err_into()
+                .map_ok(|_| println!("\n>>> EOF <<<")).left_future()
 
         })
     });
