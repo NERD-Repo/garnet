@@ -21,6 +21,8 @@
 
 namespace bthost {
 
+constexpr uint16_t kGattRemoteServiceDeviceDispatchThreads = 5;
+
 class Host;
 
 // Represents a bt-host device. This object relays device events to the host
@@ -58,6 +60,8 @@ class HostDevice final {
 
   void CleanUp() __TA_REQUIRES(mtx_);
 
+  bool device_created_;
+
   zx_device_t* dev_;     // The bt-host device we published.
   zx_device_t* parent_;  // The parent bt-hci device.
 
@@ -67,8 +71,8 @@ class HostDevice final {
   // Guards access to members below.
   std::mutex mtx_;
 
-  // Map of child DDK gatt devices
-  std::unordered_map<GattRemoteServiceDevice*, std::unique_ptr<GattRemoteServiceDevice>>
+  // Child DDK gatt devices
+  std::unordered_set<fxl::RefPtr<GattRemoteServiceDevice>>
       gatt_devices_;
 
   // Host processes all its messages on |loop_|. |loop_| is initialized to run
@@ -77,6 +81,9 @@ class HostDevice final {
   // This is necessary as Host owns FIDL bindings which require a
   // single-threaded dispatcher.
   async::Loop loop_;
+
+  async::Loop remote_service_loop_;
+
   fxl::RefPtr<Host> host_ __TA_GUARDED(mtx_);
 
   FXL_DISALLOW_COPY_AND_ASSIGN(HostDevice);

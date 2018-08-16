@@ -16,52 +16,51 @@
 #include <threads.h>
 
 // org.bluetooth.characteristic.protocol_mode
-#define BTHOG_PROTOCOL_MODE                 0x2A4E
-#define BTHOG_PROTOCOL_MODE_BOOT_MODE       0
-#define BTHOG_PROTOCOL_MODE_REPORT_MODE     1
+#define BTHOG_PROTOCOL_MODE 0x2A4E
+#define BTHOG_PROTOCOL_MODE_BOOT_MODE 0
+#define BTHOG_PROTOCOL_MODE_REPORT_MODE 1
 
 // org.bluetooth.characteristic.report_map
-#define BTHOG_REPORT_MAP                    0x2A4B
+#define BTHOG_REPORT_MAP 0x2A4B
 
 // org.bluetooth.characteristic.report
-#define BTHOG_REPORT                        0x2A4D
+#define BTHOG_REPORT 0x2A4D
 
 // org.bluetooth.characteristic.boot_keyboard_input_report
-#define BTHOG_BOOT_KEYBOARD_INPUT_REPORT    0x2A22
+#define BTHOG_BOOT_KEYBOARD_INPUT_REPORT 0x2A22
 
 // org.bluetooth.characteristic.boot_keyboard_output_report
-#define BTHOG_BOOT_KEYBOARD_OUTPUT_REPORT   0x2A32
+#define BTHOG_BOOT_KEYBOARD_OUTPUT_REPORT 0x2A32
 
 // org.bluetooth.characteristic.boot_mouse_input_report
-#define BTHOG_BOOT_MOUSE_INPUT_REPORT       0x2A33
+#define BTHOG_BOOT_MOUSE_INPUT_REPORT 0x2A33
 
 typedef enum {
-    HOGD_DEVICE_BOOT_KEYBOARD,
-    HOGD_DEVICE_BOOT_MOUSE,
-    HOGD_DEVICE_REPORT,
+  HOGD_DEVICE_BOOT_KEYBOARD,
+  HOGD_DEVICE_BOOT_MOUSE,
+  HOGD_DEVICE_REPORT,
 } hogd_device_type_t;
-
 
 typedef struct hogd_t hogd_t;
 typedef struct hogd_device_t hogd_device_t;
 struct hogd_device_t {
-    hogd_device_type_t device_type;
+  hogd_device_type_t device_type;
 
-    bt_gatt_id_t input_report_id;
-    bool has_input_report_id;
-    bt_gatt_id_t output_report_id;
-    bool has_output_report_id;
+  bt_gatt_id_t input_report_id;
+  bool has_input_report_id;
+  bt_gatt_id_t output_report_id;
+  bool has_output_report_id;
 
-    bool is_initialized;
-    zx_device_t* dev;
-    mtx_t lock;
-    hidbus_ifc_t ifc;
+  bool is_initialized;
+  zx_device_t* dev;
+  mtx_t lock;
+  hidbus_ifc_t ifc;
 
-    // Reference to owner.
-    hogd_t *parent;
+  // Reference to owner.
+  hogd_t* parent;
 
-    // Report devices are stored as a singly linked list. Currently unused.
-    hogd_device_t *next;
+  // Report devices are stored as a singly linked list. Currently unused.
+  hogd_device_t* next;
 };
 
 struct hogd_t {
@@ -84,6 +83,5 @@ struct hogd_t {
   hogd_device_t boot_mouse_device;
 
   // Report devices are stored as a singly linked list.
-  hogd_device_t *report_device;
+  hogd_device_t* report_device;
 };
-

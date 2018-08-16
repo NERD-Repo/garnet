@@ -14,9 +14,16 @@
 
 namespace bthost {
 
+constexpr uint16_t kDeviceInformationServiceUuid = 0x180A;
+constexpr uint16_t kBatteryServiceUuid = 0x180F;
+
 HostDevice::HostDevice(zx_device_t* device)
-    : dev_(nullptr), parent_(device), loop_(&kAsyncLoopConfigNoAttachToThread) {
-  ZX_DEBUG_ASSERT(parent_);
+    : device_created_(false),
+      dev_(nullptr),
+      parent_(device),
+      loop_(&kAsyncLoopConfigNoAttachToThread),
+      remote_service_loop_(&kAsyncLoopConfigNoAttachToThread) {
+  FXL_DCHECK(parent_);
 
   dev_proto_.version = DEVICE_OPS_VERSION;
   dev_proto_.unbind = &HostDevice::DdkUnbind;
@@ -78,7 +85,28 @@ zx_status_t HostDevice::Bind() {
     return status;
   }
 
-  loop_.StartThread("bt-host (gap)");
+  // When the device is initialized.
+  device_created_ = true;
+
+  status = loop_.StartThread("bt-host (gap)");
+  if (status != ZX_OK) {
+    bt_log(ERROR, "bt-host", "Failed to create host thread: %s",
+           zx_status_get_string(status));
+    CleanUp();
+    return status;
+  }
+
+  for (int i = 0; i < kGattRemoteServiceDeviceDispatchThreads; i++) {
+    status = remote_service_loop_.StartThread("bt-host bt-gatt-svc dispatcher");
+    if (status != ZX_OK) {
+      bt_log(ERROR, "bt-host", "Failed to create driver child thread: %s",
+             zx_status_get_string(status));
+      remote_service_loop_.Shutdown();
+      loop_.Shutdown();
+      CleanUp();
+      return status;
+    }
+  }
 
   // Send the bootstrap message to Host. The Host object can only be accessed on
   // the Host thread.
@@ -108,6 +136,7 @@ zx_status_t HostDevice::Bind() {
       }
 
       host->ShutDown();
+      remote_service_loop_.Shutdown();
       loop_.Shutdown();
     });
   });
@@ -120,18 +149,21 @@ void HostDevice::Unbind() {
 
   std::lock_guard<std::mutex> lock(mtx_);
 
-  if (!host_)
-    return;
-
-  // Do this immediately to stop receiving new service callbacks.
-  host_->gatt_host()->SetRemoteServiceWatcher({});
+  if (host_) {
+    // Do this immediately to stop receiving new service callbacks.
+    host_->gatt_host()->SetRemoteServiceWatcher({});
+  }
 
   async::PostTask(loop_.dispatcher(), [this, host = host_] {
-    host->ShutDown();
+    if (host) {
+      host->ShutDown();
+    }
     loop_.Quit();
+    remote_service_loop_.Quit();
   });
 
   // Make sure that the ShutDown task runs before this returns.
+  remote_service_loop_.JoinThreads();
   loop_.JoinThreads();
 
   CleanUp();
@@ -183,26 +215,48 @@ zx_status_t HostDevice::Ioctl(uint32_t op, const void* in_buf, size_t in_len,
 void HostDevice::OnRemoteGattServiceAdded(
     const std::string& peer_id,
     fbl::RefPtr<btlib::gatt::RemoteService> service) {
-  auto gatt_device =
-      std::make_unique<GattRemoteServiceDevice>(dev_, peer_id, service);
-  auto gatt_device_ptr = gatt_device.get();
-
-  zx_status_t status = gatt_device->Bind();
-  if (status != ZX_OK)
+  // Battery and device information services are special case. We don't allow
+  // drivers to be bound to them.
+  if (service->uuid() == kDeviceInformationServiceUuid ||
+      service->uuid() == kBatteryServiceUuid) {
     return;
+  }
 
-  gatt_devices_[gatt_device_ptr] = std::move(gatt_device);
+  std::lock_guard<std::mutex> lock(mtx_);
+  fxl::RefPtr<GattRemoteServiceDevice> gatt_device =
+      fxl::MakeRefCounted<GattRemoteServiceDevice>(
+          dev_, peer_id, remote_service_loop_.dispatcher(), service);
 
   service->AddRemovedHandler(
-      [this, gatt_device_ptr] { gatt_devices_.erase(gatt_device_ptr); });
+      [this, gatt_ref = gatt_device] {
+        gatt_devices_.erase(gatt_ref);
+        async::PostTask(remote_service_loop_.dispatcher(),
+                        [gatt_ref] { gatt_ref->Shutdown(); });
+      },
+      loop_.dispatcher());
+
+  zx_status_t status = gatt_device->Bind();
+  if (status != ZX_OK) {
+    bt_log(ERROR, "bt-host", "Unable to create gatt child device: %s",
+           zx_status_get_string(status));
+    return;
+  }
+
+  gatt_devices_.insert(std::move(gatt_device));
 }
 
 void HostDevice::CleanUp() {
   host_ = nullptr;
 
   // Removing the devices explictly instead of letting unbind handle it for us.
+  for (fxl::RefPtr<GattRemoteServiceDevice> gatt_device : gatt_devices_) {
+    if (gatt_device) {
+      gatt_device->Shutdown();
+    }
+  }
   gatt_devices_.clear();
-  device_remove(dev_);
+  if (device_created_)
+    device_remove(dev_);
 
   dev_ = nullptr;
 }

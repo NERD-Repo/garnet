@@ -65,12 +65,54 @@ bt_gatt_err_t ATTErrorToDDKError(btlib::att::ErrorCode error) {
   return BT_GATT_ERR_NO_ERROR;
 }
 
+zx_status_t HostErrorToZXStatus(btlib::common::HostError error) {
+  switch (error) {
+    case btlib::common::HostError::kNoError:
+      return ZX_OK;
+    case btlib::common::HostError::kNotFound:
+      return ZX_ERR_NOT_FOUND;
+    case btlib::common::HostError::kNotReady:
+      return ZX_ERR_UNAVAILABLE;
+    case btlib::common::HostError::kTimedOut:
+      return ZX_ERR_TIMED_OUT;
+    case btlib::common::HostError::kInvalidParameters:
+      return ZX_ERR_INVALID_ARGS;
+    case btlib::common::HostError::kCanceled:
+      return ZX_ERR_CANCELED;
+    case btlib::common::HostError::kInProgress:
+      return ZX_ERR_BAD_STATE;
+    case btlib::common::HostError::kNotSupported:
+      return ZX_ERR_NOT_SUPPORTED;
+    case btlib::common::HostError::kPacketMalformed:
+      return ZX_ERR_IO_DATA_INTEGRITY;
+    case btlib::common::HostError::kLinkDisconnected:
+      return ZX_ERR_PEER_CLOSED;
+    case btlib::common::HostError::kOutOfMemory:
+      return ZX_ERR_NO_MEMORY;
+    case btlib::common::HostError::kProtocolError:
+      return ZX_ERR_IO;
+    case btlib::common::HostError::kFailed:
+    default:
+      return ZX_ERR_INTERNAL;
+  }
+}
+
+bt_gatt_status_t AATStatusToDDKStatus(btlib::att::Status att_status) {
+  bt_gatt_status_t status = {
+      .status = HostErrorToZXStatus(att_status.error()),
+      .att_ecode = ATTErrorToDDKError(att_status.protocol_error())};
+  return status;
+}
+
+void NopStatusCallback(btlib::att::Status) {}
+
 }  // namespace
 
 GattRemoteServiceDevice::GattRemoteServiceDevice(
     zx_device_t* parent_device, const std::string& peer_id,
+    async_dispatcher_t* dispatcher,
     fbl::RefPtr<btlib::gatt::RemoteService> service)
-    : loop_(&kAsyncLoopConfigNoAttachToThread),
+    : dispatcher_(dispatcher),
       parent_device_(parent_device),
       dev_(nullptr),
       peer_id_(peer_id),
@@ -80,12 +122,7 @@ GattRemoteServiceDevice::GattRemoteServiceDevice(
   dev_proto_.release = &GattRemoteServiceDevice::DdkRelease;
 }
 
-GattRemoteServiceDevice::~GattRemoteServiceDevice() {
-  if (dev_ != nullptr) {
-    device_remove(dev_);
-    dev_ = nullptr;
-  }
-}
+GattRemoteServiceDevice::~GattRemoteServiceDevice() = default;
 
 bt_gatt_svc_ops_t GattRemoteServiceDevice::proto_ops_ = {
     .connect = &GattRemoteServiceDevice::OpConnect,
@@ -101,6 +138,9 @@ zx_status_t GattRemoteServiceDevice::Bind() {
   // The bind program of an attaching device driver can eiher bind using to the
   // well known short 16 bit UUID of the service if available or the full 128
   // bit UUID (split across 4 32 bit values).
+  std::lock_guard<std::mutex> lock(mtx_);
+  FXL_DCHECK(dev_ == nullptr);
+
   const common::UUID& uuid = service_->uuid();
   uint32_t uuid16 = 0;
 
@@ -138,7 +178,7 @@ zx_status_t GattRemoteServiceDevice::Bind() {
       .proto_id = ZX_PROTOCOL_BT_GATT_SVC,
       .proto_ops = &proto_ops_,
       .props = props,
-      .prop_count = 5,
+      .prop_count = countof(props),
       .flags = 0,
   };
 
@@ -152,23 +192,60 @@ zx_status_t GattRemoteServiceDevice::Bind() {
     return status;
   }
 
-  loop_.StartThread("bt-host bt-gatt-svc");
-
   return status;
 }
 
-void GattRemoteServiceDevice::Unbind() {
-  bt_log(TRACE, "bt-host", "bt-gatt-svc: unbinding service");
-  async::PostTask(loop_.dispatcher(), [this]() { loop_.Shutdown(); });
-  loop_.JoinThreads();
+zx_status_t GattRemoteServiceDevice::Shutdown() {
+  bt_log(TRACE, "bt-host", "bt-gatt-svc: shutdown called on service");
+  if (dev_ != nullptr) {
+    return device_remove(dev_);
+  }
+  std::lock_guard<std::mutex> lock(mtx_);
+  shutdown_ = true;
+  return ZX_OK;
 }
-void GattRemoteServiceDevice::Release() { dev_ = nullptr; }
+
+void GattRemoteServiceDevice::DdkUnbind() {
+  bt_log(TRACE, "bt-host", "bt-gatt-svc: unbinding service");
+  Stop();
+  device_remove(dev_);
+}
+
+void GattRemoteServiceDevice::DdkRelease() {
+  bt_log(TRACE, "bt-host", "bt-gatt-svc: releasing service");
+}
 
 zx_status_t GattRemoteServiceDevice::Connect(void* cookie,
                                              bt_gatt_connect_cb connect_cb) {
-  async::PostTask(loop_.dispatcher(), [this, connect_cb, cookie]() {
-    service_->DiscoverCharacteristics(
-        [connect_cb, cookie](att::Status cb_status, const auto& chrcs) {
+  std::lock_guard<std::mutex> lock(mtx_);
+  async::PostTask(dispatcher_, [self = fxl::Ref(this), connect_cb, cookie]() {
+    // If we have been unbound or shut down by this point, just cancel.
+    std::lock_guard<std::mutex> lock(self->mtx_);
+    if (self->unbound_ || self->stopped_)
+      return;
+
+    // TODO: investigate what to do if the service has disconnected by the is
+    // point.
+    self->service_->DiscoverCharacteristics(
+        [self, connect_cb, cookie](att::Status cb_status, const auto& chrcs) {
+          bool shutdown;
+          {
+            std::lock_guard<std::mutex> lock(self->mtx_);
+            if (self->unbound_ || self->stopped_) {
+              // No body around to listen for events.
+              return;
+            }
+            shutdown = self->shutdown_;
+          }
+
+          // We are in the process of shutting down.
+          bt_gatt_status_t status = AATStatusToDDKStatus(cb_status);
+          if (shutdown) {
+            status.status = ZX_ERR_CANCELED;
+            connect_cb(cookie, status, nullptr, 0);
+            return;
+          }
+
           auto ddk_chars = std::make_unique<bt_gatt_chr[]>(chrcs.size());
           size_t char_idx = 0;
           for (auto& chr : chrcs) {
@@ -204,7 +281,6 @@ zx_status_t GattRemoteServiceDevice::Connect(void* cookie,
           bt_log(TRACE, "bt-host",
                  "bt-gatt-svc: connected; discovered %zu characteristics",
                  char_idx);
-          bt_gatt_status_t status = {.status = ZX_OK};
           connect_cb(cookie, status, ddk_chars.get(), char_idx);
 
           // Cleanup.
@@ -214,31 +290,45 @@ zx_status_t GattRemoteServiceDevice::Connect(void* cookie,
               ddk_chars[char_idx].descriptors = nullptr;
             }
           }
+          ddk_chars.release();
         },
-        loop_.dispatcher());
+        self->dispatcher_);
   });
 
   return ZX_OK;
 }
 
 void GattRemoteServiceDevice::Stop() {
-  // TODO(zbowling): Unregister notifications on the remote service.
-  // We may replace this with an explict unregister for notifications instead.
+  std::lock_guard<std::mutex> lock(mtx_);
+  stopped_ = true;
+  for (const auto& iter : notify_handlers_) {
+    if (iter.second != btlib::gatt::kInvalidId)
+      service_->DisableNotifications(iter.first, iter.second, NopStatusCallback,
+                                     dispatcher_);
+  }
+  notify_handlers_.clear();
 }
 
 zx_status_t GattRemoteServiceDevice::ReadCharacteristic(
     bt_gatt_id_t id, void* cookie, bt_gatt_read_characteristic_cb read_cb) {
-  auto read_callback = [id, cookie, read_cb](att::Status status,
-                                             const common::ByteBuffer& buff) {
-    bt_gatt_err_t error_code = ATTErrorToDDKError(status.protocol_error());
-    bt_gatt_status_t ddk_status = {
-        .status = ZX_OK,
-        .att_ecode = error_code,
-    };
+  std::lock_guard<std::mutex> lock(mtx_);
+  FXL_DCHECK(stopped_ == false);
+  if (stopped_)
+    return ZX_ERR_BAD_STATE;
+  auto read_callback = [self = fxl::Ref(this), id, cookie, read_cb](
+                           att::Status status, const common::ByteBuffer& buff) {
+    {
+      // Optimistic bail out.
+      std::lock_guard<std::mutex> lock(self->mtx_);
+      if (self->unbound_ || self->stopped_)
+        return;
+    }
+
+    bt_gatt_status_t ddk_status = AATStatusToDDKStatus(status);
     read_cb(cookie, ddk_status, id, buff.data(), buff.size());
   };
   service_->ReadCharacteristic(static_cast<btlib::gatt::IdType>(id),
-                               std::move(read_callback), loop_.dispatcher());
+                               std::move(read_callback), dispatcher_);
 
   return ZX_OK;
 }
@@ -246,18 +336,25 @@ zx_status_t GattRemoteServiceDevice::ReadCharacteristic(
 zx_status_t GattRemoteServiceDevice::ReadLongCharacteristic(
     bt_gatt_id_t id, void* cookie, uint16_t offset, size_t max_bytes,
     bt_gatt_read_characteristic_cb read_cb) {
-  auto read_callback = [id, cookie, read_cb](att::Status status,
-                                             const common::ByteBuffer& buff) {
-    bt_gatt_err_t error_code = ATTErrorToDDKError(status.protocol_error());
-    bt_gatt_status_t ddk_status = {
-        .status = ZX_OK,
-        .att_ecode = error_code,
-    };
+  std::lock_guard<std::mutex> lock(mtx_);
+  FXL_DCHECK(stopped_ == false);
+  if (stopped_)
+    return ZX_ERR_BAD_STATE;
+  auto read_callback = [self = fxl::Ref(this), id, cookie, read_cb](
+                           att::Status status, const common::ByteBuffer& buff) {
+    {
+      // Optimistic bail out.
+      std::lock_guard<std::mutex> lock(self->mtx_);
+      if (self->unbound_ || self->stopped_)
+        return;
+    }
+
+    bt_gatt_status_t ddk_status = AATStatusToDDKStatus(status);
     read_cb(cookie, ddk_status, id, buff.data(), buff.size());
   };
   service_->ReadLongCharacteristic(static_cast<btlib::gatt::IdType>(id), offset,
                                    max_bytes, std::move(read_callback),
-                                   loop_.dispatcher());
+                                   dispatcher_);
 
   return ZX_OK;
 }
@@ -265,23 +362,30 @@ zx_status_t GattRemoteServiceDevice::ReadLongCharacteristic(
 zx_status_t GattRemoteServiceDevice::WriteCharacteristic(
     bt_gatt_id_t id, void* cookie, const uint8_t* buff, size_t len,
     bt_gatt_status_cb write_cb) {
+  std::lock_guard<std::mutex> lock(mtx_);
+  FXL_DCHECK(stopped_ == false);
+  if (stopped_)
+    return ZX_ERR_BAD_STATE;
   std::vector<uint8_t> data(buff, buff + len);
   if (write_cb == nullptr) {
     service_->WriteCharacteristicWithoutResponse(
         static_cast<btlib::gatt::IdType>(id), std::move(data));
   } else {
-    auto status_callback = [cookie, id, write_cb](btlib::att::Status status) {
-      bt_gatt_err_t error_code = ATTErrorToDDKError(status.protocol_error());
-      bt_gatt_status_t ddk_status = {
-          .status = ZX_OK,
-          .att_ecode = error_code,
-      };
+    auto write_callback = [self = fxl::Ref(this), cookie, id,
+                           write_cb](btlib::att::Status status) {
+      {
+        // Optimistic bail out.
+        std::lock_guard<std::mutex> lock(self->mtx_);
+        if (self->unbound_ || self->stopped_)
+          return;
+      }
+      bt_gatt_status_t ddk_status = AATStatusToDDKStatus(status);
       write_cb(cookie, ddk_status, id);
     };
 
     service_->WriteCharacteristic(static_cast<btlib::gatt::IdType>(id),
-                                  std::move(data), std::move(status_callback),
-                                  loop_.dispatcher());
+                                  std::move(data), std::move(write_callback),
+                                  dispatcher_);
   }
   return ZX_OK;
 }
@@ -289,24 +393,51 @@ zx_status_t GattRemoteServiceDevice::WriteCharacteristic(
 zx_status_t GattRemoteServiceDevice::EnableNotifications(
     bt_gatt_id_t id, void* cookie, bt_gatt_status_cb status_cb,
     bt_gatt_notification_value_cb value_cb) {
-  auto notif_callback = [cookie, id, value_cb](const common::ByteBuffer& buff) {
+  std::lock_guard<std::mutex> lock(mtx_);
+  FXL_DCHECK(stopped_ == false);
+  if (stopped_)
+    return ZX_ERR_BAD_STATE;
+  if (notify_handlers_.count(id) > 0)
+    return ZX_ERR_ALREADY_EXISTS;
+
+  // Create the entry since we know we are going to replace it later.
+  notify_handlers_[id] = btlib::gatt::kInvalidId;
+  auto notif_callback = [self = fxl::Ref(this), cookie, id,
+                         value_cb](const common::ByteBuffer& buff) {
+    {
+      // Optimistic bail out.
+      std::lock_guard<std::mutex> lock(self->mtx_);
+      if (self->unbound_ || self->stopped_)
+        return;
+    }
     value_cb(cookie, id, buff.data(), buff.size());
   };
 
-  auto status_callback = [cookie, id, status_cb](
-                             btlib::att::Status status,
-                             btlib::gatt::IdType handler_id) {
-    bt_gatt_err_t error_code = ATTErrorToDDKError(status.protocol_error());
-    bt_gatt_status_t ddk_status = {
-        .status = ZX_OK,
-        .att_ecode = error_code,
-    };
+  auto status_callback = [self = fxl::Ref(this), cookie, id, status_cb,
+                          service = service_](btlib::att::Status status,
+                                              btlib::gatt::IdType handler_id) {
+    {
+      std::lock_guard<std::mutex> lock(self->mtx_);
+      if (self->shutdown_) {
+        // Disable this since we are gone and won't clean up otherwise.
+        service->DisableNotifications(id, handler_id, NopStatusCallback);
+        return;
+      }
+
+      if (status.is_success()) {
+        self->notify_handlers_[id] = handler_id;
+      } else {
+        self->notify_handlers_.erase(id);
+      }
+    }
+
+    bt_gatt_status_t ddk_status = AATStatusToDDKStatus(status);
     status_cb(cookie, ddk_status, id);
   };
 
   service_->EnableNotifications(static_cast<btlib::gatt::IdType>(id),
                                 notif_callback, std::move(status_callback),
-                                loop_.dispatcher());
+                                dispatcher_);
 
   return ZX_OK;
 }

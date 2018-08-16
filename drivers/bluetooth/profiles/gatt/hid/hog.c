@@ -14,26 +14,9 @@
 #define BTHOG_STATUS_OK(s) \
   (s.status == ZX_OK && s.att_ecode == BT_GATT_ERR_NO_ERROR)
 
-// These are redefined here so it's easy to change them while developing.
-// Consider replacing trace calls with tracing library instead of using DDK's
-// printf.
-
-#define BT_DEBUG 0
-#if BT_DEBUG
-#define hog_log_trace(fmt...) zxlogf(ERROR, fmt)
-#define hog_log_spew(fmt...) zxlogf(ERROR, fmt)
-#define hog_log_trace_enabled() zxlog_level_enabled(ERROR)
-#define hog_log_spew_enabled() zxlog_level_enabled(ERROR)
-#else
-#define hog_log_trace(fmt...) zxlogf(TRACE, fmt)
-#define hog_log_spew(fmt...) zxlogf(SPEW, fmt)
-#define hog_log_trace_enabled() zxlog_level_enabled(TRACE)
-#define hog_log_spew_enabled() zxlog_level_enabled(SPEW)
-#endif
-
 static zx_status_t hogd_hid_query(void* ctx, uint32_t options,
                                   hid_info_t* info) {
-  hog_log_trace("bthog hog_hid_query, ctx: %p, options: %i\n", ctx, options);
+  zxlogf(TRACE, "bthog hog_hid_query, ctx: %p, options: %i\n", ctx, options);
   hogd_device_t* child = (hogd_device_t*)ctx;
   switch (child->device_type) {
     case HOGD_DEVICE_BOOT_KEYBOARD:
@@ -55,7 +38,7 @@ static zx_status_t hogd_hid_query(void* ctx, uint32_t options,
 }
 
 static zx_status_t hogd_hid_start(void* ctx, const hidbus_ifc_t* ifc) {
-  hog_log_trace("bthog hog_hid_start, ctx: %p, cookie: %p\n", ctx, ifc->ctx);
+  zxlogf(TRACE, "bthog hog_hid_start, ctx: %p", ctx);
   hogd_device_t* child = (hogd_device_t*)ctx;
   mtx_lock(&child->lock);
   if (child->ifc.ops) {
@@ -70,14 +53,14 @@ static zx_status_t hogd_hid_start(void* ctx, const hidbus_ifc_t* ifc) {
 
 static void hogd_hid_stop(void* ctx) {
   // TODO(zbowling): Implement stop. It's not entirely clear what we should do.
-  hog_log_trace("bthog hogd_hid_stop, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_hid_stop, ctx: %p\n", ctx);
 }
 
 static zx_status_t hogd_hid_get_descriptor(void* ctx, uint8_t desc_type,
                                            void** data, size_t* len) {
   hogd_device_t* hogd_child = (hogd_device_t*)ctx;
-  hog_log_trace("bthog hogd_hid_get_descriptor, ctx: %p, desc_type: %u\n", ctx,
-                desc_type);
+  zxlogf(TRACE, "bthog hogd_hid_get_descriptor, ctx: %p, desc_type: %u\n", ctx,
+         desc_type);
   if (desc_type != HID_DESCRIPTION_TYPE_REPORT) {
     return ZX_ERR_NOT_FOUND;
   }
@@ -111,17 +94,17 @@ static zx_status_t hogd_hid_get_descriptor(void* ctx, uint8_t desc_type,
 static zx_status_t hogd_hid_get_report(void* ctx, uint8_t rpt_type,
                                        uint8_t rpt_id, void* data, size_t len,
                                        size_t* out_len) {
-  hog_log_trace(
-      "bthog hogd_hid_get_report, ctx: %p, rpt_type: %u, rpt_id: %u\n", ctx,
-      rpt_type, rpt_id);
+  zxlogf(TRACE,
+         "bthog hogd_hid_get_report, ctx: %p, rpt_type: %u, rpt_id: %u\n", ctx,
+         rpt_type, rpt_id);
   return ZX_ERR_NOT_SUPPORTED;
 }
 
 static zx_status_t hogd_hid_set_report(void* ctx, uint8_t rpt_type,
-                                       uint8_t rpt_id, const void* data, size_t len) {
-  hog_log_trace(
-      "bthog hogd_hid_set_report, ctx: %p, rpt_type: %u, rpt_id: %u\n", ctx,
-      rpt_type, rpt_id);
+                                      uint8_t rpt_id, const void* data, size_t len) {
+  zxlogf(TRACE,
+         "bthog hogd_hid_set_report, ctx: %p, rpt_type: %u, rpt_id: %u\n", ctx,
+         rpt_type, rpt_id);
   hogd_device_t* child = (hogd_device_t*)ctx;
   // We are explicitly doing this as a write without response message because
   // this is a synchronous HIDBUS API and we don't want to block it to wait to
@@ -137,20 +120,19 @@ static zx_status_t hogd_hid_set_report(void* ctx, uint8_t rpt_type,
 
 static zx_status_t hogd_hid_get_idle(void* ctx, uint8_t rpt_id,
                                      uint8_t* duration) {
-  hog_log_trace("bthog hogd_hid_get_idle, ctx: %p, rpt_id: %u\n", ctx, rpt_id);
+  zxlogf(TRACE, "bthog hogd_hid_get_idle, ctx: %p, rpt_id: %u\n", ctx, rpt_id);
   return ZX_ERR_NOT_SUPPORTED;
 }
 
 static zx_status_t hogd_hid_set_idle(void* ctx, uint8_t rpt_id,
                                      uint8_t duration) {
-  hog_log_trace("bthog hogd_hid_set_idle, ctx: %p, rpt_id: %u, duration: %u\n",
-                ctx, rpt_id, duration);
-  // TODO(zbowling): wire into org.bluetooth.characteristic.hid_control_point
+  zxlogf(TRACE, "bthog hogd_hid_set_idle, ctx: %p, rpt_id: %u, duration: %u\n",
+         ctx, rpt_id, duration);
   return ZX_OK;
 }
 
 static zx_status_t hogd_hid_get_protocol(void* ctx, uint8_t* protocol) {
-  hog_log_trace("bthog hogd_hid_get_protocol, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_hid_get_protocol, ctx: %p\n", ctx);
   // TODO(zbowling): Support report mode.
   // Querying the actual protocol mode on the device is async on BT and hidbus
   // is sync.
@@ -159,15 +141,15 @@ static zx_status_t hogd_hid_get_protocol(void* ctx, uint8_t* protocol) {
 }
 
 static zx_status_t hogd_hid_set_protocol(void* ctx, uint8_t protocol) {
-  hog_log_trace("bthog hogd_hid_set_protocol, ctx: %p, protocol: %u\n", ctx,
-                protocol);
+  zxlogf(TRACE, "bthog hogd_hid_set_protocol, ctx: %p, protocol: %u\n", ctx,
+         protocol);
   // We are explictly setting BOOT protocol internally so ignore attempts to
   // change it until report mode is fully implemented.
   return ZX_OK;
 }
 
 static void hogd_release(void* ctx) {
-  hog_log_trace("bthog hogd_release, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_release, ctx: %p\n", ctx);
   hogd_t* hogd = (hogd_t*)ctx;
   if (hogd->hid_descriptor)
     free(hogd->hid_descriptor);
@@ -176,23 +158,23 @@ static void hogd_release(void* ctx) {
 }
 
 static void hogd_unbind(void* ctx) {
-  hog_log_trace("bthog hogd_unbind, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_unbind, ctx: %p\n", ctx);
   hogd_t* hogd = (hogd_t*)ctx;
+  device_remove(hogd->bus_dev);
   // We are unbinding so we should stop receiving notifications on this device.
   bt_gatt_svc_stop(&hogd->gatt_svc);
 }
 
 static void hogd_child_release(void* ctx) {
-  hog_log_trace("bthog hogd_child_release, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_child_release, ctx: %p\n", ctx);
   hogd_device_t* child = (hogd_device_t*)ctx;
   child->is_initialized = false;
 }
 
 static void hogd_child_unbind(void* ctx) {
-  hog_log_trace("bthog hogd_child_unbind, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_child_unbind, ctx: %p\n", ctx);
   hogd_device_t* child = (hogd_device_t*)ctx;
-  child->is_initialized = false;
-  // TODO(zbowling): Explicty remove any notifications we are still receiving.
+  device_remove(child->dev);
 }
 
 static hidbus_protocol_ops_t hogd_hidbus_ops = {
@@ -223,7 +205,7 @@ static zx_protocol_device_t hogd_child_dev_ops = {
 // Catch-all handler for status callbacks we can't handle explictly.
 static void hogd_noop_status(void* ctx, bt_gatt_status_t status,
                              bt_gatt_id_t id) {
-  hog_log_trace("bthog hogd_noop_status, ctx: %p\n", ctx);
+  zxlogf(TRACE, "bthog hogd_noop_status, ctx: %p\n", ctx);
   if (!BTHOG_STATUS_OK(status)) {
     zxlogf(ERROR, "bthog status, att_ecode: %u, id: %lu\n", status.att_ecode,
            id);
@@ -232,18 +214,18 @@ static void hogd_noop_status(void* ctx, bt_gatt_status_t status,
 
 static inline void hogd_log_blob(const char* name, const uint8_t* value,
                                  size_t len) {
-  if (hog_log_spew_enabled()) {
-    hog_log_spew("%s: ", name);
+  if (zxlog_level_enabled(SPEW)) {
+    zxlogf(SPEW, "%s: ", name);
     for (size_t i = 0; i < len; i++) {
-      hog_log_spew("%x ", value[i]);
+      zxlogf(SPEW, "%x ", value[i]);
     }
-    hog_log_spew("\n");
+    zxlogf(SPEW, "\n");
   }
 }
 
 static void hogd_report_notification(void* ctx, bt_gatt_id_t id,
                                      const uint8_t* value, size_t len) {
-  hog_log_trace("bthog hogd_report_notification, ctx: %p, id: %lu\n", ctx, id);
+  zxlogf(SPEW, "bthog hogd_report_notification, ctx: %p, id: %lu\n", ctx, id);
   hogd_log_blob("bthog input event", value, len);
   hogd_device_t* child = (hogd_device_t*)ctx;
   if (!child) {
@@ -251,7 +233,7 @@ static void hogd_report_notification(void* ctx, bt_gatt_id_t id,
     return;
   }
 
-  //HACK: Trim report for mice.
+  // HACK: Trim report for mice.
   if (child->device_type == HOGD_DEVICE_BOOT_MOUSE && len > 3)
     len = 3;
 
@@ -276,21 +258,19 @@ static zx_status_t hogd_initialize_boot_device(hogd_device_t* child,
       dev_name = "hog_boot_keyboard";
       break;
     case HOGD_DEVICE_BOOT_MOUSE:
-      dev_name = "hog_boot_keyboard";
+      dev_name = "hog_boot_mouse";
       break;
     default:
       dev_name = "hog_input";
   }
 
   zx_status_t status;
-  device_add_args_t args = {
-      .version = DEVICE_ADD_ARGS_VERSION,
-      .name = dev_name,
-      .ctx = child,
-      .ops = &hogd_child_dev_ops,
-      .proto_id = ZX_PROTOCOL_HIDBUS,
-      .proto_ops = &hogd_hidbus_ops
-  };
+  device_add_args_t args = {.version = DEVICE_ADD_ARGS_VERSION,
+                            .name = dev_name,
+                            .ctx = child,
+                            .ops = &hogd_child_dev_ops,
+                            .proto_id = ZX_PROTOCOL_HIDBUS,
+                            .proto_ops = &hogd_hidbus_ops};
 
   status = device_add(parent->bus_dev, &args, &child->dev);
   if (status != ZX_OK) {
@@ -312,7 +292,7 @@ static zx_status_t hogd_initialize_boot_device(hogd_device_t* child,
 static void hogd_on_read_report_map(void* ctx, bt_gatt_status_t status,
                                     bt_gatt_id_t id, const uint8_t* value,
                                     size_t len) {
-  hog_log_trace("bthog hogd_on_read_report_map, ctx: %p, id: %lu\n", ctx, id);
+  zxlogf(TRACE, "bthog hogd_on_read_report_map, ctx: %p, id: %lu\n", ctx, id);
   hogd_t* hogd = (hogd_t*)ctx;
   if (!BTHOG_STATUS_OK(status) || value == NULL || len == 0) {
     zxlogf(ERROR,
@@ -357,7 +337,8 @@ static void hogd_on_read_report_map(void* ctx, bt_gatt_status_t status,
 
 static inline void hogd_debug_log_uuid(const uint8_t value[16],
                                        const char* name) {
-  hog_log_spew(
+  zxlogf(
+      SPEW,
       "%s UUID "
       "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x\n",
       name, value[15], value[14], value[13], value[12], value[11], value[10],
@@ -414,8 +395,8 @@ static void hogd_connect(void* ctx, bt_gatt_status_t status,
         bt_gatt_compare_uuid(&characteristics[chi].type, &kiruuid) == 0) {
       hogd->boot_keyboard_device.has_input_report_id = true;
       hogd->boot_keyboard_device.input_report_id = characteristics[chi].id;
-      hog_log_spew("bthog boot keyboard input report id %lu\n",
-                   characteristics[chi].id);
+      zxlogf(SPEW, "bthog boot keyboard input report id %lu\n",
+             characteristics[chi].id);
       continue;
     }
 
@@ -438,8 +419,8 @@ static void hogd_connect(void* ctx, bt_gatt_status_t status,
     // Report characteristic. In report mode both the input and out descriptors
     // are the same ID.
     if (bt_gatt_compare_uuid(&characteristics[chi].type, &ruuid) == 0) {
-      hog_log_spew("bthog report characteristic - handler id: %lu\n",
-                   characteristics[chi].id);
+      zxlogf(SPEW, "bthog report characteristic - handler id: %lu\n",
+             characteristics[chi].id);
       continue;
     }
   }
