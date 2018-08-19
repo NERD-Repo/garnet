@@ -348,6 +348,7 @@ static void brcmf_chip_sb_coredisable(struct brcmf_core_priv* core, uint32_t pre
                                                             BACKPLANE_TARGET_STATE_LOW_RESET));
     usleep(1);
 }
+extern bool gl_compare_now;
 
 static void brcmf_chip_ai_coredisable(struct brcmf_core_priv* core, uint32_t prereset,
                                       uint32_t reset) {
@@ -355,28 +356,37 @@ static void brcmf_chip_ai_coredisable(struct brcmf_core_priv* core, uint32_t pre
     uint32_t regdata;
 
     ci = core->chip;
-
+    brcmf_dbg(TEMP, "Enter");
+    gl_compare_now = true;
     /* if core is already in reset, skip reset */
     regdata = ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL);
+    gl_compare_now = false;
+    brcmf_dbg(TEMP, "En2");
     if ((regdata & BC_CORE_RESET_CONTROL_RESET) != 0) {
         goto in_reset_configure;
     }
+    brcmf_dbg(TEMP, "En3");
 
     /* configure reset */
     ci->ops->write32(ci->ctx, core->wrapbase + BC_CORE_CONTROL,
                      prereset | BC_CORE_CONTROL_FGC | BC_CORE_CONTROL_CLOCK);
     ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_CONTROL);
+    brcmf_dbg(TEMP, "En4");
 
     /* put in reset */
     ci->ops->write32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL, BC_CORE_RESET_CONTROL_RESET);
+    brcmf_dbg(TEMP, "En5");
     usleep_range(10, 20);
     brcmf_dbg(TEMP, "About to wait");
     /* wait till reset is 1 */
-    SPINWAIT(ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL) !=
+    uint32_t spinresult;
+    SPINWAIT((spinresult = ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL)) !=
              BC_CORE_RESET_CONTROL_RESET,
              300);
-    brcmf_dbg(TEMP, "Survived wait");
+    brcmf_dbg(TEMP, "Survived wait, spinresult %d", spinresult);
 in_reset_configure:
+    brcmf_dbg(TEMP, "En6");
+
     /* in-reset configure */
     ci->ops->write32(ci->ctx, core->wrapbase + BC_CORE_CONTROL, reset | BC_CORE_CONTROL_FGC |
                      BC_CORE_CONTROL_CLOCK);
@@ -388,6 +398,7 @@ static void brcmf_chip_sb_resetcore(struct brcmf_core_priv* core, uint32_t prere
     struct brcmf_chip_priv* ci;
     uint32_t regdata;
     uint32_t base;
+    brcmf_dbg(TEMP, "Enter");
 
     ci = core->chip;
     base = core->pub.base;
@@ -396,6 +407,7 @@ static void brcmf_chip_sb_resetcore(struct brcmf_core_priv* core, uint32_t prere
      * arbitrary current core state.
      */
     brcmf_chip_sb_coredisable(core, 0, 0);
+    brcmf_dbg(TEMP, "Past disable");
 
     /*
      * Now do the initialization sequence.
@@ -436,11 +448,13 @@ static void brcmf_chip_ai_resetcore(struct brcmf_core_priv* core, uint32_t prere
                                     uint32_t postreset) {
     struct brcmf_chip_priv* ci;
     int count;
+    brcmf_dbg(TEMP, "Enter");
 
     ci = core->chip;
 
     /* must disable first to work for arbitrary current core state */
     brcmf_chip_ai_coredisable(core, prereset, reset);
+    brcmf_dbg(TEMP, "Past disable");
 
     count = 0;
     while (ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL) &
@@ -575,6 +589,7 @@ static void brcmf_chip_socram_ramsize(struct brcmf_core_priv* sr, uint32_t* rams
     coreinfo = brcmf_chip_core_read32(sr, SOCRAMREGOFFS(coreinfo));
     nb = (coreinfo & SRCI_SRNB_MASK) >> SRCI_SRNB_SHIFT;
 
+    brcmf_dbg(TEMP, "nb 0x%x, pub.rev %d, coreinfo 0x%x", nb, sr->pub.rev, coreinfo);
     if ((sr->pub.rev <= 7) || (sr->pub.rev == 12)) {
         banksize = (coreinfo & SRCI_SRBSZ_MASK);
         lss = (coreinfo & SRCI_LSS_MASK) >> SRCI_LSS_SHIFT;
@@ -585,6 +600,7 @@ static void brcmf_chip_socram_ramsize(struct brcmf_core_priv* sr, uint32_t* rams
         if (lss != 0) {
             *ramsize += (1 << ((lss - 1) + SR_BSZ_BASE));
         }
+        brcmf_dbg(TEMP, "lss %d, nb %d, ramsize %d", lss, nb, *ramsize);
     } else {
         nb = (coreinfo & SRCI_SRNB_MASK) >> SRCI_SRNB_SHIFT;
         for (i = 0; i < (int)nb; i++) {
@@ -593,10 +609,13 @@ static void brcmf_chip_socram_ramsize(struct brcmf_core_priv* sr, uint32_t* rams
             if (retent) {
                 *srsize += banksize;
             }
+            brcmf_dbg(TEMP, "i %d, ramsize %d, srsize %d, retent %d, banksize %d",
+                      i, *ramsize, *srsize, retent, banksize);
         }
     }
 
     /* hardcoded save&restore memory sizes */
+    brcmf_dbg(TEMP, "pub.chip %d 0x%x", sr->chip->pub.chip, sr->chip->pub.chip);
     switch (sr->chip->pub.chip) {
     case BRCM_CC_4334_CHIP_ID:
         if (sr->chip->pub.chiprev < 2) {
@@ -628,11 +647,12 @@ static uint32_t brcmf_chip_sysmem_ramsize(struct brcmf_core_priv* sysmem) {
 
     coreinfo = brcmf_chip_core_read32(sysmem, SYSMEMREGOFFS(coreinfo));
     nb = (coreinfo & SRCI_SRNB_MASK) >> SRCI_SRNB_SHIFT;
-
     for (idx = 0; idx < nb; idx++) {
         brcmf_chip_socram_banksize(sysmem, idx, &banksize);
         memsize += banksize;
+        brcmf_dbg(TEMP, "idx %d, banksize %d", idx, banksize);
     }
+    brcmf_dbg(TEMP, "nb %d, memsize %d", nb, memsize);
 
     return memsize;
 }
@@ -652,12 +672,14 @@ static uint32_t brcmf_chip_tcm_ramsize(struct brcmf_core_priv* cr4) {
     nab = (corecap & ARMCR4_TCBANB_MASK) >> ARMCR4_TCBANB_SHIFT;
     nbb = (corecap & ARMCR4_TCBBNB_MASK) >> ARMCR4_TCBBNB_SHIFT;
     totb = nab + nbb;
-
+    brcmf_dbg(TEMP, "corecap 0x%x, nab %d, nbb %d, totb %d", corecap, nab, nbb, totb);
     for (idx = 0; idx < totb; idx++) {
         brcmf_chip_core_write32(cr4, ARMCR4_BANKIDX, idx);
         bxinfo = brcmf_chip_core_read32(cr4, ARMCR4_BANKINFO);
         memsize += ((bxinfo & ARMCR4_BSZ_MASK) + 1) * ARMCR4_BSZ_MULT;
+        brcmf_dbg(TEMP, "memsize %d, bxinfo 0x%x", memsize, bxinfo);
     }
+    brcmf_dbg(TEMP, "memsize 0x%x", memsize);
 
     return memsize;
 }
@@ -675,10 +697,11 @@ static uint32_t brcmf_chip_tcm_rambase(struct brcmf_chip_priv* ci) {
     case BRCM_CC_43569_CHIP_ID:
     case BRCM_CC_43570_CHIP_ID:
     case BRCM_CC_4358_CHIP_ID:
-    case BRCM_CC_4359_CHIP_ID:
     case BRCM_CC_43602_CHIP_ID:
     case BRCM_CC_4371_CHIP_ID:
         return 0x180000;
+    case BRCM_CC_4359_CHIP_ID:
+        return 0x160000;
     case BRCM_CC_43465_CHIP_ID:
     case BRCM_CC_43525_CHIP_ID:
     case BRCM_CC_4365_CHIP_ID:
@@ -693,6 +716,7 @@ static uint32_t brcmf_chip_tcm_rambase(struct brcmf_chip_priv* ci) {
     return 0;
 }
 
+bool gl_chip_is_4359; // TODO(cphoenix): Put this in the right data structure.
 static zx_status_t brcmf_chip_get_raminfo(struct brcmf_chip_priv* ci) {
     struct brcmf_core_priv* mem_core;
     struct brcmf_core* mem;
@@ -700,7 +724,19 @@ static zx_status_t brcmf_chip_get_raminfo(struct brcmf_chip_priv* ci) {
     mem = brcmf_chip_get_core(&ci->pub, CHIPSET_ARM_CR4_CORE);
     if (mem) {
         mem_core = containerof(mem, struct brcmf_core_priv, pub);
+        if (mem_core->chip->pub.chip == 0x4359) {
+            gl_chip_is_4359 = true;
+            brcmf_dbg(TEMP, "Setting 4359 to true");
+            ci->pub.ramsize = 0xe000;
+            ci->pub.rambase = 0x160000;
+            ci->pub.srsize = 0; // TODO - probably wrong
+            brcmf_dbg(TEMP, "4359: hardcoding ramsize 0x%x, rambase 0x%x, srsize 0x%x",
+                      ci->pub.ramsize, ci->pub.rambase, ci->pub.srsize);
+            return ZX_OK;
+        }
         ci->pub.ramsize = brcmf_chip_tcm_ramsize(mem_core);
+        brcmf_dbg(TEMP, "ramsize %d in mem", ci->pub.ramsize);
+        brcmf_dbg(TEMP, "chip ID is %d 0x%x", mem_core->chip->pub.chip, mem_core->chip->pub.chip);
         ci->pub.rambase = brcmf_chip_tcm_rambase(ci);
         if (!ci->pub.rambase) {
             brcmf_err("RAM base not provided with ARM CR4 core\n");
@@ -711,6 +747,7 @@ static zx_status_t brcmf_chip_get_raminfo(struct brcmf_chip_priv* ci) {
         if (mem) {
             mem_core = containerof(mem, struct brcmf_core_priv, pub);
             ci->pub.ramsize = brcmf_chip_sysmem_ramsize(mem_core);
+            brcmf_dbg(TEMP, "ramsize %d in SYS_get_core", ci->pub.ramsize);
             ci->pub.rambase = brcmf_chip_tcm_rambase(ci);
             if (!ci->pub.rambase) {
                 brcmf_err("RAM base not provided with ARM CA7 core\n");
@@ -724,6 +761,7 @@ static zx_status_t brcmf_chip_get_raminfo(struct brcmf_chip_priv* ci) {
             }
             mem_core = containerof(mem, struct brcmf_core_priv, pub);
             brcmf_chip_socram_ramsize(mem_core, &ci->pub.ramsize, &ci->pub.srsize);
+            brcmf_dbg(TEMP, "ramsize %d in INTERNAL_get_core", ci->pub.ramsize);
         }
     }
     brcmf_dbg(INFO, "RAM: base=0x%x size=%d (0x%x) sr=%d (0x%x)\n", ci->pub.rambase,
@@ -1131,14 +1169,15 @@ void brcmf_chip_detach(struct brcmf_chip* pub) {
 struct brcmf_core* brcmf_chip_get_core(struct brcmf_chip* pub, uint16_t coreid) {
     struct brcmf_chip_priv* chip;
     struct brcmf_core_priv* core;
-
+brcmf_dbg(TEMP, "Enter, coreid %d", coreid);
     chip = containerof(pub, struct brcmf_chip_priv, pub);
     list_for_every_entry(&chip->cores, core, struct brcmf_core_priv, list) {
         if (core->pub.id == coreid) {
+            brcmf_dbg(TEMP, "Found");
             return &core->pub;
         }
     }
-
+brcmf_dbg(TEMP, "Not found");
     return NULL;
 }
 
@@ -1189,7 +1228,9 @@ void brcmf_chip_resetcore(struct brcmf_core* pub, uint32_t prereset, uint32_t re
     struct brcmf_core_priv* core;
 
     core = containerof(pub, struct brcmf_core_priv, pub);
+    brcmf_dbg(TEMP, "->resetcore");
     core->chip->resetcore(core, prereset, reset, postreset);
+    brcmf_dbg(TEMP, "<-resetcore");
 }
 
 static void brcmf_chip_cm3_set_passive(struct brcmf_chip_priv* chip) {
@@ -1219,6 +1260,7 @@ static void brcmf_chip_cm3_set_passive(struct brcmf_chip_priv* chip) {
 
 static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv* chip) {
     struct brcmf_core* core;
+    brcmf_dbg(TRACE, "Enter\n");
 
     core = brcmf_chip_get_core(&chip->pub, CHIPSET_INTERNAL_MEM_CORE);
     if (!brcmf_chip_iscoreup(core)) {
@@ -1230,6 +1272,7 @@ static bool brcmf_chip_cm3_set_active(struct brcmf_chip_priv* chip) {
 
     core = brcmf_chip_get_core(&chip->pub, CHIPSET_ARM_CM3_CORE);
     brcmf_chip_resetcore(core, 0, 0, 0);
+    brcmf_dbg(TRACE, "Ex\n");
 
     return true;
 }
@@ -1253,12 +1296,14 @@ static inline void brcmf_chip_cr4_set_passive(struct brcmf_chip_priv* chip) {
 
 static bool brcmf_chip_cr4_set_active(struct brcmf_chip_priv* chip, uint32_t rstvec) {
     struct brcmf_core* core;
+    brcmf_dbg(TRACE, "Enter\n");
 
     chip->ops->activate(chip->ctx, &chip->pub, rstvec);
 
     /* restore ARM */
     core = brcmf_chip_get_core(&chip->pub, CHIPSET_ARM_CR4_CORE);
     brcmf_chip_resetcore(core, ARMCR4_BCMA_IOCTL_CPUHALT, 0, 0);
+    brcmf_dbg(TRACE, "Ex\n");
 
     return true;
 }
@@ -1275,12 +1320,14 @@ static inline void brcmf_chip_ca7_set_passive(struct brcmf_chip_priv* chip) {
 
 static bool brcmf_chip_ca7_set_active(struct brcmf_chip_priv* chip, uint32_t rstvec) {
     struct brcmf_core* core;
+    brcmf_dbg(TRACE, "Enter\n");
 
     chip->ops->activate(chip->ctx, &chip->pub, rstvec);
 
     /* restore ARM */
     core = brcmf_chip_get_core(&chip->pub, CHIPSET_ARM_CA7_CORE);
     brcmf_chip_resetcore(core, ARMCR4_BCMA_IOCTL_CPUHALT, 0, 0);
+    brcmf_dbg(TRACE, "Ex\n");
 
     return true;
 }

@@ -140,6 +140,14 @@
 /* Address bits from SBADDR regs */
 #define SBSDIO_SBWINDOW_MASK 0xffff8000
 
+#define SBSDIO_SB_OFT_ADDR_MASK_RW    0x000000FF
+#define SBSDIO_SB_OFT_ADDR_LIMIT_RW   0x00000100
+#define SBSDIO_SBWINDOW_MASK_RW       0xffffff00
+/*
+#define SBSDIO_SB_OFT_ADDR_MASK_RW    0x07FFF
+#define SBSDIO_SB_OFT_ADDR_LIMIT_RW   0x08000
+#define SBSDIO_SBWINDOW_MASK_RW       0xffff8000
+*/
 #define SDIOH_READ 0  /* Read request */
 #define SDIOH_WRITE 1 /* Write request */
 

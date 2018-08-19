@@ -24,7 +24,7 @@ driver_module("brcmfmac_driver") {
   defines = [
     "CONFIG_BRCMFMAC_USB",
     # DNS if CONFIG_BRCMFMAC_SDIO is defined!
-    # "CONFIG_BRCMFMAC_SDIO",
+     "CONFIG_BRCMFMAC_SDIO",
     "CONFIG_BRCMFMAC_PCIE",
   ]
 
@@ -111,6 +111,10 @@ if (internal_access) {
     sources = [
       "firmware/brcmfmac43242a.bin",
       "firmware/brcmfmac4356-pcie.bin",
+      "firmware/brcmfmac4356-sdio.bin",
+      "firmware/brcmfmac4356-sdio.txt",
+      "firmware/brcmfmac4359-sdio.bin",
+      "firmware/brcmfmac4359-sdio.txt",
     ]
     outputs = [
       "$root_out_dir/firmware/brcmfmac/{{source_file_part}}",
@@ -184,6 +188,18 @@ package("brcmfmac") {
     libraries = [
       {
         name = "firmware/brcmfmac/brcmfmac4356-pcie.bin"
+      },
+      {
+        name = "firmware/brcmfmac/brcmfmac4356-sdio.bin"
+      },
+      {
+        name = "firmware/brcmfmac/brcmfmac4356-sdio.txt"
+      },
+      {
+        name = "firmware/brcmfmac/brcmfmac4359-sdio.bin"
+      },
+      {
+        name = "firmware/brcmfmac/brcmfmac4359-sdio.txt"
       },
       {
         name = "firmware/brcmfmac/brcmfmac43242a.bin"

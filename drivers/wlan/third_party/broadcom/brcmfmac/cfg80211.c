@@ -1890,20 +1890,20 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
 
     brcmf_dbg(INFO, "ie (%p), ie_len (%zd)\n", sme->ie, (ssize_t)sme->ie_len);
 
-    err = brcmf_set_wpa_version(ndev, sme);
+    err = brcmf_set_wpa_version(ndev, sme); // wpa_auth
     if (err != ZX_OK) {
         brcmf_err("wl_set_wpa_version failed (%d)\n", err);
         goto done;
     }
 
-    sme->auth_type = brcmf_war_auth_type(ifp, sme->auth_type);
+    sme->auth_type = brcmf_war_auth_type(ifp, sme->auth_type); // auth
     err = brcmf_set_auth_type(ndev, sme);
     if (err != ZX_OK) {
         brcmf_err("wl_set_auth_type failed (%d)\n", err);
         goto done;
     }
 
-    err = brcmf_set_wsec_mode(ndev, sme);
+    err = brcmf_set_wsec_mode(ndev, sme); // wsec
     if (err != ZX_OK) {
         brcmf_err("wl_set_set_cipher failed (%d)\n", err);
         goto done;
@@ -1914,12 +1914,13 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
         brcmf_err("wl_set_key_mgmt failed (%d)\n", err);
         goto done;
     }
-
+brcmf_dbg(TEMP, "A");
     err = brcmf_set_sharedkey(ndev, sme);
     if (err != ZX_OK) {
         brcmf_err("brcmf_set_sharedkey failed (%d)\n", err);
         goto done;
     }
+brcmf_dbg(TEMP, "B");
 
     if (sme->crypto.psk) {
         if (WARN_ON(profile->use_fwsup != BRCMF_PROFILE_FWSUP_NONE)) {
@@ -1929,6 +1930,7 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
         brcmf_dbg(INFO, "using PSK offload\n");
         profile->use_fwsup = BRCMF_PROFILE_FWSUP_PSK;
     }
+brcmf_dbg(TEMP, "C");
 
     if (profile->use_fwsup != BRCMF_PROFILE_FWSUP_NONE) {
         /* enable firmware supplicant for this interface */
@@ -1938,6 +1940,7 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
             goto done;
         }
     }
+brcmf_dbg(TEMP, "D");
 
     if (profile->use_fwsup == BRCMF_PROFILE_FWSUP_PSK) {
         err = brcmf_set_pmk(ifp, sme->crypto.psk, BRCMF_WSEC_MAX_PSK_LEN);
@@ -1945,6 +1948,7 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
             goto done;
         }
     }
+brcmf_dbg(TEMP, "E");
 
     /* Join with specific BSSID and cached SSID
      * If SSID is zero join based on BSSID only
@@ -1965,6 +1969,7 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
     if (ssid_len < IEEE80211_MAX_SSID_LEN) {
         brcmf_dbg(CONN, "SSID \"%s\", len (%d)\n", ext_join_params->ssid_le.SSID, ssid_len);
     }
+brcmf_dbg(TEMP, "F");
 
     /* Set up join scan parameters */
     ext_join_params->scan_le.scan_type = -1;
@@ -1997,8 +2002,9 @@ zx_status_t brcmf_cfg80211_connect(struct wiphy* wiphy, struct net_device* ndev,
         ext_join_params->scan_le.passive_time = -1;
         ext_join_params->scan_le.nprobes = -1;
     }
+brcmf_dbg(TEMP, "G");
 
-    brcmf_set_join_pref(ifp, &sme->bss_select);
+    brcmf_set_join_pref(ifp, &sme->bss_select); // join_pref
 
     err = brcmf_fil_bsscfg_data_set(ifp, "join", ext_join_params, join_params_size);
     free(ext_join_params);
@@ -3132,7 +3138,7 @@ static void brcmf_init_escan(struct brcmf_cfg80211_info* cfg) {
     cfg->escan_info.escan_state = WL_ESCAN_STATE_IDLE;
     /* Init scan_timeout timer */
     cfg->escan_timeout.data = cfg;
-    brcmf_timer_init(&cfg->escan_timeout, brcmf_escan_timeout);
+    brcmf_timer_init(&cfg->escan_timeout, brcmf_escan_timeout, cfg);
     workqueue_init_work(&cfg->escan_timeout_work, brcmf_cfg80211_escan_timeout_worker);
 }
 
@@ -5627,12 +5633,16 @@ static void init_vif_event(struct brcmf_cfg80211_vif_event* event) {
     mtx_init(&event->vif_event_lock, mtx_plain);
 }
 
+extern bool gl_chip_is_4359;
 static zx_status_t brcmf_dongle_roam(struct brcmf_if* ifp) {
     zx_status_t err;
     uint32_t bcn_timeout;
     uint32_t roamtrigger[2];
     uint32_t roam_delta[2];
 
+    if (gl_chip_is_4359) {
+        return 0;
+    }
     /* Configure beacon timeout value based upon roaming setting */
     if (ifp->drvr->settings->roamoff) {
         bcn_timeout = BRCMF_DEFAULT_BCN_TIMEOUT_ROAM_OFF;

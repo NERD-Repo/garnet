@@ -379,6 +379,16 @@ void __brcmf_err(const char* func, const char* fmt, ...) {
 #if defined(CONFIG_BRCM_TRACING) || defined(CONFIG_BRCMDBG)
 void __brcmf_dbg(uint32_t filter, const char* func, const char* fmt, ...) {
     va_list args;
+  int limit = 1000;
+  static int lines_printed = 0;
+  if (lines_printed == limit) {
+    zxlogf(INFO, "%d lines printed, stopping output\n", lines_printed);
+  }
+  if (lines_printed > limit) {
+    return;
+  }
+  lines_printed++;
+
 
     if (true || brcmf_msg_filter & filter) {
         // TODO(cphoenix): After bringup: Re-enable filter check
