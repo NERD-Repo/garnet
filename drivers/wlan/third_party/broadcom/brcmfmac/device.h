@@ -120,7 +120,8 @@ struct brcmf_device {
     void* parent;
     struct brcmf_bus* bus;
     zx_device_t* zxdev;
-    zx_device_t* child_zxdev;
+    zx_device_t* phy_zxdev;
+    zx_device_t* if_zxdev;
 };
 
 static inline struct brcmf_bus* dev_to_bus(struct brcmf_device* dev) {
@@ -169,10 +170,17 @@ struct brcmf_firmware {
     void* data;
 };
 
+typedef struct wlanif_impl_ifc wlanif_impl_ifc_t;
+
+// Used in net_device.flags to indicate interface is up.
+#define IFF_UP 1
+
 struct net_device {
     struct wireless_dev* ieee80211_ptr;
-    const struct net_device_ops* netdev_ops;
-    const struct ethtool_ops* ethtool_ops;
+    bool initialized_for_ap;
+    wlanif_impl_ifc_t* if_callbacks;
+
+    void* if_callback_cookie;
     uint8_t dev_addr[ETH_ALEN];
     char name[123];
     void* priv;

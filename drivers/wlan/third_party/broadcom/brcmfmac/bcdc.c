@@ -174,7 +174,8 @@ static zx_status_t brcmf_proto_bcdc_query_dcmd(struct brcmf_pub* drvr, int ifidx
     int rxlen;
     uint32_t id, flags;
 
-    //brcmf_dbg(BCDC, "Enter, cmd %d len %d\n", cmd, len);
+    brcmf_dbg(BCDC, "Enter, cmd %d len %d, ifidx %d\n", cmd, len, ifidx);
+    PAUSE; brcmf_dbg(BCDC, "aaaEnter, cmd %d len %d, ifidx %d\n", cmd, len, ifidx);
 
     *fwerr = ZX_OK;
     ret = brcmf_proto_bcdc_msg(drvr, ifidx, cmd, buf, len, false);
@@ -212,6 +213,7 @@ retry:
             len = rxlen;
         }
         memcpy(buf, info, len);
+        //brcmf_hexdump("query dcmd", buf, len);
     }
 
     ret = ZX_OK;
@@ -232,7 +234,8 @@ static zx_status_t brcmf_proto_bcdc_set_dcmd(struct brcmf_pub* drvr, int ifidx, 
     uint32_t flags, id;
     int rxlen_out;
 
-    //brcmf_dbg(BCDC, "Enter, cmd %d len %d\n", cmd, len);
+    brcmf_dbg(BCDC, "Enter, cmd %d len %d ifidx %d\n", cmd, len, ifidx);
+    brcmf_hexdump("set dcmd", buf, len);
 
     *fwerr = ZX_OK;
     ret = brcmf_proto_bcdc_msg(drvr, ifidx, cmd, buf, len, true);
@@ -295,7 +298,7 @@ static zx_status_t brcmf_proto_bcdc_hdrpull(struct brcmf_pub* drvr, bool do_fws,
     struct brcmf_proto_bcdc_header* h;
     struct brcmf_if* tmp_if;
 
-    brcmf_dbg(BCDC, "Enter\n");
+    //brcmf_dbg(BCDC, "Enter\n");
 
     /* Pop BCDC header used to convey priority for buses that don't */
     if (pktbuf->len <= BCDC_HEADER_LEN) {

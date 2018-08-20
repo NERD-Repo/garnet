@@ -110,11 +110,11 @@ __PRINTFLIKE(3, 4) void __brcmf_dbg(uint32_t filter, const char* func, const cha
 // probably too spammy.
 #define brcmf_dbg_hex_dump(test, data, len, fmt, ...)                \
     do {                                                             \
-        brcmf_hexdump((void*)data, len);                             \
+        brcmf_hexdump("dbg_hex_dump", (void*)data, len);                             \
         if (test) brcmu_dbg_hex_dump(data, len, fmt, ##__VA_ARGS__); \
     } while (0)
 
-void brcmf_hexdump(const void* buf, size_t len);
+void brcmf_hexdump(char* prefix, const void* buf, size_t len);
 
 void brcmf_alphadump(const void* buf, size_t len);
 

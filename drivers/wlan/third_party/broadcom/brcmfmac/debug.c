@@ -26,7 +26,7 @@
 
 static zx_handle_t root_folder;
 
-void brcmf_hexdump(const void* buf, size_t len) {
+void brcmf_hexdump(char* prefix, const void* buf, size_t len) {
     if (len > 4096) {
         brcmf_dbg(INFO, "Truncating hexdump to 4096 bytes");
         len = 4096;
@@ -35,15 +35,17 @@ void brcmf_hexdump(const void* buf, size_t len) {
         brcmf_dbg(INFO, "Empty hexdump %p", buf);
         return;
     }
-    char output[120];
+    char output[150];
     uint8_t* bytes = (uint8_t*)buf;
-    size_t i;
+    size_t i = 0;
     char* next = output;
+    next += min(snprintf(next, 30, "%s %4lx: ", prefix, i), 30);
     for (i = 0; i < len; i++) {
         next += sprintf(next, "%02x ", *bytes++);
         if ((i % 32) == 31) {
             brcmf_dbg(INFO, "%s", output);
             next = output;
+            next += sprintf(next, "%s %4lx: ", prefix, i + 1);
         }
     }
     if ((i % 32) != 0) {

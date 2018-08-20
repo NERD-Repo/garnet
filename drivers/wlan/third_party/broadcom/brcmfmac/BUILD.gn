@@ -29,6 +29,8 @@ driver_module("brcmfmac_driver") {
   ]
 
   sources = [
+    "sdio_test.c",
+    
     "bcdc.c",
     "bcdc.h",
     "bcmsdh.c",

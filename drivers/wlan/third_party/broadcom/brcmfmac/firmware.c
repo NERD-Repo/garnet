@@ -589,6 +589,98 @@ zx_status_t brcmf_fw_get_firmwares(struct brcmf_device* dev, uint16_t flags, con
     return brcmf_fw_get_firmwares_pcie(dev, flags, code, nvram, fw_cb, 0, 0);
 }
 
+
+
+
+// This is temp/debugging code, but may be useful cleanup. The whole iterated-callback structure
+// is a holdover from Linux.
+
+
+zx_status_t brcmf_just_load_firmware_file(struct brcmf_device* dev, const char* file_name,
+                                          void** data_out, size_t* data_size_out) {
+    zx_status_t result;
+    zx_handle_t fw_vmo;
+
+    *data_out = NULL;
+    result = load_firmware(dev->zxdev, file_name, &fw_vmo, data_size_out);
+    if (result != ZX_OK) {
+        brcmf_dbg(TEMP, "Load_firmware in just_get failed: %d", result);
+        return result;
+    }
+    if (*data_size_out == 0) {
+        zx_handle_close(fw_vmo);
+        brcmf_dbg(TEMP, "Load_firmware in just_get got code size 0: %d", result);
+        return ZX_ERR_IO_DATA_INTEGRITY;
+    }
+    *data_out = malloc(*data_size_out);
+    if (*data_out == NULL) {
+        zx_handle_close(fw_vmo);
+        brcmf_dbg(TEMP, "Load_firmware in just_get couldn't malloc");
+        return ZX_ERR_NO_MEMORY;
+    }
+    // TODO(cphoenix): Use vmar_map/destroy to save an unnecessary copy
+    result = zx_vmo_read(fw_vmo, *data_out, 0, *data_size_out);
+    zx_handle_close(fw_vmo);
+    if (result != ZX_OK) {
+        brcmf_dbg(TEMP, "Load_firmware in just_get couldn't copy from VMO: %d", result);
+        return result;
+    }
+    return ZX_OK;
+}
+
+// Given code_name and nvram_name (or NULL), grabs the desired files, and converts the NVRAM file.
+// Eventually, any non-NULL pointers it returns must be free()'d.
+zx_status_t brcmf_just_get_firmware(struct brcmf_device* dev, const char* code_name,
+                                   const char* nvram_name, void** code_out, size_t* code_size_out,
+                                   void** nvram_out, size_t* nvram_size_out) {
+    zx_status_t result;
+
+    *code_out = NULL;
+    *nvram_out = NULL;
+
+    result = brcmf_just_load_firmware_file(dev, code_name, code_out, code_size_out);
+    if (result != ZX_OK) {
+        free(*code_out);
+        *code_out = NULL;
+        return ZX_ERR_BAD_PATH;
+    }
+    if (nvram_name == NULL) {
+        return ZX_OK;
+    }
+
+    size_t raw_nvram_size;
+    void* raw_nvram_data;
+    result = brcmf_just_load_firmware_file(dev, nvram_name, &raw_nvram_data, &raw_nvram_size);
+
+    // If you're using this for real, see bcm47xx_nvram_get_contents() and raw_nvram in the
+    // functions this was derived from.
+
+    uint32_t new_nvram_size;
+    *nvram_out = brcmf_fw_nvram_strip(raw_nvram_data, raw_nvram_size, &new_nvram_size, 0, 0);
+    *nvram_size_out = new_nvram_size;
+    free(raw_nvram_data);
+
+    if (*nvram_out == NULL) {
+        brcmf_err("NVRAM Failed to convert");
+        return ZX_ERR_BAD_PATH;
+    } else {
+        brcmf_dbg(TEMP, "nvram converted size is %ld", *nvram_size_out);
+    }
+    return ZX_OK;
+}
+
+
+
+
+
+
+// End of temp/debugging code.
+
+
+
+
+
+
 zx_status_t brcmf_fw_map_chip_to_name(uint32_t chip, uint32_t chiprev,
                                       struct brcmf_firmware_mapping mapping_table[],
                                       uint32_t table_size, char fw_name[BRCMF_FW_NAME_LEN],

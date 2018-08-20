@@ -199,16 +199,12 @@ LINUX_FUNCVI(cfg80211_ready_on_channel)
 LINUX_FUNCcVS(cfg80211_get_p2p_attr) // TODO(cphoenix): Can this return >0? If so, adjust usage.
 LINUX_FUNCVI(cfg80211_remain_on_channel_expired)
 LINUX_FUNCVI(cfg80211_unregister_wdev)
-LINUX_FUNCVI(cfg80211_sched_scan_stopped)
 LINUX_FUNCVI(cfg80211_rx_mgmt)
 LINUX_FUNCVI(cfg80211_mgmt_tx_status)
 LINUX_FUNCVI(cfg80211_check_combinations)
-LINUX_FUNCVI(cfg80211_scan_done)
 LINUX_FUNCVI(cfg80211_disconnected)
 LINUX_FUNCVI(cfg80211_roamed)
 LINUX_FUNCVI(cfg80211_connect_done)
-LINUX_FUNCVV(cfg80211_inform_bss)
-LINUX_FUNCVV(cfg80211_put_bss)
 LINUX_FUNCVV(cfg80211_new_sta)
 LINUX_FUNCVV(cfg80211_del_sta)
 LINUX_FUNCVV(cfg80211_ibss_joined)
@@ -219,8 +215,6 @@ LINUX_FUNCII(ieee80211_is_mgmt)
 LINUX_FUNCII(ieee80211_is_action)
 LINUX_FUNCII(ieee80211_is_probe_resp)
 LINUX_FUNCVS(wiphy_register)
-LINUX_FUNCVI(netif_rx)
-LINUX_FUNCVI(netif_rx_ni)
 LINUX_FUNCVI(netif_carrier_off)
 
 LINUX_FUNCVI(seq_printf)
@@ -258,6 +252,9 @@ LINUX_FUNCVI(dma_unmap_single) // PCI only
 
 #define KBUILD_MODNAME "brcmfmac"
 #define BRCMFMAC_PDATA_NAME ("pdata name")
+
+#define IEEE80211_MAX_SSID_LEN (32)
+
 enum {
     IEEE80211_P2P_ATTR_DEVICE_INFO = 2,
     IEEE80211_P2P_ATTR_DEVICE_ID = 3,
@@ -269,7 +266,6 @@ enum {
     IFNAMSIZ = (16),
     WLAN_PMKID_LEN = (16),
     WLAN_MAX_KEY_LEN = (128),
-    IEEE80211_MAX_SSID_LEN = (32),
     IRQF_SHARED, // TODO(cphoenix) - Used only in PCI
     IEEE80211_RATE_SHORT_PREAMBLE,
     WLAN_CIPHER_SUITE_AES_CMAC,
@@ -336,8 +332,6 @@ enum {
     CFG80211_BSS_FTYPE_UNKNOWN,
     WLAN_CAPABILITY_IBSS,
     UPDATE_ASSOC_IES,
-    WLAN_STATUS_SUCCESS,
-    WLAN_STATUS_AUTH_TIMEOUT,
     IEEE80211_HT_CAP_SGI_40,
     IEEE80211_HT_CAP_SUP_WIDTH_20_40,
     IEEE80211_HT_CAP_DSSSCCK40,
@@ -374,7 +368,6 @@ enum {
     NET_NETBUF_PAD,
     IFF_PROMISC,
     NETDEV_TX_OK,
-    IFF_UP,
     NETIF_F_IP_CSUM,
     NETREG_REGISTERED,
     CHECKSUM_PARTIAL,
@@ -436,6 +429,7 @@ enum nl80211_band {
     NL80211_BAND_5GHZ,
     NL80211_BAND_60GHZ,
 };
+#define NL80211_BAND_COUNT (NL80211_BAND_60GHZ + 1)
 
 #define CONFIG_BRCMDBG 0
 #define CONFIG_BRCM_TRACING 0
@@ -535,12 +529,14 @@ struct wiphy {
     int max_sched_scan_ie_len;
     int max_match_sets;
     int max_sched_scan_ssids;
+    bool scan_busy;
+    uint64_t scan_txn_id;
     uint32_t rts_threshold;
     uint32_t frag_threshold;
     uint32_t retry_long;
     uint32_t retry_short;
     uint32_t interface_modes;
-    struct ieee80211_supported_band* bands[5];
+    struct ieee80211_supported_band* bands[NL80211_BAND_COUNT];
     int n_iface_combinations;
     struct ieee80211_iface_combination* iface_combinations;
     uint32_t max_scan_ssids;
@@ -697,10 +693,6 @@ struct iface_combination_params {
     int iftype_num[555];
 };
 
-struct cfg80211_scan_info {
-    int aborted;
-};
-
 struct cfg80211_ibss_params {
     char* ssid;
     int privacy;
@@ -712,42 +704,6 @@ struct cfg80211_ibss_params {
     uint8_t* ie;
     int ie_len;
     int basic_rates;
-};
-
-struct cfg80211_bss_selection {
-    int behaviour;
-    struct {
-        int band_pref;
-        struct {
-            int band;
-            int delta;
-        } adjust;
-    } param;
-};
-
-struct cfg80211_connect_params {
-    struct {
-        int wpa_versions;
-        int ciphers_pairwise[555];
-        int n_ciphers_pairwise;
-        int cipher_group;
-        int n_akm_suites;
-        int akm_suites[555];
-        uint8_t* psk;
-    } crypto;
-    int auth_type;
-    uint8_t* ie;
-    int ie_len;
-    int privacy;
-    uint32_t key_len;
-    int key_idx;
-    void* key;
-    int want_1x;
-    struct ieee80211_channel* channel;
-    uint8_t* ssid;
-    int ssid_len;
-    uint8_t* bssid;
-    struct cfg80211_bss_selection bss_select;
 };
 
 struct key_params {
@@ -919,15 +875,6 @@ struct cfg80211_ops { // Most of these return zx_status_t
 
 struct cfg80211_roam_info {
     struct ieee80211_channel* channel;
-    uint8_t* bssid;
-    void* req_ie;
-    int req_ie_len;
-    void* resp_ie;
-    int resp_ie_len;
-};
-
-struct cfg80211_connect_resp_params {
-    int status;
     uint8_t* bssid;
     void* req_ie;
     int req_ie_len;

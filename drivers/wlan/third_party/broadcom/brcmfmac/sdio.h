@@ -190,7 +190,7 @@ struct brcmf_sdiod_freezer;
 struct brcmf_sdio_dev {
     uint32_t manufacturer_id;
     uint32_t product_id;
-    sdio_protocol_t* sdio_proto;
+    sdio_protocol_t sdio_proto;
     zx_handle_t irq_handle;
     thrd_t isr_thread;
     struct brcmf_device dev;

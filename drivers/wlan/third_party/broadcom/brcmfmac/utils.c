@@ -300,7 +300,7 @@ void brcmu_dbg_hex_dump(const void* data, size_t size, const char* fmt, ...) {
 
     va_end(args);
 
-    brcmf_hexdump(data, size);
+    brcmf_hexdump("dbg_hex_dump", data, size);
 }
 
 #endif /* defined(DEBUG) */

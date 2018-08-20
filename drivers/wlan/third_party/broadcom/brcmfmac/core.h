@@ -23,6 +23,7 @@
 
 #include <netinet/if_ether.h>
 #include <lib/sync/completion.h>
+#include <wlan/protocol/if-impl.h>
 
 #include <stdatomic.h>
 #include <threads.h>
@@ -224,5 +225,9 @@ void brcmf_netif_rx(struct brcmf_if* ifp, struct brcmf_netbuf* netbuf);
 void brcmf_net_setcarrier(struct brcmf_if* ifp, bool on);
 zx_status_t brcmf_core_init(zx_device_t* dev);
 void brcmf_core_exit(void);
+
+/* Ethernet ops */
+zx_status_t brcmf_netdev_open(struct net_device* ndev);
+void brcmf_netdev_start_xmit(struct net_device* ndev, ethmac_netbuf_t* netbuf);
 
 #endif /* BRCMFMAC_CORE_H */

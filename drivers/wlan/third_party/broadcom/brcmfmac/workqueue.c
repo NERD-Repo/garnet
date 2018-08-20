@@ -158,6 +158,7 @@ static void* workqueue_runner(void* arg) {
     while(1) {
         sync_completion_wait(&workqueue->work_ready, ZX_TIME_INFINITE);
         sync_completion_reset(&workqueue->work_ready);
+        brcmf_dbg(TEMP, "Got work!");
         struct work_struct* work;
         list_node_t* item;
         mtx_lock(&workqueue->lock);

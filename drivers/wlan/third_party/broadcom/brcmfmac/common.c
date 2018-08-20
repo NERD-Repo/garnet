@@ -377,9 +377,10 @@ void __brcmf_err(const char* func, const char* fmt, ...) {
 #endif
 
 #if defined(CONFIG_BRCM_TRACING) || defined(CONFIG_BRCMDBG)
+extern atomic_int dw_count;
 void __brcmf_dbg(uint32_t filter, const char* func, const char* fmt, ...) {
     va_list args;
-  int limit = 1000;
+  int limit = 5000;
   static int lines_printed = 0;
   if (lines_printed == limit) {
     zxlogf(INFO, "%d lines printed, stopping output\n", lines_printed);
@@ -401,7 +402,7 @@ void __brcmf_dbg(uint32_t filter, const char* func, const char* fmt, ...) {
         } else if (n_printed > 0 && msg[n_printed - 1] == '\n') {
             msg[--n_printed] = 0;
         }
-        zxlogf(INFO, "brcmfmac (%s): '%s'\n", func, msg);
+        zxlogf(INFO, "brcmfmac (%s)(%d): '%s'\n", func, atomic_load(&dw_count), msg);
     }
 }
 #endif
@@ -499,11 +500,13 @@ zx_status_t brcmfmac_module_init(zx_device_t* device) {
     memset(&async_config, 0, sizeof(async_config));
     err = async_loop_create(&async_config, &async_loop);
     if (err != ZX_OK) {
+        brcmf_dbg(TEMP, "Returning err %d", err);
         return err;
     }
     err = async_loop_start_thread(async_loop, "async_thread", NULL);
     if (err != ZX_OK) {
         async_loop_destroy(async_loop);
+        brcmf_dbg(TEMP, "Returning err %d", err);
         return err;
     }
     default_dispatcher = async_loop_get_dispatcher(async_loop);
@@ -515,6 +518,9 @@ zx_status_t brcmfmac_module_init(zx_device_t* device) {
     err = brcmf_core_init(device);
     if (err != ZX_OK) {
         brcmf_debugfs_exit();
+        brcmf_dbg(TEMP, "Returning err %d", err);
+    } else {
+        brcmf_dbg(TEMP, "Successfully exiting driver init");
     }
 
     return err;
