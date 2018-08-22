@@ -1,0 +1,38 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/rust/rustc_binary.gni")
+import("//build/package.gni")
+
+rustc_binary("bin") {
+  name = "open"
+  edition = "2018"
+
+  deps = [
+    "//garnet/public/fidl/fuchsia.developer.tiles:fuchsia.developer.tiles-rustc",
+    "//garnet/public/fidl/fuchsia.developer.open:fuchsia.developer.open-rustc",
+    "//garnet/public/lib/fidl/rust/fidl",
+    "//garnet/public/rust/crates/fuchsia-app",
+    "//garnet/public/rust/crates/fuchsia-async",
+    "//garnet/public/rust/crates/fuchsia-zircon",
+    "//third_party/rust-crates/rustc_deps:clap",
+    "//third_party/rust-crates/rustc_deps:failure",
+    "//third_party/rust-crates/rustc_deps:futures-preview",
+  ]
+}
+
+package("open") {
+  deprecated_system_image = true
+
+  deps = [
+    ":bin",
+  ]
+
+  binaries = [
+    {
+      name = "rust_crates/open"
+      dest = "open"
+    },
+  ]
+}
