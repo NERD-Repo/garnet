@@ -23,8 +23,7 @@ use fidl_fuchsia_bluetooth_control::{
 use fidl_fuchsia_bluetooth_bredr::ProfileMarker;
 use fidl_fuchsia_bluetooth_gatt::Server_Marker;
 use fidl_fuchsia_bluetooth_host::HostProxy;
-use fidl_fuchsia_bluetooth_le::{CentralProxy, CentralMarker, PeripheralMarker};
-
+use fidl_fuchsia_bluetooth_le::{CentralMarker, PeripheralMarker};
 use fuchsia_bluetooth::{
     self as bt,
     bt_fidl_status,
@@ -361,6 +360,7 @@ impl HostDispatcher {
         }
     }
 
+    /*
     pub async fn connect_le_central(&mut self) -> fidl::Result<Option<CentralProxy>> {
         let adapter = await!(self.on_adapters_found())?;
         let mut adapter = adapter.state.write();
@@ -391,6 +391,7 @@ impl HostDispatcher {
             None => Ok(bt_fidl_status!(BluetoothNotAvailable, "Adapter went away")),
         }
     }
+    */
 
     pub async fn forget(
         &mut self, _device_id: String
@@ -504,6 +505,16 @@ impl HostDispatcher {
 
     pub fn get_remote_devices(&self) -> Vec<RemoteDevice> {
         self.state.read().remote_devices.values().map(|d| clone_remote_device(d)).collect()
+    }
+
+    pub async fn connect(
+        &mut self, device_id: String,
+    ) -> fidl::Result<fidl_fuchsia_bluetooth::Status> {
+        let adapter = await!(self.get_active_adapter())?;
+        match adapter {
+            Some(adapter) => await!(adapter.write().connect(device_id)),
+            None => Ok(bt_fidl_status!(BluetoothNotAvailable, "Adapter went away")),
+        }
     }
 }
 

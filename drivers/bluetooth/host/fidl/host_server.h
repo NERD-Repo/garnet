@@ -28,6 +28,11 @@ namespace bthost {
 
 class GattHost;
 
+enum class ConnectionMode {
+  kManual,
+  kAuto
+};
+
 // Implements the Host FIDL interface. Owns all FIDL connections that have been
 // opened through it.
 class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
@@ -59,6 +64,7 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
       ::fuchsia::bluetooth::control::OutputCapabilityType output,
       ::fidl::InterfaceHandle<::fuchsia::bluetooth::control::PairingDelegate>
           delegate) override;
+	void Connect(::fidl::StringPtr device_id, ConnectCallback callback) override;
 
   void RequestLowEnergyCentral(
       ::fidl::InterfaceRequest<fuchsia::bluetooth::le::Central> central)
@@ -97,7 +103,7 @@ class HostServer : public AdapterServerBase<fuchsia::bluetooth::host::Host>,
   // Called by |adapter()->le_discovery_manager()| when a connection is
   // automatically established to a bonded device in the directed connectable
   // mode.
-  void OnAutoConnect(btlib::gap::LowEnergyConnectionRefPtr conn_ref);
+  void OnConnect(btlib::gap::LowEnergyConnectionRefPtr conn_ref, ConnectionMode mode);
 
   // Called when |server| receives a channel connection error.
   void OnConnectionError(Server* server);

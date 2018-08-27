@@ -32,6 +32,7 @@ using fuchsia::bluetooth::Status;
 using fuchsia::bluetooth::control::AdapterState;
 using fuchsia::bluetooth::control::RemoteDevice;
 using fuchsia::bluetooth::host::BondingData;
+using fidl_helpers::NewFidlError;
 
 HostServer::HostServer(zx::channel channel,
                        fxl::WeakPtr<::btlib::gap::Adapter> adapter,
@@ -66,7 +67,7 @@ HostServer::HostServer(zx::channel channel,
       });
   adapter->set_auto_connect_callback([self](auto conn_ref) {
     if (self) {
-      self->OnAutoConnect(std::move(conn_ref));
+      self->OnConnect(std::move(conn_ref), ConnectionMode::kAuto);
     }
   });
 }
@@ -297,22 +298,26 @@ void HostServer::OnRemoteDeviceBonded(
       fidl_helpers::NewBondingData(*adapter(), remote_device));
 }
 
-void HostServer::OnAutoConnect(btlib::gap::LowEnergyConnectionRefPtr conn_ref) {
+const char* connectionModeString(ConnectionMode mode) {
+  switch (mode) {
+    case ConnectionMode::kManual: return "manually-connected";
+    case ConnectionMode::kAuto: return "auto-connected";
+  }
+}
+
+void HostServer::OnConnect(btlib::gap::LowEnergyConnectionRefPtr conn_ref, ConnectionMode mode) {
   ZX_DEBUG_ASSERT(conn_ref);
 
   const auto& id = conn_ref->device_identifier();
   auto iter = le_connections_.find(id);
   if (iter != le_connections_.end()) {
-    bt_log(WARN, "bt-host",
-           "auto-connected device already connected; reference dropped");
+    bt_log(WARN, "bt-host", "%s device already connected; reference dropped", connectionModeString(mode));
     return;
   }
 
-  bt_log(TRACE, "bt-host", "LE device auto-connected: %s", id.c_str());
+  bt_log(TRACE, "bt-host", "LE device %s: %s ", connectionModeString(mode), id.c_str());
   conn_ref->set_closed_callback([self = weak_ptr_factory_.GetWeakPtr(), id] {
-    if (self) {
-      self->le_connections_.erase(id);
-    }
+    if (self) self->le_connections_.erase(id);
   });
   le_connections_[id] = std::move(conn_ref);
 }
@@ -416,6 +421,45 @@ void HostServer::SetPairingDelegate(
   });
 }
 
+/*
+ * What is this to do -?
+
+ * We want to connect, to either LE or BR/EDR (currently just LE)
+ * We just do a 'simple' connect, we do *not* open any specific channels (e.g. GATT)
+
+ */
+void HostServer::Connect(::fidl::StringPtr device_id, ConnectCallback callback) {
+  auto device = adapter()->remote_device_cache()->FindDeviceById(device_id);
+  if (device) {
+    // TODO(NET-411): What do we return via FIDL if we do 2 (dual-mode) connections?
+    if (device->supportsLe()) {
+      auto self = weak_ptr_factory_.GetWeakPtr();
+      auto onComplete = [self, callback = std::move(callback), peer_id = device_id.get()](auto status, auto conn_ref){
+        if (!status) {
+          ZX_DEBUG_ASSERT(!conn_ref);
+          bt_log(TRACE, "bt-host", "failed to connect to connect to device (id %s)",
+          peer_id.c_str());
+          callback(fidl_helpers::StatusToFidl(status, "failed to connect"));
+        } else {
+          ZX_DEBUG_ASSERT(conn_ref);
+          ZX_DEBUG_ASSERT(peer_id == conn_ref->device_identifier());
+          callback(Status());
+      }
+        self->OnConnect(std::move(conn_ref), ConnectionMode::kManual);
+      };
+      adapter()->le_connection_manager()->Connect(device_id.get(), std::move(onComplete));
+    } else {
+      // TODO(NET-411): implement BR/EDR connect
+      callback( NewFidlError(ErrorCode::NOT_SUPPORTED,
+           "Device does not support LowEnergy connections, \
+           and outgoing Classic connections are not yet supported" ));
+    }
+  } else {
+    // We don't support connections to devices not in our cache
+    callback(NewFidlError(ErrorCode::NOT_FOUND, "Cannot find device with the given ID"));
+  }
+}
+
 void HostServer::RequestLowEnergyCentral(
     fidl::InterfaceRequest<fuchsia::bluetooth::le::Central> request) {
   BindServer<LowEnergyCentralServer>(std::move(request), gatt_host_);
@@ -475,7 +519,6 @@ void HostServer::Close() {
   }
 
   // Drop all connections that are attached to this HostServer.
-  // TODO(NET-1092): Clean up direct connections here as well.
   le_connections_.clear();
 
   // Stop background scan if enabled.

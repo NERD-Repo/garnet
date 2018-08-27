@@ -101,6 +101,9 @@ interface Host {
 
   // TODO(NET-1148): Add Forget() method to remove a device from the cache.
 
+  // Attempt to connect to the remote device with identifier |device_id|.
+  15: Connect(string device_id) -> (fuchsia.bluetooth.Status status);
+
   // Adds existing bonded devices to the host. The host will be configured to automatically connect
   // to these devices when they are in range and connectable. Future connections will be encrypted
   // using the provided bonding data.

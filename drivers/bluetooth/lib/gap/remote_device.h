@@ -208,6 +208,17 @@ class RemoteDevice final {
   // The Bluetooth technologies that are supported by this device.
   TechnologyType technology() const { return technology_; }
 
+  bool supportsLe() const { switch (technology_) {
+    case TechnologyType::kLowEnergy: return true;
+    case TechnologyType::kDualMode: return true;
+    case TechnologyType::kClassic: return false;
+  }}
+  bool supportsBrEdr() const { switch (technology_) {
+    case TechnologyType::kLowEnergy: return false;
+    case TechnologyType::kDualMode: return true;
+    case TechnologyType::kClassic: return true;
+  }}
+
   // The known device address of this device. Depending on the technologies
   // supported by this device this has the following meaning:
   //
