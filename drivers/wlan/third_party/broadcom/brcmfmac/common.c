@@ -377,6 +377,12 @@ void __brcmf_err(const char* func, const char* fmt, ...) {
 #endif
 
 #if defined(CONFIG_BRCM_TRACING) || defined(CONFIG_BRCMDBG)
+
+#include <threads.h>
+
+extern thrd_t gl_interrupt_thread, gl_main_thread, gl_worker_thread, gl_watchdog_thread,
+       gl_bus_watchdog_thread, gl_workqueue_runner_thread;
+
 extern atomic_int dw_count;
 void __brcmf_dbg(uint32_t filter, const char* func, const char* fmt, ...) {
     va_list args;
@@ -402,7 +408,27 @@ void __brcmf_dbg(uint32_t filter, const char* func, const char* fmt, ...) {
         } else if (n_printed > 0 && msg[n_printed - 1] == '\n') {
             msg[--n_printed] = 0;
         }
-        zxlogf(INFO, "brcmfmac (%s)(%d): '%s'\n", func, atomic_load(&dw_count), msg);
+        char namebuf[64];
+        char* name;
+        thrd_t thread = thrd_current();
+        if (thread == gl_interrupt_thread) {
+            name = "intr";
+        } else if (thread == gl_worker_thread) {
+            name = "work";
+        } else if (thread == gl_watchdog_thread) {
+            name = "wdog";
+        } else if (thread == gl_bus_watchdog_thread) {
+            name = "bwdg";
+        } else if (thread == gl_workqueue_runner_thread) {
+            name = "wrun";
+        } else if (thread == gl_main_thread) {
+            name = "main";
+        } else {
+            sprintf(namebuf, "%p", thread);
+            name = namebuf;
+        }
+
+        zxlogf(INFO, "brcmfmac %s (%s)(%d): '%s'\n", name, func, atomic_load(&dw_count), msg);
     }
 }
 #endif

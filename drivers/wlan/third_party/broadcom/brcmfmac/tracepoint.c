@@ -21,6 +21,10 @@
 #ifndef __CHECKER__
 #define CREATE_TRACE_POINTS
 #include "debug.h"
+#include <threads.h>
+
+extern thrd_t gl_interrupt_thread, gl_main_thread, gl_worker_thread, gl_watchdog_thread,
+       gl_bus_watchdog_thread, gl_workqueue_runner_thread;
 
 void __brcmf_err(const char* func, const char* fmt, ...) {
     char msg[512]; // Same value hard-coded throughout devhost.c
@@ -31,10 +35,30 @@ void __brcmf_err(const char* func, const char* fmt, ...) {
     va_end(args);
     if (n_printed < 0) {
         snprintf(msg, 512, "(Formatting error from string '%s')", fmt);
-        } else if (n_printed > 0 && msg[n_printed - 1] == '\n') {
-            msg[--n_printed] = 0;
-        }
-    zxlogf(INFO, "brcmfmac ERROR(%s): '%s'\n", func, msg);
+    } else if (n_printed > 0 && msg[n_printed - 1] == '\n') {
+        msg[--n_printed] = 0;
+    }
+    char namebuf[64];
+    char* name;
+    thrd_t thread = thrd_current();
+    if (thread == gl_interrupt_thread) {
+        name = "intr";
+    } else if (thread == gl_worker_thread) {
+        name = "work";
+    } else if (thread == gl_watchdog_thread) {
+        name = "wdog";
+    } else if (thread == gl_workqueue_runner_thread) {
+        name = "wrun";
+    } else if (thread == gl_bus_watchdog_thread) {
+        name = "bwdg";
+    } else if (thread == gl_main_thread) {
+        name = "main";
+    } else {
+        sprintf(namebuf, "%p", thread);
+        name = namebuf;
+    }
+
+    zxlogf(INFO, "brcmfmac %s ERROR(%s): '%s'\n", name, func, msg);
 }
 
 #endif

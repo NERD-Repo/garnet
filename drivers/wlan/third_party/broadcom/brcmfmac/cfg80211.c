@@ -7027,7 +7027,7 @@ struct brcmf_cfg80211_info* brcmf_cfg80211_attach(struct brcmf_pub* drvr,
         goto ops_out;
     }
     wiphy->ops = ops;
-    wiphy->cfg80211_info = malloc(sizeof(struct brcmf_cfg80211_info));
+    wiphy->cfg80211_info = calloc(1, sizeof(struct brcmf_cfg80211_info));
     if (wiphy->cfg80211_info == NULL) {
         free(wiphy);
         goto ops_out;

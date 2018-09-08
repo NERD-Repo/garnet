@@ -92,6 +92,7 @@ struct brcmf_proto_bcdc_header {
  * the BCDC header and packet data in the tx path.
  */
 #define BRCMF_PROT_FW_SIGNAL_MAX_TXBYTES 12
+void brcmf_debug_check_console();
 
 #define RETRIES 2 /* # of retries to retrieve matching dcmd response */
 /* Must be atleast SDPCM_RESERVE
@@ -152,7 +153,7 @@ static zx_status_t brcmf_proto_bcdc_cmplt(struct brcmf_pub* drvr, uint32_t id, u
     zx_status_t ret;
     struct brcmf_bcdc* bcdc = (struct brcmf_bcdc*)drvr->proto->pd;
 
-    //brcmf_dbg(BCDC, "Enter\n");
+   // brcmf_dbg(BCDC, "Enter\n");
     len += sizeof(struct brcmf_proto_bcdc_dcmd);
     do {
         ret = brcmf_bus_rxctl(drvr->bus_if, (unsigned char*)&bcdc->msg, len, rxlen_out);
@@ -175,18 +176,26 @@ static zx_status_t brcmf_proto_bcdc_query_dcmd(struct brcmf_pub* drvr, int ifidx
     uint32_t id, flags;
 
     brcmf_dbg(BCDC, "Enter, cmd %d len %d, ifidx %d\n", cmd, len, ifidx);
-    PAUSE; brcmf_dbg(BCDC, "aaaEnter, cmd %d len %d, ifidx %d\n", cmd, len, ifidx);
+    //PAUSE; brcmf_dbg(BCDC, "aaaEnter, cmd %d len %d, ifidx %d\n", cmd, len, ifidx);
 
     *fwerr = ZX_OK;
     ret = brcmf_proto_bcdc_msg(drvr, ifidx, cmd, buf, len, false);
     if (ret != ZX_OK) {
         brcmf_err("brcmf_proto_bcdc_msg failed w/status %d\n", ret);
+        brcmf_debug_check_console();
         goto done;
     }
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(2)));
+   // brcmf_dbg(TEMP, "2 msec after sending message...");
+   // brcmf_debug_check_console();
 
 retry:
     /* wait for interrupt and get first fragment */
     ret = brcmf_proto_bcdc_cmplt(drvr, bcdc->reqid, len, &rxlen);
+    if (ret != ZX_OK) {
+        brcmf_dbg(TEMP, "Just got back from message cmplt, result %d", ret);
+    }
+   // brcmf_debug_check_console();
     if (ret != ZX_OK) {
         goto done;
     }
@@ -235,15 +244,22 @@ static zx_status_t brcmf_proto_bcdc_set_dcmd(struct brcmf_pub* drvr, int ifidx, 
     int rxlen_out;
 
     brcmf_dbg(BCDC, "Enter, cmd %d len %d ifidx %d\n", cmd, len, ifidx);
-    brcmf_hexdump("set dcmd", buf, len);
+    //brcmf_hexdump("set dcmd", buf, len);
 
     *fwerr = ZX_OK;
     ret = brcmf_proto_bcdc_msg(drvr, ifidx, cmd, buf, len, true);
     if (ret != ZX_OK) {
         goto done;
     }
+    zx_nanosleep(zx_deadline_after(ZX_MSEC(2)));
+    //brcmf_dbg(TEMP, "2 msec after sending message...");
+   // brcmf_debug_check_console();
 
     ret = brcmf_proto_bcdc_cmplt(drvr, bcdc->reqid, len, &rxlen_out);
+    if (ret != ZX_OK) {
+        brcmf_dbg(TEMP, "Just got back from message cmplt, result %d", ret);
+    }
+  //  brcmf_debug_check_console();
     if (ret != ZX_OK) {
         goto done;
     }

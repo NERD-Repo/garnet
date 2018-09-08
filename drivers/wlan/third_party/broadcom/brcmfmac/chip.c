@@ -361,31 +361,25 @@ static void brcmf_chip_ai_coredisable(struct brcmf_core_priv* core, uint32_t pre
     /* if core is already in reset, skip reset */
     regdata = ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL);
     gl_compare_now = false;
-    brcmf_dbg(TEMP, "En2");
     if ((regdata & BC_CORE_RESET_CONTROL_RESET) != 0) {
         goto in_reset_configure;
     }
-    brcmf_dbg(TEMP, "En3");
 
     /* configure reset */
     ci->ops->write32(ci->ctx, core->wrapbase + BC_CORE_CONTROL,
                      prereset | BC_CORE_CONTROL_FGC | BC_CORE_CONTROL_CLOCK);
     ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_CONTROL);
-    brcmf_dbg(TEMP, "En4");
 
     /* put in reset */
     ci->ops->write32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL, BC_CORE_RESET_CONTROL_RESET);
-    brcmf_dbg(TEMP, "En5");
     usleep_range(10, 20);
-    brcmf_dbg(TEMP, "About to wait");
     /* wait till reset is 1 */
     uint32_t spinresult;
     SPINWAIT((spinresult = ci->ops->read32(ci->ctx, core->wrapbase + BC_CORE_RESET_CONTROL)) !=
              BC_CORE_RESET_CONTROL_RESET,
              300);
-    brcmf_dbg(TEMP, "Survived wait, spinresult %d", spinresult);
+    brcmf_dbg(TEMP, "Survived wait, spinresult %d (should be 1)", spinresult);
 in_reset_configure:
-    brcmf_dbg(TEMP, "En6");
 
     /* in-reset configure */
     ci->ops->write32(ci->ctx, core->wrapbase + BC_CORE_CONTROL, reset | BC_CORE_CONTROL_FGC |
@@ -672,14 +666,11 @@ static uint32_t brcmf_chip_tcm_ramsize(struct brcmf_core_priv* cr4) {
     nab = (corecap & ARMCR4_TCBANB_MASK) >> ARMCR4_TCBANB_SHIFT;
     nbb = (corecap & ARMCR4_TCBBNB_MASK) >> ARMCR4_TCBBNB_SHIFT;
     totb = nab + nbb;
-    brcmf_dbg(TEMP, "corecap 0x%x, nab %d, nbb %d, totb %d", corecap, nab, nbb, totb);
     for (idx = 0; idx < totb; idx++) {
         brcmf_chip_core_write32(cr4, ARMCR4_BANKIDX, idx);
         bxinfo = brcmf_chip_core_read32(cr4, ARMCR4_BANKINFO);
         memsize += ((bxinfo & ARMCR4_BSZ_MASK) + 1) * ARMCR4_BSZ_MULT;
-        brcmf_dbg(TEMP, "memsize %d, bxinfo 0x%x", memsize, bxinfo);
     }
-    brcmf_dbg(TEMP, "memsize 0x%x", memsize);
 
     return memsize;
 }

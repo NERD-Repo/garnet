@@ -682,7 +682,6 @@ zx_status_t brcmf_add_if(struct brcmf_pub* drvr, int32_t bsscfgidx, int32_t ifid
     if (if_out) {
         *if_out = NULL;
     }
-
     brcmf_dbg(TRACE, "Enter, bsscfgidx=%d, ifidx=%d\n", bsscfgidx, ifidx);
 
     ifp = drvr->iflist[bsscfgidx];

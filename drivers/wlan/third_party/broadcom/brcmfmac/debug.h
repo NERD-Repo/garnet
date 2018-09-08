@@ -71,6 +71,8 @@ __PRINTFLIKE(3, 4) void __brcmf_dbg(uint32_t filter, const char* func, const cha
         __brcmf_dbg(BRCMF_##filter##_VAL, __func__, fmt, ##__VA_ARGS__); \
     } while (0)
 
+#define THROTTLE(n, event) { static int times = n; if (times) { event; times--;}}
+
 // clang-format off
 
 #define BRCMF_DATA_ON()  (brcmf_msg_filter & BRCMF_DATA_VAL)
@@ -110,11 +112,11 @@ __PRINTFLIKE(3, 4) void __brcmf_dbg(uint32_t filter, const char* func, const cha
 // probably too spammy.
 #define brcmf_dbg_hex_dump(test, data, len, fmt, ...)                \
     do {                                                             \
-        brcmf_hexdump("dbg_hex_dump", (void*)data, len);                             \
+        brcmf_hexdump(__func__, (void*)data, len);                             \
         if (test) brcmu_dbg_hex_dump(data, len, fmt, ##__VA_ARGS__); \
     } while (0)
 
-void brcmf_hexdump(char* prefix, const void* buf, size_t len);
+void brcmf_hexdump(const char* prefix, const void* buf, size_t len);
 
 void brcmf_alphadump(const void* buf, size_t len);
 

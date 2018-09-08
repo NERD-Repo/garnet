@@ -155,7 +155,7 @@ zx_status_t brcmf_fil_cmd_data_get(struct brcmf_if* ifp, uint32_t cmd, void* dat
     mtx_lock(&ifp->drvr->proto_block);
     err = brcmf_fil_cmd_data(ifp, cmd, data, len, false);
 
-    brcmf_dbg(FIL, "ifidx=%d, cmd=%d, len=%d\n", ifp->ifidx, cmd, len);
+   // brcmf_dbg(FIL, "ifidx=%d, cmd=%d, len=%d\n", ifp->ifidx, cmd, len);
     //brcmf_dbg_hex_dump(BRCMF_FIL_ON(), data, min_t(uint, len, MAX_HEX_DUMP_LEN), "data\n");
 
     mtx_unlock(&ifp->drvr->proto_block);

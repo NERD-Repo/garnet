@@ -188,6 +188,8 @@ struct brcmf_sdio;
 struct brcmf_sdiod_freezer;
 
 struct brcmf_sdio_dev {
+    struct sdio_func *func1;
+    struct sdio_func *func2;
     uint32_t manufacturer_id;
     uint32_t product_id;
     sdio_protocol_t sdio_proto;
@@ -401,5 +403,6 @@ void brcmf_sdio_wd_timer(struct brcmf_sdio* bus, bool active);
 void brcmf_sdio_wowl_config(struct brcmf_device* dev, bool enabled);
 zx_status_t brcmf_sdio_sleep(struct brcmf_sdio* bus, bool sleep);
 void brcmf_sdio_trigger_dpc(struct brcmf_sdio* bus);
+int brcmf_sdio_oob_irqhandler(void* cookie);
 
 #endif /* BRCMFMAC_SDIO_H */

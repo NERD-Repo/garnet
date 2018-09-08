@@ -20,6 +20,7 @@
 #include <lib/sync/completion.h>
 #include <zircon/status.h>
 
+#include <pthread.h>
 #include <stdatomic.h>
 #ifndef _ALL_SOURCE
 #define _ALL_SOURCE // Enables thrd_create_with_name in <threads.h>.
@@ -72,22 +73,6 @@ uint16_t checksum(void* buf, int len) {
   return sum;
 }
 
-extern thrd_t gl_interrupt_thread;
-static int brcmf_sdiod_oob_irqhandler(void* cookie) {
-    struct brcmf_sdio_dev* sdiodev = cookie;
-    zx_status_t status;
-
-    gl_interrupt_thread = thrd_current();
-    while ((status = zx_interrupt_wait(sdiodev->irq_handle, NULL)) == ZX_OK) {
-        //brcmf_dbg(INTR, "OOB intr triggered\n");
-
-        brcmf_sdio_isr(sdiodev->bus);
-    }
-
-    brcmf_err("ISR exiting with status %s\n", zx_status_get_string(status));
-    return (int)status;
-}
-
 static void brcmf_sdiod_ib_irqhandler(struct brcmf_sdio_dev* sdiodev) {
     brcmf_dbg(INTR, "IB intr triggered\n");
 
@@ -96,7 +81,6 @@ static void brcmf_sdiod_ib_irqhandler(struct brcmf_sdio_dev* sdiodev) {
 
 /* dummy handler for SDIO function 2 interrupt */
 static void brcmf_sdiod_dummy_irqhandler(struct brcmf_sdio_dev* sdiodev) {}
-bool gl_intr_print;
 extern atomic_int dw_state;
 extern atomic_int dw_count;
 extern bool gl_print_sdio;
@@ -122,10 +106,10 @@ zx_status_t brcmf_sdiod_intr_register(struct brcmf_sdio_dev* sdiodev) {
         // thrd_success and maybe thrd_nomem. See zircon/third_party/ulib/musl/include/threads.h
 
         ret = enable_irq_wake(sdiodev->irq_handle);
-        brcmf_dbg(TEMP, "ddpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //brcmf_dbg(TEMP, "ddpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
         remember_sdio(15, 0xffff, 1, &ret, 4, 0);
-        brcmf_dbg(SDIO, "4Enter, register OOB IRQ\n"); PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "edpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //brcmf_dbg(SDIO, "4Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "edpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
         remember_sdio(16, 0xffff, 1, &ret, 4, 0);
         if (ret != ZX_OK) {
             brcmf_err("enable_irq_wake failed %d\n", ret);
@@ -133,28 +117,30 @@ zx_status_t brcmf_sdiod_intr_register(struct brcmf_sdio_dev* sdiodev) {
         }
         sdiodev->irq_wake = true;
 
+        sdio_claim_host(sdiodev->func1);
+
         if (sdiodev->bus_if->chip == BRCM_CC_43362_CHIP_ID) {
-        brcmf_dbg(SDIO, "5Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        ///brcmf_dbg(SDIO, "5Enter, register OOB IRQ\n"); PAUSE; PAUSE;
             /* assign GPIO to SDIO core */
             addr = CORE_CC_REG(SI_ENUM_BASE, gpiocontrol);
-        brcmf_dbg(SDIO, "6Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(SDIO, "6Enter, register OOB IRQ\n"); PAUSE; PAUSE;
             gpiocontrol = brcmf_sdiod_func1_rl(sdiodev, addr, &ret);
-        brcmf_dbg(SDIO, "7Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(SDIO, "7Enter, register OOB IRQ\n"); PAUSE; PAUSE;
             gpiocontrol |= 0x2;
             brcmf_sdiod_func1_wl(sdiodev, addr, gpiocontrol, &ret);
 
             brcmf_sdiod_func1_wb(sdiodev, SBSDIO_GPIO_SELECT, 0xf, &ret);
             brcmf_sdiod_func1_wb(sdiodev, SBSDIO_GPIO_OUT, 0, &ret);
             brcmf_sdiod_func1_wb(sdiodev, SBSDIO_GPIO_EN, 0x2, &ret);
-        brcmf_dbg(SDIO, "8Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(SDIO, "8Enter, register OOB IRQ\n"); PAUSE; PAUSE;
         }
 
-        brcmf_dbg(SDIO, "9Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(SDIO, "9Enter, register OOB IRQ\n"); PAUSE; PAUSE;
         /* must configure SDIO_CCCR_INT_ENABLE to enable irq */
-        brcmf_dbg(TEMP, "fdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //brcmf_dbg(TEMP, "fdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
         remember_sdio(17, 0xffff, 1, &ret, 4, 0);
         data = brcmf_sdiod_func0_rb(sdiodev, SDIO_CCCR_INT_ENABLE, &ret);
-        brcmf_dbg(TEMP, "gdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //brcmf_dbg(TEMP, "gdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
         remember_sdio(18, 0xffff, 1, &ret, 4, 0);
         data |= SDIO_CCCR_IEN_FUNC1 | SDIO_CCCR_IEN_FUNC2 | SDIO_CCCR_IEN_FUNC0;
         brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_INT_ENABLE, data, &ret);
@@ -165,47 +151,52 @@ zx_status_t brcmf_sdiod_intr_register(struct brcmf_sdio_dev* sdiodev) {
         if (pdata->oob_irq_flags & IRQ_FLAG_LEVEL_HIGH) {
             data |= SDIO_CCCR_BRCM_SEPINT_ACT_HI;
         }
-        gl_intr_print = true;
         brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_BRCM_SEPINT, data, &ret);
-        brcmf_dbg(SDIO, "aEnter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(SDIO, "aEnter, register OOB IRQ\n"); PAUSE; PAUSE;
 
 
         sdio_get_oob_irq(&sdiodev->sdio_proto, &sdiodev->irq_handle);
         PAUSE; PAUSE; brcmf_dbg(SDIO, "Did get OOB IRQ 100 msec ago");
-        thrd_create_with_name(&sdiodev->isr_thread, brcmf_sdiod_oob_irqhandler, sdiodev,
-                              "brcmf-sdio-isr");
-        remember_sdio(12, 0xffff, 1, &ret, 4, 0);
-        brcmf_dbg(TEMP, "adpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        brcmf_dbg(TEMP, "bdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        brcmf_dbg(SDIO, "2Enter, register OOB IRQ\n"); PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "cdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        thrd_detach(sdiodev->isr_thread);
-        remember_sdio(13, 0xffff, 1, &ret, 4, 0);
-        brcmf_dbg(SDIO, "3Enter, register OOB IRQ\n"); PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "ddpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        remember_sdio(21, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "gdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        remember_sdio(22, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "hdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        remember_sdio(23, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "idpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        remember_sdio(24, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE; PAUSE; PAUSE; PAUSE; PAUSE;
-        brcmf_dbg(TEMP, "jdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        remember_sdio(25, 0xffff, 1, &ret, 4, 0);
-        sdiodev->oob_irq_requested = true;
-        remember_sdio(24, 0xffff, 1, &ret, 4, 0);
-        brcmf_dbg(TEMP, "jdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
-        PAUSE; PAUSE;
-        remember_sdio(24, 0xffff, 1, &ret, 4, 0);
-        brcmf_dbg(TEMP, "jdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        brcmf_dbg(TEMP, "* * * NOT starting oob_irqhandler! Depending on watchdog.* * *");
+        //thrd_create_with_name(&sdiodev->isr_thread, brcmf_sdio_oob_irqhandler, sdiodev,
+          //                    "brcmf-sdio-isr");
+        //thrd_detach(sdiodev->isr_thread);
 
+
+        //brcmf_dbg(TEMP, "adpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //brcmf_dbg(TEMP, "bdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //brcmf_dbg(SDIO, "2Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "cdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        remember_sdio(13, 0xffff, 1, &ret, 4, 0);
+        //brcmf_dbg(SDIO, "3Enter, register OOB IRQ\n"); PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "ddpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //remember_sdio(21, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "gdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //remember_sdio(22, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "hdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //remember_sdio(23, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "idpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //remember_sdio(24, 0xffff, 1, &ret, 4, 0); PAUSE; PAUSE; PAUSE; PAUSE; PAUSE; PAUSE;
+        //brcmf_dbg(TEMP, "jdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //remember_sdio(25, 0xffff, 1, &ret, 4, 0);
+        sdiodev->oob_irq_requested = true;
+        //remember_sdio(24, 0xffff, 1, &ret, 4, 0);
+        //brcmf_dbg(TEMP, "jdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+        //PAUSE; PAUSE;
+        //remember_sdio(24, 0xffff, 1, &ret, 4, 0);
+        //brcmf_dbg(TEMP, "jdpc state %d, times %d", atomic_load(&dw_state), atomic_load(&dw_count));
+
+        sdio_release_host(sdiodev->func1);
 
     } else {
         brcmf_dbg(SDIO, "Entering\n");
+        sdio_claim_host(sdiodev->func1);
+
         sdio_enable_fn_intr(&sdiodev->sdio_proto, SDIO_FN_1);
         (void)brcmf_sdiod_ib_irqhandler; // TODO(cphoenix): If we use these, plug them in later.
         sdio_enable_fn_intr(&sdiodev->sdio_proto, SDIO_FN_2);
         (void)brcmf_sdiod_dummy_irqhandler;
+        sdio_release_host(sdiodev->func1);
         sdiodev->sd_irq_requested = true;
     }
 
@@ -220,8 +211,10 @@ void brcmf_sdiod_intr_unregister(struct brcmf_sdio_dev* sdiodev) {
         struct brcmfmac_sdio_pd* pdata;
 
         pdata = &sdiodev->settings->bus.sdio;
+        sdio_claim_host(sdiodev->func1);
         brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_BRCM_SEPINT, 0, NULL);
         brcmf_sdiod_func0_wb(sdiodev, SDIO_CCCR_INT_ENABLE, 0, NULL);
+        sdio_release_host(sdiodev->func1);
 
         sdiodev->oob_irq_requested = false;
         if (sdiodev->irq_wake) {
@@ -233,8 +226,10 @@ void brcmf_sdiod_intr_unregister(struct brcmf_sdio_dev* sdiodev) {
     }
 
     if (sdiodev->sd_irq_requested) {
+        sdio_claim_host(sdiodev->func1);
         sdio_disable_fn_intr(&sdiodev->sdio_proto, SDIO_FN_2);
         sdio_disable_fn_intr(&sdiodev->sdio_proto, SDIO_FN_1);
+        sdio_release_host(sdiodev->func1);
         sdiodev->sd_irq_requested = false;
     }
 }
@@ -276,8 +271,11 @@ typedef struct sdio_record {
     int dw_state;
     uint32_t checksum;
     thrd_t thread;
+    zx_time_t time;
 } sdio_record_t;
-thrd_t gl_interrupt_thread, gl_main_thread, gl_worker_thread, gl_watchdog_thread;
+thrd_t gl_interrupt_thread, gl_main_thread, gl_worker_thread, gl_watchdog_thread,
+       gl_bus_watchdog_thread;
+extern thrd_t gl_workqueue_runner_thread;
 
 static sdio_record_t sdio_records[SR_DATA_RECORD_COUNT];
 
@@ -291,15 +289,22 @@ static void pr(int32_t i, sdio_record_t* rec) {
         } else if (rec->thread == gl_worker_thread) {
             name = "work";
         } else if (rec->thread == gl_watchdog_thread) {
-            name = "watch";
+            name = "wdog";
+        } else if (rec->thread == gl_bus_watchdog_thread) {
+            name = "bwdg";
+        } else if (rec->thread == gl_workqueue_runner_thread) {
+            name = "wrun";
         } else if (rec->thread == gl_main_thread) {
-            name = "";
+            name = "main";
         } else {
             sprintf(namebuf, "%p", rec->thread);
             name = namebuf;
         }
-        brcmf_dbg(TEMP, "sdio %d: F%d%s%d%s %x %lx (%x) %s %d", i, rec->func, rec->write ? "w" : "r",
-                  rec->size, rec->fifo ? "f" : "", rec->addr, *(uint64_t*)rec->data, rec->checksum, name,
+        int sec = rec->time / ZX_SEC(1);
+        int msec = (rec->time - ZX_SEC(sec)) / ZX_MSEC(1);
+        brcmf_dbg(TEMP, "sdio %d %d.%d %s: F%d%s%d%s %x %lx (%x) %d", i, sec, msec, name,
+                  rec->func, rec->write ? "w" : "r",
+                  rec->size, rec->fifo ? "f" : "", rec->addr, *(uint64_t*)rec->data, rec->checksum,
                   rec->dw_state);
 }
 bool gl_print_sdio;
@@ -318,8 +323,13 @@ void remember_sdio(uint8_t func, uint32_t addr, bool write, void* data, size_t s
     rec->dw_state = atomic_load(&dw_state);
     rec->checksum = checksum(data, size);
     rec->thread = thrd_current();
+    rec->time = zx_deadline_after(0);
     if (gl_print_sdio && rec->thread == gl_main_thread) {
         pr(12345, rec);
+    }
+    if (func == 2) {
+        //pr(54321, rec);
+        //brcmf_hexdump("F2", data, size);
     }
 }
 
@@ -334,6 +344,38 @@ void psr() {
     }
 }
 atomic_bool gl_writing_firmware;
+static zx_status_t brcmf_sdiod_transferfff(struct brcmf_sdio_dev* sdiodev, uint8_t func,
+                                           uint32_t addr, bool write, void* data, size_t size,
+                                           bool fifo) {
+    sdio_rw_txn_t txn;
+
+    txn.addr = addr;
+    txn.write = write;
+    txn.virt = data;
+    txn.data_size = size;
+    txn.incr = !fifo;
+    txn.fifo = fifo;
+    txn.use_dma = false; // TODO(cphoenix): Decide when to use DMA
+    txn.buf_offset = 0;
+    zx_status_t result;
+        atomic_store(&dw_state, 3513);
+        brcmf_dbg(TEMP, "sdio  F%d%s%ld%s %x %lx %p", func, write ? "w" : "r",
+                  size, fifo ? "f" : "", addr, *(uint64_t*)data, data);
+
+    result = sdio_do_rw_txn(&sdiodev->sdio_proto, func, &txn);
+        atomic_store(&dw_state, 3514);
+    if (result != ZX_OK) {
+        brcmf_dbg(TEMP, "Why did this fail?? result %d", result);
+        return result;
+    }
+        atomic_store(&dw_state, 3515);
+                  atomic_store(&dw_state, 3516);
+
+        remember_sdio(func, addr, write, data, size, fifo);
+            atomic_store(&dw_state, 3517);
+
+    return result;
+}
 static zx_status_t brcmf_sdiod_transfer(struct brcmf_sdio_dev* sdiodev, uint8_t func,
                                            uint32_t addr, bool write, void* data, size_t size,
                                            bool fifo) {
@@ -354,8 +396,7 @@ static zx_status_t brcmf_sdiod_transfer(struct brcmf_sdio_dev* sdiodev, uint8_t 
         brcmf_dbg(TEMP, "Why did this fail?? result %d", result);
         return result;
     }
-    if (!(addr == 0xd020 && *(uint32_t*)data == 0x80000000 && atomic_load(&dw_state) == 0) &&
-      !atomic_load(&gl_writing_firmware)) {
+    if (!atomic_load(&gl_writing_firmware)) {
         remember_sdio(func, addr, write, data, size, fifo);
     }
     return result;
@@ -475,6 +516,26 @@ uint32_t brcmf_sdiod_func1_rl(struct brcmf_sdio_dev* sdiodev, uint32_t addr, zx_
     return data;
 }
 
+void brcmf_sdiod_func1_wlfff(struct brcmf_sdio_dev* sdiodev, uint32_t addr, uint32_t data,
+                          zx_status_t* ret) {
+    zx_status_t retval;
+        atomic_store(&dw_state, 3411);
+
+    retval = brcmf_sdiod_set_backplane_window(sdiodev, addr);
+        atomic_store(&dw_state, 3412);
+    if (retval == ZX_OK) {
+        addr &= SBSDIO_SB_OFT_ADDR_MASK;
+        addr |= SBSDIO_SB_ACCESS_2_4B_FLAG;
+        atomic_store(&dw_state, 3413);
+        retval = brcmf_sdiod_transferfff(sdiodev, SDIO_FN_1, addr, true, &data, sizeof(data), false);
+        atomic_store(&dw_state, 3414);
+    }
+    if (ret) {
+        *ret = retval;
+    }
+        atomic_store(&dw_state, 3415);
+}
+
 void brcmf_sdiod_func1_wl(struct brcmf_sdio_dev* sdiodev, uint32_t addr, uint32_t data,
                           zx_status_t* ret) {
     zx_status_t retval;
@@ -490,19 +551,59 @@ void brcmf_sdiod_func1_wl(struct brcmf_sdio_dev* sdiodev, uint32_t addr, uint32_
     }
 }
 
+#define F2_XFER_SIZE 512
+
 zx_status_t brcmf_sdiod_read(struct brcmf_sdio_dev* sdiodev, uint8_t func, uint32_t addr,
                              void* data, size_t size) {
-    return brcmf_sdiod_transfer(sdiodev, func, addr, false, data, size, false);
+    zx_status_t err = ZX_OK;
+    while (func == 2 && size > F2_XFER_SIZE) {
+        err = brcmf_sdiod_transfer(sdiodev, func, addr, false, data, F2_XFER_SIZE, false);
+        if (err != ZX_OK) {
+            break;
+        }
+        data += F2_XFER_SIZE;
+        size -= F2_XFER_SIZE;
+        addr += F2_XFER_SIZE;
+    }
+    if (err == ZX_OK) {
+        err = brcmf_sdiod_transfer(sdiodev, func, addr, false, data, size, false);
+    }
+    return err;
 }
 
 zx_status_t brcmf_sdiod_write(struct brcmf_sdio_dev* sdiodev, uint8_t func, uint32_t addr,
                               void* data, size_t size) {
-    return brcmf_sdiod_transfer(sdiodev, func, addr, true, data, size, false);
+    zx_status_t err = ZX_OK;
+    while (func == 2 && size > F2_XFER_SIZE) {
+        err = brcmf_sdiod_transfer(sdiodev, func, addr, true, data, F2_XFER_SIZE, false);
+        if (err != ZX_OK) {
+            break;
+        }
+        data += F2_XFER_SIZE;
+        size -= F2_XFER_SIZE;
+        addr += F2_XFER_SIZE;
+    }
+    if (err == ZX_OK) {
+        err = brcmf_sdiod_transfer(sdiodev, func, addr, true, data, size, false);
+    }
+    return err;
 }
 
 zx_status_t brcmf_sdiod_read_fifo(struct brcmf_sdio_dev* sdiodev, uint8_t func, uint32_t addr,
                                   void* data, size_t size) {
-    return brcmf_sdiod_transfer(sdiodev, func, addr, false, data, size, true);
+    zx_status_t err = ZX_OK;
+    while (func == 2 && size > F2_XFER_SIZE) {
+        err = brcmf_sdiod_transfer(sdiodev, func, addr, false, data, F2_XFER_SIZE, true);
+        if (err != ZX_OK) {
+            break;
+        }
+        data += F2_XFER_SIZE;
+        size -= F2_XFER_SIZE;
+    }
+    if (err == ZX_OK) {
+        err = brcmf_sdiod_transfer(sdiodev, func, addr, false, data, size, true);
+    }
+    return err;
 }
 
 static zx_status_t brcmf_sdiod_netbuf_read(struct brcmf_sdio_dev* sdiodev, uint32_t func,
@@ -537,7 +638,7 @@ static zx_status_t brcmf_sdiod_netbuf_read(struct brcmf_sdio_dev* sdiodev, uint3
 static zx_status_t brcmf_sdiod_netbuf_write(struct brcmf_sdio_dev* sdiodev, uint32_t func,
                                             uint32_t addr, struct brcmf_netbuf* netbuf) {
     unsigned int req_sz;
-    zx_status_t err;
+    zx_status_t err = ZX_OK;
 
     /* Single netbuf use the standard mmc interface */
     req_sz = netbuf->len + 3;
@@ -575,7 +676,7 @@ zx_status_t brcmf_sdiod_recv_pkt(struct brcmf_sdio_dev* sdiodev, struct brcmf_ne
     uint32_t addr = sdiodev->cc_core->base;
     zx_status_t err = ZX_OK;
 
-    brcmf_dbg(SDIO, "addr = 0x%x, size = %d\n", addr, pkt->len);
+  //  THROTTLE(20, brcmf_dbg(SDIO, "addr = 0x%x, size = %d\n", addr, pkt->len););
 
     err = brcmf_sdiod_set_backplane_window(sdiodev, addr);
     if (err != ZX_OK) {
@@ -586,6 +687,7 @@ zx_status_t brcmf_sdiod_recv_pkt(struct brcmf_sdio_dev* sdiodev, struct brcmf_ne
     addr |= SBSDIO_SB_ACCESS_2_4B_FLAG;
 
     err = brcmf_sdiod_netbuf_read(sdiodev, SDIO_FN_2, addr, pkt);
+  //  THROTTLE(20, brcmf_dbg(SDIO, "err = %d\n", err););
 
 done:
     return err;
@@ -713,6 +815,7 @@ zx_status_t brcmf_sdiod_ramrw(struct brcmf_sdio_dev* sdiodev, bool write, uint32
     } else {
         this_transfer_size = packet_size;
     }
+    sdio_claim_host(sdiodev->func1);
 
     /* Do the transfer(s) */
     while (size) {
@@ -757,6 +860,8 @@ zx_status_t brcmf_sdiod_ramrw(struct brcmf_sdio_dev* sdiodev, bool write, uint32
 
     brcmf_netbuf_free(pkt);
 
+    sdio_release_host(sdiodev->func1);
+
     return err;
 }
 
@@ -799,12 +904,16 @@ static zx_status_t brcmf_sdiod_freezer_on(struct brcmf_sdio_dev* sdiodev) {
     atomic_store(&sdiodev->freezer->freezing, 1);
     brcmf_sdio_trigger_dpc(sdiodev->bus);
     sync_completion_wait(&sdiodev->freezer->thread_freeze, ZX_TIME_INFINITE);
+    sdio_claim_host(sdiodev->func1);
     res = brcmf_sdio_sleep(sdiodev->bus, true);
+    sdio_release_host(sdiodev->func1);
     return res;
 }
 
 static void brcmf_sdiod_freezer_off(struct brcmf_sdio_dev* sdiodev) {
+    sdio_claim_host(sdiodev->func1);
     brcmf_sdio_sleep(sdiodev->bus, false);
+    sdio_release_host(sdiodev->func1);
     atomic_store(&sdiodev->freezer->freezing, 0);
     sync_completion_signal(&sdiodev->freezer->resumed);
 }
@@ -849,10 +958,14 @@ static zx_status_t brcmf_sdiod_remove(struct brcmf_sdio_dev* sdiodev) {
     brcmf_sdiod_freezer_detach(sdiodev);
 
     /* Disable Function 2 */
+    sdio_claim_host(sdiodev->func2);
     sdio_disable_fn(&sdiodev->sdio_proto, SDIO_FN_2);
+    sdio_release_host(sdiodev->func2);
 
     /* Disable Function 1 */
+    sdio_claim_host(sdiodev->func1);
     sdio_disable_fn(&sdiodev->sdio_proto, SDIO_FN_1);
+    sdio_release_host(sdiodev->func1);
 
     sdiodev->sbwad = 0;
 
@@ -956,9 +1069,12 @@ static void brcmf_sdiod_acpi_set_power_manageable(struct brcmf_device* dev, int 
 
 zx_status_t brcmf_sdio_register(zx_device_t* zxdev, sdio_protocol_t* sdio_proto) {
     zx_status_t err;
-    struct brcmf_sdio_dev* sdiodev;
-    struct brcmf_bus* bus_if;
     struct brcmf_device* dev;
+
+    struct brcmf_bus* bus_if = NULL;
+    struct sdio_func* func1 = NULL;
+    struct sdio_func* func2 = NULL;
+    struct brcmf_sdio_dev* sdiodev = NULL;
 
     brcmf_dbg(SDIO, "Enter\n");
     sdio_hw_info_t devinfo;
@@ -984,20 +1100,45 @@ zx_status_t brcmf_sdio_register(zx_device_t* zxdev, sdio_protocol_t* sdio_proto)
     // TODO(cphoenix): Linux power management stuff
     brcmf_sdiod_acpi_set_power_manageable(NULL, 0);
 
+    pthread_mutexattr_t attr_recursive;
+	if (pthread_mutexattr_init(&attr_recursive)) {
+		return ZX_ERR_INTERNAL;
+    }
+	if (pthread_mutexattr_settype(&attr_recursive, PTHREAD_MUTEX_RECURSIVE)) {
+		return ZX_ERR_INTERNAL;
+    }
+
     bus_if = calloc(1, sizeof(struct brcmf_bus));
     if (!bus_if) {
-        return ZX_ERR_NO_MEMORY;
+        err = ZX_ERR_NO_MEMORY;
+        goto fail;
+    }
+    func1 = calloc(1, sizeof(struct sdio_func));
+    if (!func1) {
+        err = ZX_ERR_NO_MEMORY;
+        goto fail;
+    } else {
+        pthread_mutex_init(&func1->lock, &attr_recursive);
+    }
+    func2 = calloc(1, sizeof(struct sdio_func));
+    if (!func2) {
+        err = ZX_ERR_NO_MEMORY;
+        goto fail;
+    } else {
+        pthread_mutex_init(&func2->lock, &attr_recursive);
     }
     sdiodev = calloc(1, sizeof(struct brcmf_sdio_dev));
     if (!sdiodev) {
-        free(bus_if);
-        return ZX_ERR_NO_MEMORY;
+        err = ZX_ERR_NO_MEMORY;
+        goto fail;
     }
     dev = &sdiodev->dev;
     dev->zxdev = zxdev;
     memcpy(&sdiodev->sdio_proto, sdio_proto, sizeof(sdiodev->sdio_proto));
 
     sdiodev->bus_if = bus_if;
+    sdiodev->func1 = func1;
+    sdiodev->func2 = func2;
     bus_if->bus_priv.sdio = sdiodev;
     bus_if->proto_type = BRCMF_PROTO_BCDC;
     dev->bus = bus_if;
@@ -1018,8 +1159,15 @@ zx_status_t brcmf_sdio_register(zx_device_t* zxdev, sdio_protocol_t* sdio_proto)
     return ZX_OK;
 
 fail:
-    dev->bus = NULL;
     free(sdiodev);
+    if (func2) {
+        pthread_mutex_destroy(&func2->lock);
+        free(func2);
+    }
+    if (func1) {
+        pthread_mutex_destroy(&func1->lock);
+        free(func1);
+    }
     free(bus_if);
     return err;
 }
@@ -1042,6 +1190,14 @@ static void brcmf_ops_sdio_remove(struct brcmf_sdio_dev* sdiodev) {
         brcmf_sdiod_remove(sdiodev);
 
         free(bus_if);
+        if (sdiodev->func1) {
+            pthread_mutex_destroy(&sdiodev->func1->lock);
+            free(sdiodev->func1);
+        }
+        if (sdiodev->func2) {
+            pthread_mutex_destroy(&sdiodev->func2->lock);
+            free(sdiodev->func2);
+        }
         free(sdiodev);
     }
 

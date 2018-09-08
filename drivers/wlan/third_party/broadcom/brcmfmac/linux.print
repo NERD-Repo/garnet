@@ -1,0 +1,508 @@
+
+Ubuntu 16.04.5 LTS Khadas ttyAML0
+
+Khadas login: [   33.249643] brcmfmac: brcmf_driver_register:  15 seconds...
+khadas
+Password:
+Last login: Sun Sep  9 17:50:08 CST 2018 on ttyAML0
+
+Welcome to Fenix 0.3 Ubuntu 16.04.5 LTS Linux 4.17.3
+ _  ___               _            __     _____ __  __ ____
+| |/ / |__   __ _  __| | __ _ ___  \ \   / /_ _|  \/  |___ \
+| ' /| '_ \ / _` |/ _` |/ _` / __|  \ \ / / | || |\/| | __) |
+| . \| | | | (_| | (_| | (_| \__ \   \ V /  | || |  | |/ __/
+|_|\_\_| |_|\__,_|\__,_|\__,_|___/    \_/  |___|_|  |_|_____|
+
+
+ * Website:        https://www.khadas.com
+ * Documentation:  https://docs.khadas.com
+ * Forum:          https://forum.khadas.com
+
+khadas@Khadas:~$ sudo sysctl -w net.core.message_cost=0[   38.373738] brcmfmac: brcmf_driver_register:  10 seconds...
+
+[sudo] password for khadas:
+net.core.message_cost = 0
+khadas@Khadas:~$ [   43.490267] brcmfmac: brcmf_driver_register:  5 seconds...
+[   48.610311] brcmfmac: brcmf_driver_register: Here we go!
+[   48.611366] brcmfmac: brcmf_sdio_probe: cphoenix got here
+[   48.616193] brcmfmac: brcmf_sdio_probe_attach: cphoenix got here
+[   48.621433] brcmfmac: brcmf_sdio_probe_attach: * * * * About to run_sdio_test * * *
+[   48.629071] brcmfmac: brcmf_sdio_probe_attach: * * * * Did run_sdio_test * * *
+[   48.636612] brcmfmac: brcmf_sdio_probe_attach: F1 signature read @0x18000000=0x17224356
+[   48.644146] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed
+[   48.649638] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed2
+[   48.655241] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed3
+[   48.660830] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed4
+[   48.666437] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed5
+[   48.672053] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed6, ptr 00000000a98b9780
+[   48.679562] brcmfmac: brcmf_chip_attach: Enter cphoenix Wed7
+[   48.685162] brcmfmac: brcmf_chip_attach: Pre-prepare
+[   48.690070] brcmfmac: brcmf_sdio_buscoreprep: Enter
+[   48.695038] brcmfmac: brcmf_sdio_buscoreprep: Exit
+[   48.699646] brcmfmac: brcmf_chip_attach: Post-prepare, err 0
+[   48.707293] brcmfmac: brcmf_chip_attach: Post-recognition, err 0
+[   48.711231] brcmfmac: brcmf_chip_attach: Post-setup, err 0
+[   48.716636] brcmfmac: brcmf_chip_attach: Exit
+[   48.720973] brcmfmac: brcmf_sdio_probe_attach: SDIO core: id 2089, rev 21, base 0x18005000
+[   48.729169] brcmfmac: brcmf_sdio_kso_init: Enter
+[   48.733742] brcmfmac: brcmf_sdio_kso_init: Exit
+[   48.738199] brcmfmac: brcmf_sdio_drivestrengthinit: Enter
+[   48.743853] brcmfmac: brcmf_sdio_probe: About to prepare_fw_request
+[   48.749761] brcmfmac: brcmf_sdio_prepare_fw_request: Enter
+[   48.755191] brcmfmac: brcmf_fw_alloc_request: Enter
+[   48.760039] brcmfmac: brcmf_sdio_probe: Did prepare_fw_request
+[   48.797794] brcmfmac: brcmf_fw_request_nvram_done: fw->data found, size 2844, raw 0
+[   48.801491] brcmfmac: brcmf_sdio_firmware_callback: Enter: dev=mmc2:0001:1, err=0
+[   48.807280] brcmfmac: brcmf_sdio_firmware_callback: fw->nvram found, size 2644
+[   48.814462] brcmfmac: brcmf_sdio_firmware_callback: Into download_firmware
+[   48.821250] brcmfmac: brcmf_sdio_download_firmware: Got here
+[   48.826864] brcmfmac: brcmf_sdio_download_firmware: Got here
+[   48.832461] brcmfmac: brcmf_sdio_htclk: Enter, on 1, pendok 0, sr 0, alp 1
+[   48.839371] brcmfmac: brcmf_sdio_htclk: CLKCTL: turned ON
+[   48.844642] brcmfmac: brcmf_sdio_htclk: Exit
+[   48.848849] brcmfmac: brcmf_sdio_download_firmware: Got here
+[   48.854454] brcmfmac: brcmf_sdio_download_firmware: firmware rstvec: b83ef180
+[   48.886095] brcmfmac: brcmf_sdio_verifymemory: Compare RAM dl & ul at 0x00180000; size=555412
+[   48.928186] brcmfmac: brcmf_sdio_verifymemory: Compare RAM dl & ul at 0x0023f5ac; size=2644
+[   48.931141] brcmfmac: brcmf_sdio_buscore_activate: Enter, rstvec 0xb83ef180
+[   48.938059] brcmfmac: brcmf_sdio_buscore_activate: Exit
+[   48.943436] brcmfmac: brcmf_sdio_htclk: Enter, on 0, pendok 0, sr 0, alp 1
+[   48.949923] brcmfmac: brcmf_sdio_htclk: Exit
+[   48.954076] brcmfmac: brcmf_sdio_download_firmware: Doing release_host
+[   48.960505] brcmfmac: brcmf_sdio_firmware_callback: Back from download_firmware
+[   48.967744] brcmfmac: brcmf_sdio_htclk: Enter, on 1, pendok 0, sr 0, alp 0
+[   48.974609] brcmfmac: brcmf_sdio_htclk: CLKCTL: turned ON
+[   48.979911] brcmfmac: brcmf_sdio_htclk: Exit
+[   49.008291] brcmfmac: brcmf_bus_change_state: 0 -> 1
+[   49.008326] brcmfmac: brcmf_sdiod_intr_register: Enter
+[   49.014188] brcmfmac: brcmf_add_if: Enter, bsscfgidx=0, ifidx=0
+[   49.014930] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.018656] brcmfmac: brcmf_add_if:  ==== pid:98, if:wlan%d (00:00:00:00:00:00) created ===
+[   49.018663] brcmfmac: brcmf_bus_change_state: 0 -> 1
+[   49.018674] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=bus:txglomalign, len=4
+[   49.018681] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 20 ifidx 0
+[   49.018693] brcmfmac: brcmf_hexdump: set dcmd    0: 62 75 73 3a 74 78 67 6c 6f 6d 61 6c 69 67 6e 00 08 00 00 00
+[   49.064680] brcmfmac: brcmf_sdio_intr_rstatus: times 1, val 8000c0, intmask 200000f0
+[   49.072710] brcmfmac: brcmf_sdio_hostmail: Enter
+[   49.078300] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.084660] brcmfmac: brcmf_sdio_intr_rstatus: times 2, val 8000c0, intmask 200000f0
+[   49.092401] brcmfmac: brcmf_sdio_hostmail: Enter
+[   49.097440] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=bus:rxglom, len=4
+[   49.104175] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 15 ifidx 0
+[   49.111351] brcmfmac: brcmf_hexdump: set dcmd    0: 62 75 73 3a 72 78 67 6c 6f 6d 00 01 00 00 00
+[   49.130581] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.132929] brcmfmac: brcmf_sdio_intr_rstatus: times 3, val 800040, intmask 200000f0
+[   49.141764] brcmfmac: brcmf_c_preinit_dcmds: Enter
+[   49.150227] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.153157] brcmfmac: brcmf_sdio_intr_rstatus: times 4, val 800040, intmask 200000f0
+[   49.162207] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.168702] brcmfmac: brcmf_sdio_intr_rstatus: times 5, val 800040, intmask 200000f0
+[   49.178297] brcmfmac: brcmf_sdio_get_fwname: Enter
+[   49.181156] brcmfmac: brcmf_fw_alloc_request: Enter
+[   49.198312] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.200610] brcmfmac: brcmf_sdio_intr_rstatus: times 6, val 800040, intmask 200000f0
+[   49.214425] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.216688] brcmfmac: brcmf_sdio_intr_rstatus: times 7, val 800040, intmask 200000f0
+[   49.224597] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mpc, len=4
+[   49.231059] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 8 ifidx 0
+[   49.238131] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 70 63 00 01 00 00 00
+[   49.246288] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.253042] brcmfmac: brcmf_sdio_intr_rstatus: times 8, val 800040, intmask 200000f0
+[   49.261763] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=join_pref, len=8
+[   49.267920] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 18 ifidx 0
+[   49.275297] brcmfmac: brcmf_hexdump: set dcmd    0: 6a 6f 69 6e 5f 70 72 65 66 00 04 02 08 01 01 02 00 00
+[   49.286768] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   49.292512] brcmfmac: brcmf_sdio_intr_rstatus: times 9, val 800040, intmask 200000f0
+[   49.306483] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=event_msgs, len=18
+[   49.308259] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 29 ifidx 0
+[   49.315583] brcmfmac: brcmf_hexdump: set dcmd    0: 65 76 65 6e 74 5f 6d 73 67 73 00 00 00 00 00 00 00 40 00 00 04 00 00 00 00 00 80 00 00
+[   49.330776] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 185 len 4 ifidx 0
+[   49.334911] brcmfmac: brcmf_hexdump: set dcmd    0: 28 00 00 00
+[   49.351102] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 187 len 4 ifidx 0
+[   49.352633] brcmfmac: brcmf_hexdump: set dcmd    0: 28 00 00 00
+[   49.370802] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=txbf, len=4
+[   49.371962] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   49.379082] brcmfmac: brcmf_hexdump: set dcmd    0: 74 78 62 66 00 01 00 00 00
+[   49.399662] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=pfn_gscan_cfg, len=18
+[   49.401761] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 32 ifidx 0
+[   49.408957] brcmfmac: brcmf_hexdump: set dcmd    0: 70 66 6e 5f 67 73 63 61 6e 5f 63 66 67 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   50.524603] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -110
+[   50.525224] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   50.533960] brcmfmac: brcmf_sdio_hostmail: Enter
+[   50.690881] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=bw_cap, len=8
+[   50.692240] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 15 ifidx 0
+[   50.699569] brcmfmac: brcmf_hexdump: set dcmd    0: 62 77 5f 63 61 70 00 02 00 00 00 03 00 00 00
+[   50.723730] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=obss_coex, len=4
+[   50.725395] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 14 ifidx 0
+[   50.732865] brcmfmac: brcmf_hexdump: set dcmd    0: 6f 62 73 73 5f 63 6f 65 78 00 ff ff ff ff
+[   50.747161] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=event_msgs, len=18
+[   50.748946] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 29 ifidx 0
+[   50.756237] brcmfmac: brcmf_hexdump: set dcmd    0: 65 76 65 6e 74 5f 6d 73 67 73 00 61 15 0b 00 02 42 c0 10 60 09 00 00 00 00 00 00 00 00
+[   50.783103] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=tdls_enable, len=4
+[   50.784933] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 16 ifidx 0
+[   50.792379] brcmfmac: brcmf_hexdump: set dcmd    0: 74 64 6c 73 5f 65 6e 61 62 6c 65 00 01 00 00 00
+[   50.803221] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=event_msgs, len=18
+[   50.808493] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 29 ifidx 0
+[   50.815628] brcmfmac: brcmf_hexdump: set dcmd    0: 65 76 65 6e 74 5f 6d 73 67 73 00 61 15 0b 00 02 42 c0 10 60 09 00 10 00 00 00 00 00 00
+[   50.848482] brcmfmac: brcmf_sdio_firmware_callback: aReading interrupt reg: 0x0
+[   50.851301] brcmfmac: brcmf_sdio_firmware_callback: bReading interrupt reg: 0x800040
+[   50.858983] brcmfmac: brcmf_sdio_firmware_callback: cReading interrupt reg: 0x0
+[   50.865554] brcmfmac: brcmf_sdio_firmware_callback: dReading interrupt reg: 0x0
+[   50.872971] brcmfmac: brcmf_sdio_firmware_callback: eReading interrupt reg: 0x0
+[   50.958577] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 2 len 4 ifidx 0
+[   50.959893] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   51.007476] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 185 len 4 ifidx 0
+[   51.007996] brcmfmac: brcmf_add_if: Enter, bsscfgidx=0, ifidx=0
+[   51.009023] brcmfmac: brcmf_hexdump: set dcmd    0: 28 00 00 00
+[   51.042535] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 187 len 4 ifidx 0
+[   51.044062] brcmfmac: brcmf_hexdump: set dcmd    0: 28 00 00 00
+[   51.062938] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 258 len 4 ifidx 0
+[   51.064428] brcmfmac: brcmf_hexdump: set dcmd    0: 78 00 00 00
+[   51.082366] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 86 len 4 ifidx 0
+[   51.083761] brcmfmac: brcmf_hexdump: set dcmd    0: 02 00 00 00
+[   51.090398] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=bcn_timeout, len=4
+[   51.097075] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 16 ifidx 0
+[   51.109397] brcmfmac: brcmf_hexdump: set dcmd    0: 62 63 6e 5f 74 69 6d 65 6f 75 74 00 02 00 00 00
+[   51.130963] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=roam_off, len=4
+[   51.132462] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   51.139689] brcmfmac: brcmf_hexdump: set dcmd    0: 72 6f 61 6d 5f 6f 66 66 00 00 00 00 00
+[   51.150345] brcmfmac: brcmf_fil_cmd_data_set: ifidx=0, cmd=55, len=8
+[   51.160197] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 55 len 8 ifidx 0
+[   51.167191] brcmfmac: brcmf_hexdump: set dcmd    0: b5 ff ff ff 03 00 00 00
+[   51.186927] brcmfmac: brcmf_fil_cmd_data_set: ifidx=0, cmd=57, len=8
+[   51.187640] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 57 len 8 ifidx 0
+[   51.194676] brcmfmac: brcmf_hexdump: set dcmd    0: 14 00 00 00 03 00 00 00
+[   51.206944] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 20 len 4 ifidx 0
+[   51.214053] brcmfmac: brcmf_hexdump: set dcmd    0: 01 00 00 00
+[   51.226840] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   51.232744] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   51.239910] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   51.262879] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   51.264110] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   51.271310] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   51.299122] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   51.300420] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   51.307741] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   51.318342] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=4
+[   51.327942] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 15 ifidx 0
+[   51.327953] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 00 00 00 00
+[   51.338498] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   51.338504] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   51.338512] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   51.346845] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   51.372347] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   51.402630] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 86 len 4 ifidx 0
+[   51.405547] brcmfmac: brcmf_hexdump: set dcmd    0: 02 00 00 00
+[   51.422908] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   51.425291] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   51.432756] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   51.444354] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   51.453043] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   51.460106] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   51.478898] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   51.480271] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   51.487396] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   51.506673] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=10
+[   51.508423] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 21 ifidx 0
+[   51.515665] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 01 00 00 00 01 00 5e 00 00 01
+[   51.530654] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   51.539006] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   51.546131] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   51.575221] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   51.576655] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   51.586578] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   51.595423] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   51.602549] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   51.614163] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   51.622977] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   51.630139] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   51.654469] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   51.655694] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   51.662776] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   51.727293] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=pmkid_info, len=356
+[   51.733627] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 367 ifidx 0
+[   51.740811] brcmfmac: brcmf_hexdump: set dcmd    0: 70 6d 6b 69 64 5f 69 6e 66 6f 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.754008] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.754024] brcmfmac: brcmf_hexdump: set dcmd   40: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.754059] brcmfmac: brcmf_hexdump: set dcmd   60: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.786241] brcmfmac: brcmf_hexdump: set dcmd   80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.786284] brcmfmac: brcmf_hexdump: set dcmd   a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.818252] brcmfmac: brcmf_hexdump: set dcmd   c0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.850440] brcmfmac: brcmf_hexdump: set dcmd   e0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.869333] brcmfmac: brcmf_hexdump: set dcmd  100: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.882506] brcmfmac: brcmf_hexdump: set dcmd  120: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.901644] brcmfmac: brcmf_hexdump: set dcmd  140: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   51.914848] brcmfmac: brcmf_hexdump: set dcmd  160: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   52.003940] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 3 len 4 ifidx 0
+[   52.005282] brcmfmac: brcmf_hexdump: set dcmd    0: 01 00 00 00
+[   52.030357] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=apsta, len=4
+[   52.031612] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   52.038821] brcmfmac: brcmf_hexdump: set dcmd    0: 61 70 73 74 61 00 01 00 00 00
+[   52.067050] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 2 len 4 ifidx 0
+[   52.068753] brcmfmac: brcmf_hexdump: set dcmd    0: 01 00 00 00
+[   52.122590] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=p2p_disc, len=4
+[   52.122894] brcmfmac: brcmf_add_if: Enter, bsscfgidx=0, ifidx=0
+[   52.129586] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   52.129677] brcmfmac: brcmf_hexdump: set dcmd    0: 70 32 70 5f 64 69 73 63 00 00 00 00 00
+[   52.154754] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=p2p_da_override, len=6
+[   52.164746] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 22 ifidx 0
+[   52.171579] brcmfmac: brcmf_hexdump: set dcmd    0: 70 32 70 5f 64 61 5f 6f 76 65 72 72 69 64 65 00 4e 62 64 f2 46 fc
+[   52.190014] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=p2p_disc, len=4
+[   52.195203] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   52.202398] brcmfmac: brcmf_hexdump: set dcmd    0: 70 32 70 5f 64 69 73 63 00 01 00 00 00
+[   52.226167] brcmfmac: brcmf_add_if: Enter, bsscfgidx=1, ifidx=0
+[   52.226448] brcmfmac: brcmf_add_if:  ==== pid:35, if:wl0 (4e:62:64:f2:46:fc) created ===
+[   52.273264] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=p2p_disc, len=4
+[   52.274813] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   52.281967] brcmfmac: brcmf_hexdump: set dcmd    0: 70 32 70 5f 64 69 73 63 00 01 00 00 00
+[   52.315213] brcmfmac: brcmf_fil_bsscfg_data_set: ifidx=0, bsscfgidx=1, name=p2p_state, len=6
+[   52.318176] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 27 ifidx 0
+[   52.325310] brcmfmac: brcmf_hexdump: set dcmd    0: 62 73 73 63 66 67 3a 70 32 70 5f 73 74 61 74 65 00 01 00 00 00 00 a0 00 00 00 00
+[   52.350058] brcmfmac: brcmf_fil_bsscfg_data_set: ifidx=0, bsscfgidx=1, name=wsec, len=4
+[   52.352416] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 20 ifidx 0
+[   52.359617] brcmfmac: brcmf_hexdump: set dcmd    0: 62 73 73 63 66 67 3a 77 73 65 63 00 01 00 00 00 04 00 00 00
+[   52.395946] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=escan, len=180
+[   52.400971] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 186 ifidx 0
+[   52.408265] brcmfmac: brcmf_hexdump: set dcmd    0: 65 73 63 61 6e 00 01 00 00 00 01 00 34 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   52.421338] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff ff ff 02 00 ff ff ff ff ff ff
+[   52.421364] brcmfmac: brcmf_hexdump: set dcmd   40: ff ff ff ff ff ff ff ff ff ff 24 00 01 00 01 10 02 10 03 10 04 10 05 10 06 10 07 10 08 10 09 10
+[   52.421443] brcmfmac: brcmf_hexdump: set dcmd   60: 0a 10 0b 10 24 d0 28 d0 2c d0 30 d0 34 d0 38 d0 3c d0 40 d0 64 d0 68 d0 6c d0 70 d0 74 d0 78 d0
+[   52.453618] brcmfmac: brcmf_hexdump: set dcmd   80: 7c d0 80 d0 84 d0 88 d0 8c d0 90 d0 95 d0 99 d0 9d d0 a1 d0 a5 d0 00 00 00 00 00 00 00 00 00 00
+[   52.453633] brcmfmac: brcmf_hexdump: set dcmd   a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   53.050833] brcmfmac: brcmf_sdiod_sglist_rw: CMD53 sg block read failed -84
+[   53.052185] brcmfmac: brcmf_sdio_rxglom: glom read of 1024 bytes failed: -5
+[   54.076479] brcmfmac: brcmf_sdio_isr: failed backplane access
+[   54.076775] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   54.083957] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   54.097611] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   55.257795] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=escan, len=180
+[   55.259204] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 186 ifidx 0
+[   55.266519] brcmfmac: brcmf_hexdump: set dcmd    0: 65 73 63 61 6e 00 01 00 00 00 01 00 34 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   55.285020] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff ff ff 02 00 ff ff ff ff ff ff
+[   55.298221] brcmfmac: brcmf_hexdump: set dcmd   40: ff ff ff ff ff ff ff ff ff ff 24 00 01 00 01 10 02 10 03 10 04 10 05 10 06 10 07 10 08 10 09 10
+[   55.318574] brcmfmac: brcmf_hexdump: set dcmd   60: 0a 10 0b 10 24 d0 28 d0 2c d0 30 d0 34 d0 38 d0 3c d0 40 d0 64 d0 68 d0 6c d0 70 d0 74 d0 78 d0
+[   55.331773] brcmfmac: brcmf_hexdump: set dcmd   80: 7c d0 80 d0 84 d0 88 d0 8c d0 90 d0 95 d0 99 d0 9d d0 a1 d0 a5 d0 00 00 00 00 00 00 00 00 00 00
+[   55.350649] brcmfmac: brcmf_hexdump: set dcmd   a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   55.627606] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=10
+[   55.632811] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 21 ifidx 0
+[   55.639999] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 01 00 00 00 01 00 5e 00 00 01
+[   55.657784] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   55.664608] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   55.671791] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   55.694066] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   55.695531] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   55.713985] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   55.715301] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   55.722510] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   55.734488] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   55.742398] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   55.749584] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   55.770188] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   55.771409] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   55.778718] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   56.873440] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -110
+[   56.877391] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   56.885342] brcmfmac: brcmf_sdio_hostmail: Enter
+[   57.913582] brcmfmac: brcmf_sdio_readframes: read 432 bytes from channel 1 failed: -110
+[   57.923217] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   57.933914] brcmfmac: brcmf_sdio_hostmail: Enter
+[   57.943632] brcmfmac: brcmf_sdio_rxglom: descriptor len 4 bad: 0
+[   57.948340] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   57.957215] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   57.963157] brcmfmac: brcmf_sdio_rxglom: descriptor len 6 bad: 0
+[   57.975601] brcmfmac: brcmf_sdio_hdparse: HW header length too long
+[   57.981735] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   57.987440] brcmfmac: brcmf_sdio_rxglom: descriptor len 5 bad: 0
+[   57.992955] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -84
+[   57.998976] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   58.014082] brcmfmac: brcmf_sdio_hostmail: Enter
+[   58.018190] brcmfmac: brcmf_sdio_hdparse: HW header length too long
+[   58.024381] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.030633] brcmfmac: brcmf_sdio_rxglom: descriptor len 6 bad: 0
+[   58.042763] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -84
+[   58.048800] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   58.056717] brcmfmac: brcmf_sdio_hostmail: Enter
+[   58.068008] brcmfmac: brcmf_sdio_hdparse: HW header length too long
+[   58.074156] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.080188] brcmfmac: brcmf_sdio_rxglom: descriptor len 6 bad: 0
+[   58.085375] brcmfmac: brcmf_sdio_hdparse: HW header length too long
+[   58.098625] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.104596] brcmfmac: brcmf_sdio_hdparse: HW superframe header length error
+[   58.113454] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   58.124595] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -84
+[   58.130525] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   58.138487] brcmfmac: brcmf_sdio_hostmail: Enter
+[   58.149957] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   58.158630] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.164488] brcmfmac: brcmf_sdio_rxglom: descriptor len 4 bad: 0
+[   58.169959] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   58.184511] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.189891] brcmfmac: brcmf_sdio_rxglom: descriptor len 3 bad: 0
+[   58.195927] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   58.204702] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.216196] brcmfmac: brcmf_sdio_rxglom: descriptor len 3 bad: 0
+[   58.221670] brcmfmac: brcmf_sdio_hdparse: HW superframe header length error
+[   58.228452] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   58.235089] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -84
+[   58.246334] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   58.254424] brcmfmac: brcmf_sdio_hostmail: Enter
+[   58.258448] brcmfmac: brcmf_sdio_hdparse: HW header length too long
+[   58.264534] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.277139] brcmfmac: brcmf_sdio_hdparse: HW superframe header length error
+[   58.283879] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   58.290552] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -84
+[   58.303599] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[   58.311697] brcmfmac: brcmf_sdio_hostmail: Enter
+[   58.315799] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   58.324564] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   58.356050] brcmfmac: brcmf_cfg80211_connect: Enter
+[   58.356082] brcmfmac: brcmf_cfg80211_connect: ssid fx-netgear-2g
+[   58.361899] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=wpaie, len=0
+[   58.368688] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 6 ifidx 0
+[   58.375756] brcmfmac: brcmf_hexdump: set dcmd    0: 77 70 61 69 65 00
+[   58.393579] brcmfmac: brcmf_cfg80211_connect: Channel was 0
+[   58.394853] brcmfmac: brcmf_cfg80211_connect: ie (000000003feee4af), ie_len (6)
+[   58.402121] brcmfmac: brcmf_fil_bsscfg_data_set: ifidx=0, bsscfgidx=0, name=wpa_auth, len=4
+[   58.417551] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   58.424730] brcmfmac: brcmf_hexdump: set dcmd    0: 77 70 61 5f 61 75 74 68 00 00 00 00 00
+[   58.445589] brcmfmac: brcmf_fil_bsscfg_data_set: ifidx=0, bsscfgidx=0, name=auth, len=4
+[   58.448070] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   58.455173] brcmfmac: brcmf_hexdump: set dcmd    0: 61 75 74 68 00 00 00 00 00
+[   58.465582] brcmfmac: brcmf_fil_bsscfg_data_set: ifidx=0, bsscfgidx=0, name=wsec, len=4
+[   58.477549] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   58.484602] brcmfmac: brcmf_hexdump: set dcmd    0: 77 73 65 63 00 00 00 00 00
+[   58.501638] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 205 len 4 ifidx 0
+[   58.505881] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   58.521674] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=join_pref, len=8
+[   58.526200] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 18 ifidx 0
+[   58.533350] brcmfmac: brcmf_hexdump: set dcmd    0: 6a 6f 69 6e 5f 70 72 65 66 00 04 02 08 01 01 02 00 00
+[   58.545615] brcmfmac: brcmf_fil_bsscfg_data_set: ifidx=0, bsscfgidx=0, name=join, len=68
+[   58.558093] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 73 ifidx 0
+[   58.565282] brcmfmac: brcmf_hexdump: set dcmd    0: 6a 6f 69 6e 00 0d 00 00 00 66 78 2d 6e 65 74 67 65 61 72 2d 32 67 00 00 00 00 00 00 00 00 00 00
+[   58.578447] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 ff 00 00 00 ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff ff
+[   58.598792] brcmfmac: brcmf_hexdump: set dcmd   40: ff ff ff 00 00 00 00 00 00
+[   61.438109] brcmfmac: brcmf_fil_cmd_data_set: ifidx=0, cmd=121, len=6
+[   61.438948] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 121 len 6 ifidx 0
+[   61.446273] brcmfmac: brcmf_hexdump: set dcmd    0: cc 40 d0 34 aa 78
+[   61.461181] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=16
+[   61.467051] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 27 ifidx 0
+[   61.474207] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 02 00 00 00 01 00 5e 00 00 01 33 33 00 00 00 01
+[   61.502086] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   61.503585] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   61.510857] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   61.542048] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   61.545864] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   61.566093] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=nd_hostip_clear, len=0
+[   61.570517] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 16 ifidx 0
+[   61.577696] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 5f 68 6f 73 74 69 70 5f 63 6c 65 61 72 00
+[   61.601993] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   61.603317] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   61.610951] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   61.621978] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   61.632270] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   61.639399] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   61.661992] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   61.663147] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   61.670276] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   61.681851] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=22
+[   61.691805] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 33 ifidx 0
+[   61.698893] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 03 00 00 00 01 00 5e 00 00 01 33 33 00 00 00 01 33 33 ff be 03
+[   61.712113] brcmfmac: brcmf_hexdump: set dcmd   20: 45
+[   61.742775] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   61.744380] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   61.751904] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   61.762511] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   61.772677] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   61.782182] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   61.785624] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   61.799866] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   61.822081] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   61.823347] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   61.830570] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   61.841891] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   61.851976] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   61.858982] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   63.141305] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=28
+[   63.143091] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 39 ifidx 0
+[   63.150285] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 04 00 00 00 01 00 5e 00 00 01 33 33 00 00 00 01 33 33 ff be 03
+[   63.168712] brcmfmac: brcmf_hexdump: set dcmd   20: 45 33 33 00 00 00 fb
+[   63.182138] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   63.187851] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   63.195019] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   63.218752] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   63.220260] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   63.237364] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   63.238684] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   63.245958] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   63.257379] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   63.266563] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   63.273731] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   63.297453] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[   63.299744] brcmfmac: brcmf_sdio_intr_rstatus: times 256, val c00040, intmask 200000f0
+[   63.308239] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   63.319687] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   63.326781] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   63.445754] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_hostip, len=4
+[   63.447425] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 15 ifidx 0
+[   63.454662] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 68 6f 73 74 69 70 00 0a 00 00 0a
+[   63.472289] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=mcast_list, len=34
+[   63.476473] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 45 ifidx 0
+[   63.483610] brcmfmac: brcmf_hexdump: set dcmd    0: 6d 63 61 73 74 5f 6c 69 73 74 00 05 00 00 00 01 00 5e 00 00 01 33 33 00 00 00 01 33 33 ff be 03
+[   63.496721] brcmfmac: brcmf_hexdump: set dcmd   20: 45 33 33 00 00 00 fb 01 00 5e 00 00 fb
+[   63.530607] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=allmulti, len=4
+[   63.532192] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 13 ifidx 0
+[   63.539687] brcmfmac: brcmf_hexdump: set dcmd    0: 61 6c 6c 6d 75 6c 74 69 00 00 00 00 00
+[   63.561540] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 10 len 4 ifidx 0
+[   63.562973] brcmfmac: brcmf_hexdump: set dcmd    0: 00 00 00 00
+[   63.573390] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arp_ol, len=4
+[   63.581359] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 11 ifidx 0
+[   63.588519] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 5f 6f 6c 00 09 00 00 00
+[   63.609614] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=arpoe, len=4
+[   63.610926] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 10 ifidx 0
+[   63.618353] brcmfmac: brcmf_hexdump: set dcmd    0: 61 72 70 6f 65 00 01 00 00 00
+[   63.637886] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=ndoe, len=4
+[   63.639046] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 9 ifidx 0
+[   63.646203] brcmfmac: brcmf_hexdump: set dcmd    0: 6e 64 6f 65 00 01 00 00 00
+[   79.018195] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=escan, len=180
+[   79.019639] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 186 ifidx 0
+[   79.027185] brcmfmac: brcmf_hexdump: set dcmd    0: 65 73 63 61 6e 00 01 00 00 00 01 00 34 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   79.040131] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff ff ff 02 00 ff ff ff ff ff ff
+[   79.053308] brcmfmac: brcmf_hexdump: set dcmd   40: ff ff ff ff ff ff ff ff ff ff 24 00 01 00 01 10 02 10 03 10 04 10 05 10 06 10 07 10 08 10 09 10
+[   79.066479] brcmfmac: brcmf_hexdump: set dcmd   60: 0a 10 0b 10 24 d0 28 d0 2c d0 30 d0 34 d0 38 d0 3c d0 40 d0 64 d0 68 d0 6c d0 70 d0 74 d0 78 d0
+[   79.079695] brcmfmac: brcmf_hexdump: set dcmd   80: 7c d0 80 d0 84 d0 88 d0 8c d0 90 d0 95 d0 99 d0 9d d0 a1 d0 a5 d0 00 00 00 00 00 00 00 00 00 00
+[   79.092885] brcmfmac: brcmf_hexdump: set dcmd   a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[   79.841830] brcmfmac: brcmf_sdiod_sglist_rw: CMD53 sg block read failed -84
+[   79.843254] brcmfmac: brcmf_sdio_rxglom: glom read of 1024 bytes failed: -5
+[   79.850138] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   79.857221] brcmfmac: brcmf_sdio_hdparse: Wrong channel for subframe
+[   79.863040] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   82.857197] brcmfmac: brcmf_sdiod_sglist_rw: CMD53 sg block read failed -84
+[   82.858546] brcmfmac: brcmf_sdio_rxglom: glom read of 2560 bytes failed: -5
+[   83.887567] brcmfmac: brcmf_sdio_isr: failed backplane access
+[   83.887926] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame
+[   83.895294] brcmfmac: brcmf_sdio_hdparse: HW header length too long
+[   83.900570] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[   83.906597] brcmfmac: brcmf_sdio_rxglom: descriptor len 4 bad: 0
+[   83.911971] brcmfmac: brcmf_sdio_readframes: brcmf_sdio_readframes: glom superframe w/o descriptor!
+[   83.920710] brcmfmac: brcmf_sdio_rxfail: terminate frame
+[  122.040684] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=escan, len=180
+[  122.042313] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 186 ifidx 0
+[  122.049429] brcmfmac: brcmf_hexdump: set dcmd    0: 65 73 63 61 6e 00 01 00 00 00 01 00 34 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[  122.062573] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff ff ff 02 00 ff ff ff ff ff ff
+[  122.075767] brcmfmac: brcmf_hexdump: set dcmd   40: ff ff ff ff ff ff ff ff ff ff 24 00 01 00 01 10 02 10 03 10 04 10 05 10 06 10 07 10 08 10 09 10
+[  122.088997] brcmfmac: brcmf_hexdump: set dcmd   60: 0a 10 0b 10 24 d0 28 d0 2c d0 30 d0 34 d0 38 d0 3c d0 40 d0 64 d0 68 d0 6c d0 70 d0 74 d0 78 d0
+[  122.102178] brcmfmac: brcmf_hexdump: set dcmd   80: 7c d0 80 d0 84 d0 88 d0 8c d0 90 d0 95 d0 99 d0 9d d0 a1 d0 a5 d0 00 00 00 00 00 00 00 00 00 00
+[  122.115380] brcmfmac: brcmf_hexdump: set dcmd   a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[  122.750537] brcmfmac: brcmf_sdio_readframes: RXHEADER FAILED: -84
+[  122.751085] brcmfmac: brcmf_sdio_rxfail: abort command, terminate frame, send NAK
+[  122.760338] brcmfmac: brcmf_sdio_hostmail: Enter
+[  185.019997] brcmfmac: brcmf_fil_iovar_data_set: ifidx=0, name=escan, len=180
+[  185.021421] brcmfmac: brcmf_proto_bcdc_set_dcmd: Enter, cmd 263 len 186 ifidx 0
+[  185.028944] brcmfmac: brcmf_hexdump: set dcmd    0: 65 73 63 61 6e 00 01 00 00 00 01 00 34 12 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[  185.042012] brcmfmac: brcmf_hexdump: set dcmd   20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 ff ff ff ff ff ff 02 00 ff ff ff ff ff ff
+[  185.055080] brcmfmac: brcmf_hexdump: set dcmd   40: ff ff ff ff ff ff ff ff ff ff 24 00 01 00 01 10 02 10 03 10 04 10 05 10 06 10 07 10 08 10 09 10
+[  185.068280] brcmfmac: brcmf_hexdump: set dcmd   60: 0a 10 0b 10 24 d0 28 d0 2c d0 30 d0 34 d0 38 d0 3c d0 40 d0 64 d0 68 d0 6c d0 70 d0 74 d0 78 d0
+[  185.081514] brcmfmac: brcmf_hexdump: set dcmd   80: 7c d0 80 d0 84 d0 88 d0 8c d0 90 d0 95 d0 99 d0 9d d0 a1 d0 a5 d0 00 00 00 00 00 00 00 00 00 00
+[  185.094685] brcmfmac: brcmf_hexdump: set dcmd   a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[  185.847073] brcmfmac: brcmf_sdio_intr_rstatus: core->base 0x18005000, SD_REG(int) 0x20
+[  185.849438] brcmfmac: brcmf_sdio_intr_rstatus: times 512, val c00040, intmask 200000f0
