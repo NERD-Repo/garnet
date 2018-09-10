@@ -1,0 +1,48 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fuchsia.telephony.qmi;
+
+enum SimCapability {
+  SUPPORTED,
+  NOT_SUPPORTED,
+};
+
+enum DataServiceCapability {
+  NONE,
+  CS_ONLY,
+  PS_ONLY,
+  SIMUL_CS_PS,
+  NONSIMUL_CS_PS,
+};
+
+struct Capabilities {
+  /// Maximum transmission rate (bps)
+  uint32 max_tx_channel_rate;
+  /// Maximum reception rate (bps)
+  uint32 max_rx_channel_rate;
+  /// Device capabilities
+  DataServiceCapability dsc;
+  /// SIM capabilities
+  SimCapability sc;
+  // more?
+};
+
+interface QmiManager {
+  /// Reset the modem
+  1: Reset() -> (bool status);
+
+  /// Get the device capabilities
+  2: GetCapabilities() -> (fuchsia.telephony.cababilites resp);
+
+  // All of the device management methods
+
+  /// Fulfill a request for the |network| interface
+  1001: RequestNetworkService(request<fuchsia.telephony.network> network);
+
+  /// Fulfill a request for the |location| interface
+  1002: RequestLocationService(request<fuchsia.telephony.location> location);
+
+  // A bunch more services. Messaging, User Identity, Phonebook, etc...
+};
