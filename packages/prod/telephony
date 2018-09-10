@@ -1,0 +1,3 @@
+{
+    "packages": [ "//garnet/drivers/telephony/qmi:qmi" ]
+}
