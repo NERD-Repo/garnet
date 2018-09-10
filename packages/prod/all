@@ -67,6 +67,7 @@
         "garnet/packages/prod/scenic_tools",
         "garnet/packages/prod/scpi",
         "garnet/packages/prod/sysmgr",
+        "garnet/packages/prod/telephony",
         "garnet/packages/prod/terminal",
         "garnet/packages/prod/test_runner",
         "garnet/packages/prod/thermd",
