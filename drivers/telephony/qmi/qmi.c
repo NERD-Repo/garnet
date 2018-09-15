@@ -376,7 +376,7 @@ static void copy_endpoint_info(ecm_endpoint_t* ep_info, usb_endpoint_descriptor_
 }
 
 static bool want_interface(usb_interface_descriptor_t* intf, void* arg) {
-    return intf->bInterfaceClass == USB_CLASS_CDC;
+    return intf->bInterfaceClass == USB_CLASS_VENDOR;
 }
 
 static zx_status_t qmi_bind(void* ctx, zx_device_t* device) {
@@ -430,9 +430,10 @@ static zx_status_t qmi_bind(void* ctx, zx_device_t* device) {
     usb_interface_descriptor_t* data_ifc = NULL;
 
     while (desc) {
-        printf("Descriptor type: 0x%02hhx of length 0x%02hhx| %d\n", desc->bDescriptorType, desc->bLength, (desc->bDescriptorType == USB_DT_INTERFACE));
         if (desc->bDescriptorType == USB_DT_INTERFACE) {
             usb_interface_descriptor_t* ifc_desc = (void*)desc;
+            printf("Descriptor type: 0x%02hhx \n Interface Number: %d", desc->bDescriptorType, ifc_desc->bInterfaceNumber);
+
             printf("Interface class: 0x%02hhx | endpoints: %d \n", ifc_desc->bInterfaceClass, ifc_desc->bNumEndpoints);
             if (ifc_desc->bInterfaceClass == USB_CLASS_VENDOR) {
               if (ifc_desc->bNumEndpoints == 0) {
@@ -467,35 +468,42 @@ static zx_status_t qmi_bind(void* ctx, zx_device_t* device) {
               goto fail;
             }
             cdc_union_desc = (void*)cs_ifc_desc;
+            zxlogf(ERROR, "union control interface %d\n", cdc_union_desc->bControlInterface);
+            zxlogf(ERROR, "union subord interface %d\n", cdc_union_desc->bSubordinateInterface);
+            if (data_ifc->bInterfaceNumber != cdc_union_desc->bControlInterface) {
+              zxlogf(ERROR, "Bad CDC Union: %d\n", cdc_union_desc->bControlInterface);
+              goto fail;
+            }
+
           }
         } else if (desc->bDescriptorType == USB_DT_ENDPOINT) {
           printf("BWB: DT_ENDPOINT\n");
-            usb_endpoint_descriptor_t* endpoint_desc = (void*)desc;
-            if (usb_ep_direction(endpoint_desc) == USB_ENDPOINT_IN &&
-                usb_ep_type(endpoint_desc) == USB_ENDPOINT_INTERRUPT) {
-                if (int_ep != NULL) {
-                    zxlogf(ERROR, "%s: multiple interrupt endpoint descriptors\n", module_name);
-                    goto fail;
-                }
-                int_ep = endpoint_desc;
-            } else if (usb_ep_direction(endpoint_desc) == USB_ENDPOINT_OUT &&
-                       usb_ep_type(endpoint_desc) == USB_ENDPOINT_BULK) {
-                if (tx_ep != NULL) {
-                    zxlogf(ERROR, "%s: multiple tx endpoint descriptors\n", module_name);
-                    goto fail;
-                }
-                tx_ep = endpoint_desc;
-            } else if (usb_ep_direction(endpoint_desc) == USB_ENDPOINT_IN &&
-                       usb_ep_type(endpoint_desc) == USB_ENDPOINT_BULK) {
-                if (rx_ep != NULL) {
-                    zxlogf(ERROR, "%s: multiple rx endpoint descriptors\n", module_name);
-                    goto fail;
-                }
-                rx_ep = endpoint_desc;
-            } else {
-                zxlogf(ERROR, "%s: unrecognized endpoint\n", module_name);
-                goto fail;
-            }
+            //usb_endpoint_descriptor_t* endpoint_desc = (void*)desc;
+            //if (usb_ep_direction(endpoint_desc) == USB_ENDPOINT_IN &&
+            //    usb_ep_type(endpoint_desc) == USB_ENDPOINT_INTERRUPT) {
+            //    if (int_ep != NULL) {
+            //        zxlogf(ERROR, "%s: multiple interrupt endpoint descriptors\n", module_name);
+            //        goto fail;
+            //    }
+            //    int_ep = endpoint_desc;
+            //} else if (usb_ep_direction(endpoint_desc) == USB_ENDPOINT_OUT &&
+            //           usb_ep_type(endpoint_desc) == USB_ENDPOINT_BULK) {
+            //    if (tx_ep != NULL) {
+            //        zxlogf(ERROR, "%s: multiple tx endpoint descriptors\n", module_name);
+            //        goto fail;
+            //    }
+            //    tx_ep = endpoint_desc;
+            //} else if (usb_ep_direction(endpoint_desc) == USB_ENDPOINT_IN &&
+            //           usb_ep_type(endpoint_desc) == USB_ENDPOINT_BULK) {
+            //    if (rx_ep != NULL) {
+            //        zxlogf(ERROR, "%s: multiple rx endpoint descriptors\n", module_name);
+            //        goto fail;
+            //    }
+            //    rx_ep = endpoint_desc;
+            //} else {
+            //    zxlogf(ERROR, "%s: unrecognized endpoint\n", module_name);
+            //    goto fail;
+            //}
         }
         desc = usb_desc_iter_next(&iter);
     }
