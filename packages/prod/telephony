@@ -1,3 +1,5 @@
 {
-    "packages": [ "//garnet/drivers/telephony/qmi:qmi" ]
+    "packages": [
+      "//garnet/drivers/telephony/qmi-transport"
+ ]
 }
