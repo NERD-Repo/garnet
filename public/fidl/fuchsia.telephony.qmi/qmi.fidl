@@ -1,0 +1,39 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fuchsia.telephony.qmi;
+
+enum ResultCode {
+  Success = 0x0;
+  Error = 0x1;
+};
+
+enum ErrorCode : uint16 {
+  NONE          = 0x0000;
+  MALFORMED_MSG = 0x0001;
+  NO_MEMORY     = 0x0002;
+  INTERNAL      = 0x0003;
+  // TODO add all error codes
+};
+
+struct QmiResult {
+  ResultCode code;
+  ErrorCode error;
+};
+
+/// Interface to request QMI Standard services from.
+interface QmiModem {
+  // No interface to CTL service is exposed
+
+//  /// Fulfill a request for the Wireless Data |service| interface
+//  1001: RequestWirelessDataService(request<WirelessData> service);
+
+  /// Fulfill a request for the Device Management |service| interface
+  1002: RequestDataManagementService(request<DeviceManagement> service) -> (QmiResult res);
+
+//  /// Fulfill a request for the Loctaion |service| interface
+//  1003: RequestLocationService(request<Location> location);
+
+  // A bunch more services. Messaging, User Identity, Phonebook, etc...
+};

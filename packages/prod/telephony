@@ -1,5 +1,6 @@
 {
     "packages": [
+      "//garnet/bin/telephony/qmi-modem",
       "//garnet/drivers/telephony/qmi-transport"
  ]
 }

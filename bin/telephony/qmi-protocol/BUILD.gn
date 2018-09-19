@@ -1,0 +1,54 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+import("//build/compiled_action.gni")
+import("//build/rust/rustc_library.gni")
+import("//build/rust/rustc_binary.gni")
+
+rustc_library("lib") {
+  edition = "2018"
+  name = "qmi_scanner_lib"
+  deps = [
+    "//third_party/rust-crates/rustc_deps:num",
+    "//third_party/rust-crates/rustc_deps:xml-rs",
+  ]
+}
+
+# Generate the rust sources using the scanner.
+compiled_action("gen_qmi_protocol_source") {
+  tool = "//garnet/bin/telephony/qmi-protocol:scanner"
+  sources = [
+    "protocol/dms.json"
+  ]
+  outputs = [
+    "$target_gen_dir/qmi-protocol.rs"
+  ]
+  args = [
+    "-i",
+    rebase_path("protocol/dms.json"),
+    "-o",
+    rebase_path("$target_gen_dir/qmi-protocol.rs"),
+  ]
+}
+
+# Build the library.
+rustc_library("qmi-protocol") {
+  edition = "2018"
+  non_rust_deps = [ ":gen_qmi_protocol_source" ]
+  deps = [
+    "//garnet/public/rust/crates/fuchsia-zircon",
+  ]
+  source_root = "$target_gen_dir/qmi-protocol.rs"
+}
+
+if (host_toolchain == current_toolchain) {
+  rustc_binary("scanner") {
+    edition = "2018"
+    deps = [
+      "//third_party/rust-crates/rustc_deps:serde_json",
+#      ":lib",
+    ]
+  }
+}
