@@ -32,7 +32,6 @@ driver_module("qmi_driver") {
     "//zircon/public/lib/usb",
     "//zircon/public/lib/fit",
     "//zircon/public/lib/sync",
-    "//zircon/public/lib/async-loop-cpp",
     "//garnet/public/lib/fsl",
     "//zircon/public/lib/usb",
   ]
