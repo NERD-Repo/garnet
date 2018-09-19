@@ -1,0 +1,38 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fuchsia.telephony.qmi;
+
+//enum SimCapability {
+//  SUPPORTED,
+//  NOT_SUPPORTED,
+//};
+
+enum DataServiceCapabilityEnum: uint8 {
+  NONE            = 0x00;
+  CS_ONLY         = 0x01;
+  PS_ONLY         = 0x02;
+  SIMUL_CS_PS     = 0x03;
+  NONSIMUL_CS_PS  = 0x04;
+};
+
+struct DataServiceCapability {
+  DataServiceCapabilityEnum val;
+};
+
+struct Capabilities {
+  /// Maximum transmission rate (bps)
+  uint32 max_tx_channel_rate;
+  /// Maximum reception rate (bps)
+  uint32 max_rx_channel_rate;
+  /// Device capabilities
+  DataServiceCapability? dsc;
+};
+
+
+interface DeviceManagement {
+  1: SetEventReport(bool power_state, uint8 battery_lvl_lower_limit, uint8 battery_lvl_upper_limit,
+                      bool pin_state, bool activation_state, bool operator_mode_state, bool uim_state) -> (QmiResult result);
+
+};

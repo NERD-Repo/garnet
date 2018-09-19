@@ -1,3 +1,6 @@
 {
-    "packages": [ "//garnet/drivers/telephony/qmi:qmi" ]
+  "packages": [
+    "//garnet/drivers/telephony/qmi:qmi",
+    "//garnet/bin/telephony/qmi-modem"
+  ]
 }
