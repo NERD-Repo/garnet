@@ -11,7 +11,6 @@
 
 #include "garnet/lib/machina/bits.h"
 #include "garnet/lib/machina/virtio_device.h"
-#include "garnet/lib/machina/virtio_queue.h"
 #include "lib/fxl/logging.h"
 
 namespace machina {
@@ -20,32 +19,6 @@ static constexpr uint8_t kPciBar64BitMultiplier = 2;
 
 static constexpr uint8_t kPciCapTypeVendorSpecific = 0x9;
 static constexpr uint16_t kPciVendorIdVirtio = 0x1af4;
-
-// Virtio PCI Bar Layout.
-//
-// Expose all read/write fields on BAR0 using a strongly ordered mapping.
-// Map the Queue notify region to BAR1 with a BELL type that does not require
-// the guest to decode any instruction fields. The queue to notify can be
-// inferred based on the address accessed alone.
-//
-//          BAR0                BAR1
-//      ------------  00h   ------------  00h
-//     | Virtio PCI |      |  Queue 0   |
-//     |   Common   |      |   Notify   |
-//     |   Config   |      |------------| 04h
-//     |------------| 38h  |  Queue 1   |
-//     | ISR Config |      |   Notify   |
-//     |------------| 3ch  |------------|
-//     |  Device-   |      |    ...     |
-//     | Specific   |      |------------| 04 * N
-//     |  Config    |      |  Queue N   |
-//     |            |      |   Notify   |
-//      ------------        ------------
-// These structures are defined in Virtio 1.0 Section 4.1.4.
-static constexpr uint8_t kVirtioPciBar = 0;
-static constexpr uint8_t kVirtioPciNotifyBar = 1;
-static_assert(kVirtioPciBar < kPciMaxBars && kVirtioPciNotifyBar < kPciMaxBars,
-              "Not enough BAR registers available");
 
 // Common configuration.
 static constexpr size_t kVirtioPciCommonCfgBase = 0;
@@ -100,6 +73,8 @@ static constexpr uint32_t virtio_pci_class_code(uint16_t virtio_id) {
       return 0x02000000;
     case VIRTIO_ID_VSOCK:
       return 0x02800000;
+    case VIRTIO_ID_WL:
+      return 0x0ff08000;
   }
   return 0;
 }
@@ -217,18 +192,20 @@ zx_status_t VirtioPci::CommonCfgRead(uint64_t addr, IoValue* value) const {
       return ZX_OK;
     }
     case VIRTIO_PCI_COMMON_CFG_QUEUE_SEL: {
-      std::lock_guard<std::mutex> lock(mutex_);
-      value->u16 = queue_sel_;
+      value->u16 = queue_sel();
       value->access_size = 2;
       return ZX_OK;
     }
     case VIRTIO_PCI_COMMON_CFG_QUEUE_SIZE: {
-      VirtioQueue* queue = selected_queue();
-      if (queue == nullptr) {
+      const uint16_t idx = queue_sel();
+      if (idx >= device_config_->num_queues) {
         return ZX_ERR_BAD_STATE;
       }
-
-      value->u16 = queue->size();
+      {
+        std::lock_guard<std::mutex> lock(device_config_->mutex);
+        VirtioQueueConfig* cfg = &device_config_->queue_configs[idx];
+        value->u16 = cfg->size;
+      }
       value->access_size = 2;
       return ZX_OK;
     }
@@ -241,25 +218,27 @@ zx_status_t VirtioPci::CommonCfgRead(uint64_t addr, IoValue* value) const {
       value->u16 = 0;
       return ZX_OK;
     case VIRTIO_PCI_COMMON_CFG_QUEUE_DESC_LOW ... VIRTIO_PCI_COMMON_CFG_QUEUE_USED_HIGH: {
-      VirtioQueue* queue = selected_queue();
-      if (queue == nullptr) {
+      const uint16_t idx = queue_sel();
+      if (idx >= device_config_->num_queues) {
         return ZX_ERR_BAD_STATE;
       }
-
       size_t word =
           (addr - VIRTIO_PCI_COMMON_CFG_QUEUE_DESC_LOW) / sizeof(uint32_t);
+
+      {
+        std::lock_guard<std::mutex> lock(device_config_->mutex);
+        VirtioQueueConfig* cfg = &device_config_->queue_configs[idx];
+        value->u32 = cfg->words[word];
+      }
       value->access_size = 4;
-      value->u32 = queue->UpdateRing<uint32_t>(
-          [word](VirtioRing* ring) { return ring->addr.words[word]; });
       return ZX_OK;
     }
     case VIRTIO_PCI_COMMON_CFG_QUEUE_NOTIFY_OFF: {
-      std::lock_guard<std::mutex> lock(mutex_);
-      if (queue_sel_ >= device_config_->num_queues) {
+      const uint16_t idx = queue_sel();
+      if (idx >= device_config_->num_queues) {
         return ZX_ERR_BAD_STATE;
       }
-
-      value->u32 = queue_sel_;
+      value->u32 = idx;
       value->access_size = 4;
       return ZX_OK;
     }
@@ -387,37 +366,34 @@ zx_status_t VirtioPci::CommonCfgWrite(uint64_t addr, const IoValue& value) {
       if (value.access_size != 2) {
         return ZX_ERR_IO_DATA_INTEGRITY;
       }
-      VirtioQueue* queue = selected_queue();
-      if (queue == nullptr) {
+      const uint16_t idx = queue_sel();
+      if (idx >= device_config_->num_queues) {
         return ZX_ERR_BAD_STATE;
       }
 
-      zx_gpaddr_t desc_addr, avail_addr, used_addr;
-      queue->GetAddrs(&desc_addr, &avail_addr, &used_addr);
-      queue->Configure(value.u16, desc_addr, avail_addr, used_addr);
-      return ZX_OK;
+      std::lock_guard<std::mutex> lock(device_config_->mutex);
+      VirtioQueueConfig* cfg = &device_config_->queue_configs[idx];
+      cfg->size = value.u16;
+      return device_config_->config_queue(idx, cfg->size, cfg->desc, cfg->avail,
+                                          cfg->used);
     }
     case VIRTIO_PCI_COMMON_CFG_QUEUE_DESC_LOW ... VIRTIO_PCI_COMMON_CFG_QUEUE_USED_HIGH: {
       if (value.access_size != 4) {
         return ZX_ERR_IO_DATA_INTEGRITY;
       }
-      VirtioQueue* queue = selected_queue();
-      if (queue == nullptr) {
+      const uint16_t idx = queue_sel();
+      if (idx >= device_config_->num_queues) {
         return ZX_ERR_BAD_STATE;
       }
-
-      // Update the configuration words for the queue.
       size_t word =
           (addr - VIRTIO_PCI_COMMON_CFG_QUEUE_DESC_LOW) / sizeof(uint32_t);
-      queue->UpdateRing<void>([&value, word](VirtioRing* ring) {
-        ring->addr.words[word] = value.u32;
-      });
 
-      // Update the configuration based on the new configuration words.
-      zx_gpaddr_t desc_addr, avail_addr, used_addr;
-      queue->GetAddrs(&desc_addr, &avail_addr, &used_addr);
-      queue->Configure(queue->size(), desc_addr, avail_addr, used_addr);
-      return ZX_OK;
+      // Update the configuration words for the queue.
+      std::lock_guard<std::mutex> lock(device_config_->mutex);
+      VirtioQueueConfig* cfg = &device_config_->queue_configs[idx];
+      cfg->words[word] = value.u32;
+      return device_config_->config_queue(idx, cfg->size, cfg->desc, cfg->avail,
+                                          cfg->used);
     }
     // Not implemented registers.
     case VIRTIO_PCI_COMMON_CFG_QUEUE_MSIX_VECTOR:
@@ -436,8 +412,9 @@ zx_status_t VirtioPci::CommonCfgWrite(uint64_t addr, const IoValue& value) {
   return ZX_ERR_NOT_SUPPORTED;
 }
 
-static zx_status_t write_device_config(VirtioDeviceConfig* device_config,
-                                       uint64_t addr, const IoValue& value) {
+static zx_status_t write_device_config(
+    VirtioDeviceConfig* device_config, uint64_t addr,
+    const IoValue& value) {
   switch (value.access_size) {
     case 1: {
       std::lock_guard<std::mutex> lock(device_config->mutex);
@@ -475,7 +452,7 @@ zx_status_t VirtioPci::ConfigBarWrite(uint64_t addr, const IoValue& value) {
     uint64_t cfg_addr = addr - kVirtioPciDeviceCfgBase;
     zx_status_t status = write_device_config(device_config_, cfg_addr, value);
     if (status == ZX_OK) {
-      return device_config_->update_config(cfg_addr, value);
+      return device_config_->config_device(cfg_addr, value);
     }
   }
   FXL_LOG(ERROR) << "Unhandled config BAR write 0x" << std::hex << addr;
@@ -534,12 +511,9 @@ void VirtioPci::SetupCaps() {
   bar_[kVirtioPciBar].trap_type = TrapType::MMIO_SYNC;
 }
 
-VirtioQueue* VirtioPci::selected_queue() const {
+uint16_t VirtioPci::queue_sel() const {
   std::lock_guard<std::mutex> lock(mutex_);
-  if (queue_sel_ >= device_config_->num_queues) {
-    return nullptr;
-  }
-  return &device_config_->queues[queue_sel_];
+  return queue_sel_;
 }
 
 zx_status_t VirtioPci::NotifyBarWrite(uint64_t offset, const IoValue& value) {

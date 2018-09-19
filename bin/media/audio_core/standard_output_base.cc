@@ -350,9 +350,10 @@ bool StandardOutputBase::ProcessMix(const fbl::RefPtr<AudioOutImpl>& audio_out,
                (cur_mix_job_.frames_produced * output_producer_->channels());
 
   // Figure out where the first and last sampling points of this job are,
-  // expressed in fractional audio out frames.
+  // expressed in fractional source frames.
   int64_t first_sample_ftf = info->dest_frames_to_frac_source_frames(
       cur_mix_job_.start_pts_of + cur_mix_job_.frames_produced);
+
   // Without the "-1", this would be the first output frame of the NEXT job.
   int64_t final_sample_ftf =
       first_sample_ftf +
@@ -394,12 +395,12 @@ bool StandardOutputBase::ProcessMix(const fbl::RefPtr<AudioOutImpl>& audio_out,
   // filter window, then we need to skip some number of output frames before
   // starting to produce data.
   if (packet->start_pts() > first_sample_pos_window_edge) {
-    const TimelineRate& dst_to_src =
+    const TimelineRate& dest_to_src =
         info->dest_frames_to_frac_source_frames.rate();
-    output_offset_64 = dst_to_src.Inverse().Scale(packet->start_pts() -
-                                                  first_sample_pos_window_edge +
-                                                  Mixer::FRAC_ONE - 1);
-    input_offset_64 += dst_to_src.Scale(output_offset_64);
+    output_offset_64 = dest_to_src.Inverse().Scale(
+        packet->start_pts() - first_sample_pos_window_edge + Mixer::FRAC_ONE -
+        1);
+    input_offset_64 += dest_to_src.Scale(output_offset_64);
   }
 
   FXL_DCHECK(output_offset_64 >= 0);
@@ -417,20 +418,20 @@ bool StandardOutputBase::ProcessMix(const fbl::RefPtr<AudioOutImpl>& audio_out,
   bool consumed_source = false;
   if (frac_input_offset < static_cast<int32_t>(packet->frac_frame_len())) {
     // When calling Mix(), we communicate the resampling rate with three
-    // parameters. We augment frac_step_size with modulo and denominator
+    // parameters. We augment frac_step_size with rate_modulo and denominator
     // arguments that capture the remaining rate component that cannot be
     // expressed by a 19.13 fixed-point step_size. Note: frac_step_size and
     // frac_input_offset use the same format -- they have the same limitations
     // in what they can and cannot communicate. This begs two questions:
     //
-    // Q1: For perfect position accuracy, don't we also need an in/out param
-    // to specify initial/final subframe modulo, for fractional source offset?
+    // Q1: For perfect position accuracy, just as we track incoming/outgoing
+    // fractional source offset, wouldn't we also need a src_pos_modulo?
     // A1: Yes, for optimum position accuracy (within quantization limits), we
-    // SHOULD incorporate running subframe position_modulo in this way.
+    // SHOULD incorporate the ongoing subframe_position_modulo in this way.
     //
     // For now, we are defering this work, tracking it with MTWN-128.
     //
-    // Q2: Why did we solve this issue for rate but not for initial position?
+    // Q2: Why did we solve this issue for Rate but not for initial Position?
     // A2: We solved this issue for *rate* because its effect accumulates over
     // time, causing clearly measurable distortion that becomes crippling with
     // larger jobs. For *position*, there is no accumulated magnification over
@@ -438,12 +439,14 @@ bool StandardOutputBase::ProcessMix(const fbl::RefPtr<AudioOutImpl>& audio_out,
     // size would affect the distortion frequency but not amplitude. We expect
     // the effects to be below audible thresholds. Until the effects are
     // measurable and attributable to this jitter, we will defer this work.
-
+    //
+    // Update: src_pos_modulo is added to Mix(), but for now we omit it here.
+    //
     // TODO(mpuryear): integrate bookkeeping into the Mixer itself (MTWN-129).
     consumed_source = info->mixer->Mix(
         buf, frames_left, &output_offset, packet->payload(),
         packet->frac_frame_len(), &frac_input_offset, info->step_size,
-        info->amplitude_scale, cur_mix_job_.accumulate, info->modulo,
+        info->amplitude_scale, cur_mix_job_.accumulate, info->rate_modulo,
         info->denominator());
     FXL_DCHECK(output_offset <= frames_left);
   }
@@ -506,7 +509,7 @@ void StandardOutputBase::UpdateSourceTrans(
     return;
   }
 
-  // Transformation has changed. Update gen; invalidate dst-to-src generation.
+  // Transformation has changed. Update gen; invalidate dest-to-src generation.
   bk->source_trans_gen_id = gen;
   bk->dest_trans_gen_id = kInvalidGenerationId;
 }
@@ -528,27 +531,27 @@ void StandardOutputBase::UpdateDestTrans(const MixJob& job, Bookkeeping* bk) {
   // Compose the job supplied transformation from local to output with the
   // audio out supplied mapping from local to fraction input frames to produce a
   // transformation which maps from output frames to fractional input frames.
-  TimelineFunction& dst = bk->dest_frames_to_frac_source_frames;
+  TimelineFunction& dest = bk->dest_frames_to_frac_source_frames;
 
-  dst = bk->clock_mono_to_frac_source_frames * job.local_to_output->Inverse();
+  dest = bk->clock_mono_to_frac_source_frames * job.local_to_output->Inverse();
 
   // Finally, compute the step size in fractional frames.  IOW, every time
   // we move forward one output frame, how many fractional frames of input
   // do we consume.  Don't bother doing the multiplication if we already
   // know that the numerator is zero.
-  FXL_DCHECK(dst.rate().reference_delta());
-  if (!dst.rate().subject_delta()) {
+  FXL_DCHECK(dest.rate().reference_delta());
+  if (!dest.rate().subject_delta()) {
     bk->step_size = 0;
-    bk->modulo = 0;
+    bk->rate_modulo = 0;
   } else {
-    int64_t tmp_step_size = dst.rate().Scale(1);
+    int64_t tmp_step_size = dest.rate().Scale(1);
 
     FXL_DCHECK(tmp_step_size >= 0);
     FXL_DCHECK(tmp_step_size <= std::numeric_limits<uint32_t>::max());
 
     bk->step_size = static_cast<uint32_t>(tmp_step_size);
-    bk->modulo =
-        dst.rate().subject_delta() - (bk->denominator() * bk->step_size);
+    bk->rate_modulo =
+        dest.rate().subject_delta() - (bk->denominator() * bk->step_size);
   }
 
   // Done, update our dest_trans generation.

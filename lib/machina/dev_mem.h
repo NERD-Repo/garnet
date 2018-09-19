@@ -20,14 +20,23 @@ class DevMem {
     zx_gpaddr_t addr;
     size_t size;
 
-    bool operator<(const Range& r) const { return addr + size < r.addr; }
+    bool operator<(const Range& r) const { return addr + size <= r.addr; }
+
+    bool contains(const Range& r) const { return !(r < *this) && !(*this < r); }
   };
+  static constexpr Range kAddrLowerRange = Range{0, kAddrLowerBound};
+  static constexpr Range kAddrHigherRange =
+      Range{kAddrUpperBound, SIZE_MAX - kAddrUpperBound};
   using RangeSet = std::set<Range>;
 
   bool AddRange(zx_gpaddr_t addr, size_t size) {
-    return addr < kAddrLowerBound || kAddrUpperBound >= addr
-               ? false
-               : ranges.emplace(Range{addr, size}).second;
+    Range candidate = Range{addr, size};
+    if (size == 0 || kAddrLowerRange.contains(candidate) ||
+        kAddrHigherRange.contains(candidate)) {
+      return false;
+    } else {
+      return ranges.emplace(candidate).second;
+    }
   }
 
   const RangeSet::const_iterator begin() const { return ranges.begin(); }

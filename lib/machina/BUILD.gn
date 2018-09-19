@@ -9,6 +9,7 @@ source_set("machina") {
     "bits.h",
     "block_dispatcher.cc",
     "block_dispatcher.h",
+    "dev_mem.cc",
     "dev_mem.h",
     "framebuffer_scanout.cc",
     "framebuffer_scanout.h",
@@ -22,8 +23,8 @@ source_set("machina") {
     "guest.h",
     "hid_event_source.cc",
     "hid_event_source.h",
-    "input_dispatcher.cc",
-    "input_dispatcher.h",
+    "input_dispatcher_impl.cc",
+    "input_dispatcher_impl.h",
     "io.cc",
     "io.h",
     "pci.cc",
@@ -57,6 +58,8 @@ source_set("machina") {
     "virtio_queue_waiter.h",
     "virtio_vsock.cc",
     "virtio_vsock.h",
+    "virtio_wl.cc",
+    "virtio_wl.h",
     "volatile_write_block_dispatcher.cc",
     "volatile_write_block_dispatcher.h",
   ]
@@ -127,8 +130,9 @@ executable("machina_unittests") {
   testonly = true
 
   sources = [
+    "dev_mem-unittest.cc",
     "hid_event_source-unittest.cc",
-    "input_dispatcher-unittest.cc",
+    "input_dispatcher_impl-unittest.cc",
     "pci-unittest.cc",
     "qcow-unittest.cc",
     "virtio_block-unittest.cc",

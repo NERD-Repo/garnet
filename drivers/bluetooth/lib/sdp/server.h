@@ -7,9 +7,11 @@
 
 #include <map>
 
+#include <fbl/function.h>
 #include <fbl/ref_ptr.h>
 #include <lib/fit/function.h>
 
+#include "garnet/drivers/bluetooth/lib/l2cap/l2cap.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/scoped_channel.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/sdu.h"
 #include "garnet/drivers/bluetooth/lib/sdp/pdu.h"
@@ -27,38 +29,30 @@ namespace sdp {
 // TODO(jamuraa): make calls thread-safe or ensure single-threadedness
 class Server final {
  public:
-  // A new SDP server, which starts with the ServiceDiscoveryService record.
-  Server();
-  ~Server() = default;
+  // A new SDP server, which starts with just a ServiceDiscoveryService record.
+  // Registers itself with |l2cap| when created.
+  explicit Server(fbl::RefPtr<l2cap::L2CAP> l2cap);
+  ~Server();
 
   // Initialize a new SDP profile connection with |peer_id| on |channel|.
   // Returns false if the channel cannot be activated.
-  bool AddConnection(const std::string& peer_id,
-                     fbl::RefPtr<l2cap::Channel> channel);
+  bool AddConnection(fbl::RefPtr<l2cap::Channel> channel);
 
-  // Create a new ServiceRecord for a service, allocate a new handle for it, and
-  // call |callback| synchronously populate it. When |callback| returns, the
-  // record should have all attributes added.
-  // The record will have a valid handle when |callback| is called.
-  // The ServiceRecord passed to the callback is only guaranteed to be valid
-  // while |callback| is run.
-  // Returns |false| without calling |callback| if the record couldn't be
-  // created.
-  // Returns |true| if the record has been successfully added (if the record
-  // remains valid).
-  using ConstructCallback = fit::function<void(ServiceRecord*)>;
-  bool RegisterService(ConstructCallback callback);
+  // Given an incomplete ServiceRecord, register a service that will be made
+  // available over SDP.  Takes ownership of |record|.
+  // A non-zero ServiceHandle will be returned if the service was successfully
+  // registered. Any service handle previously set in |record| is ignored and
+  // overwritten.
+  // |conn_cb| will be called for any connections made to the registered
+  // service with a socket set to comminicate on the connection and the protocol
+  // descriptor list for the endpoint which was connected.
+  ServiceHandle RegisterService(ServiceRecord record);
 
   // Unregister a service from the database. Idempotent.
   // Returns |true| if a record was removed.
   bool UnregisterService(ServiceHandle handle);
 
  private:
-  // Inserts a new record in the database with handle |handle|, returning a
-  // pointer to the newly constructed record.
-  // Returns nullptr if the record already exists.
-  ServiceRecord* MakeNewRecord(ServiceHandle handle);
-
   // Returns the next unused Service Handle, or 0 if none are available.
   ServiceHandle GetNextHandle();
 
@@ -79,10 +73,14 @@ class Server final {
       const std::list<AttributeRange>& attribute_ranges) const;
 
   // l2cap::channel callbacks
-  void OnChannelClosed(const std::string& peer_id);
-  void OnRxBFrame(const std::string& peer_id, const l2cap::SDU& sdu);
+  void OnChannelClosed(const hci::ConnectionHandle& handle);
+  void OnRxBFrame(const hci::ConnectionHandle& handle, const l2cap::SDU& sdu);
 
-  std::unordered_map<std::string, l2cap::ScopedChannel> channels_;
+  // The L2CAP layer this server is running on.  Used to register callbacks for
+  // the channels of services registered.
+  fbl::RefPtr<l2cap::L2CAP> l2cap_;
+
+  std::unordered_map<hci::ConnectionHandle, l2cap::ScopedChannel> channels_;
   std::unordered_map<ServiceHandle, ServiceRecord> records_;
 
   // The next available ServiceHandle.

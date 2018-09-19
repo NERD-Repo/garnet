@@ -13,6 +13,9 @@
 namespace btlib {
 namespace sdp {
 
+using common::BufferView;
+using common::UUID;
+
 namespace {
 
 // The VersionNumberList value. (5.0, Vol 3, Part B, 5.2.3)
@@ -22,127 +25,130 @@ constexpr uint16_t kVersion = 0x0100;  // Version 1.0
 constexpr uint32_t kInitialDbState = 0;
 
 // Populates the ServiceDiscoveryService record.
-void PopulateServiceDiscoveryService(ServiceRecord* sdp) {
-  ZX_DEBUG_ASSERT(sdp);
-  ZX_DEBUG_ASSERT(sdp->handle() == kSDPHandle);
+ServiceRecord MakeServiceDiscoveryService() {
+  ServiceRecord sdp;
+  sdp.SetHandle(kSDPHandle);
+
   // ServiceClassIDList attribute should have the
   // ServiceDiscoveryServerServiceClassID
   // See v5.0, Vol 3, Part B, Sec 5.2.2
-  sdp->SetServiceClassUUIDs({profile::kServiceDiscoveryClass});
+  sdp.SetServiceClassUUIDs({profile::kServiceDiscoveryClass});
 
   // The VersionNumberList attribute. See v5.0, Vol 3, Part B, Sec 5.2.3
   // Version 1.0
-  sdp->SetAttribute(kSDP_VersionNumberList,
-                    DataElement(std::vector<DataElement>{kVersion}));
+  sdp.SetAttribute(kSDP_VersionNumberList,
+                   DataElement(std::vector<DataElement>{kVersion}));
 
   // ServiceDatabaseState attribute. Changes when a service gets added or
   // removed.
-  sdp->SetAttribute(kSDP_ServiceDatabaseState, DataElement(kInitialDbState));
+  sdp.SetAttribute(kSDP_ServiceDatabaseState, DataElement(kInitialDbState));
+
+  return sdp;
 }
 
 void SendErrorResponse(const fbl::RefPtr<l2cap::Channel>& chan,
                        TransactionId tid, ErrorCode code) {
   ErrorResponse response(code);
-  chan->Send(response.GetPDU(0 /* ignored */, tid, common::BufferView()));
+  chan->Send(response.GetPDU(0 /* ignored */, tid, BufferView()));
 }
 
 }  // namespace
 
-Server::Server()
-    : next_handle_(kFirstUnreservedHandle),
+Server::Server(fbl::RefPtr<l2cap::L2CAP> l2cap)
+    : l2cap_(l2cap),
+      next_handle_(kFirstUnreservedHandle),
       db_state_(0),
       weak_ptr_factory_(this) {
-  auto* sdp_record = MakeNewRecord(kSDPHandle);
-  ZX_DEBUG_ASSERT(sdp_record);
-  PopulateServiceDiscoveryService(sdp_record);
+  ZX_DEBUG_ASSERT(l2cap_);
+
+  records_.emplace(kSDPHandle, MakeServiceDiscoveryService());
+
+  // Register SDP
+  bool registered = l2cap_->RegisterService(
+      l2cap::kSDP,
+      [self = weak_ptr_factory_.GetWeakPtr()](auto channel) {
+        if (self)
+          self->AddConnection(channel);
+      },
+      async_get_default_dispatcher());
+  if (!registered) {
+    bt_log(WARN, "sdp", "L2CAP service not registered");
+  }
 }
 
-bool Server::AddConnection(const std::string& peer_id,
-                           fbl::RefPtr<l2cap::Channel> channel) {
-  bt_log(TRACE, "sdp", "add connection: %s", peer_id.c_str());
+Server::~Server() { l2cap_->UnregisterService(l2cap::kSDP); }
 
-  auto iter = channels_.find(peer_id);
+bool Server::AddConnection(fbl::RefPtr<l2cap::Channel> channel) {
+  bt_log(TRACE, "sdp", "add connection handle %#.4x", channel->link_handle());
+
+  hci::ConnectionHandle handle = channel->link_handle();
+  auto iter = channels_.find(channel->link_handle());
   if (iter != channels_.end()) {
-    bt_log(WARN, "sdp", "peer already connected: %s", peer_id.c_str());
+    bt_log(WARN, "sdp", "handle %#.4x already connected", handle);
     return false;
   }
 
   auto self = weak_ptr_factory_.GetWeakPtr();
   bool activated = channel->Activate(
-      [self, peer_id](const l2cap::SDU& sdu) {
+      [self, handle](const l2cap::SDU& sdu) {
         if (self) {
-          self->OnRxBFrame(peer_id, sdu);
+          self->OnRxBFrame(handle, sdu);
         }
       },
-      [self, peer_id]() {
+      [self, handle] {
         if (self) {
-          self->OnChannelClosed(peer_id);
+          self->OnChannelClosed(handle);
         }
       },
       async_get_default_dispatcher());
   if (!activated) {
-    bt_log(WARN, "sdp", "failed to activate channel (peer: %s)",
-           peer_id.c_str());
+    bt_log(WARN, "sdp", "failed to activate channel (handle %#.4x)", handle);
     return false;
   }
-  self->channels_.emplace(peer_id, std::move(channel));
+  self->channels_.emplace(handle, std::move(channel));
   return true;
 }
 
-bool Server::RegisterService(ConstructCallback callback) {
-  ZX_DEBUG_ASSERT(callback);
+ServiceHandle Server::RegisterService(ServiceRecord record) {
   ServiceHandle next = GetNextHandle();
   if (!next) {
-    return false;
+    return 0;
   }
-  auto* record = MakeNewRecord(next);
-  if (!record) {
-    return false;
-  }
-  // Let the caller populate the record
-  callback(record);
 
-  auto failed_validation = fxl::MakeAutoCall([&] { records_.erase(next); });
-  // They are not allowed to change (or remove) the ServiceRecordHandle.
-  if (!record->HasAttribute(kServiceRecordHandle)) {
-    bt_log(SPEW, "sdp", "ServiceRecordHandle was removed");
-    return false;
-  }
-  auto handle = record->GetAttribute(kServiceRecordHandle).Get<uint32_t>();
-  if (!handle || !(*handle == next)) {
-    bt_log(SPEW, "sdp", "ServiceRecordHandle was changed");
-    return false;
-  }
+  record.SetHandle(next);
+
   // Services must at least have a ServiceClassIDList (5.0, Vol 3, Part B, 5.1)
-  if (!record->HasAttribute(kServiceClassIdList)) {
+  if (!record.HasAttribute(kServiceClassIdList)) {
     bt_log(SPEW, "sdp", "new record doesn't have a ServiceClass");
-    return false;
+    return 0;
   }
   // Class ID list is a data element sequence in which each data element is
   // a UUID representing the service classes that a given service record
   // conforms to. (5.0, Vol 3, Part B, 5.1.2)
-  const DataElement& class_id_list = record->GetAttribute(kServiceClassIdList);
-  bt_log(SPEW, "sdp", "class ID list : %s", class_id_list.Describe().c_str());
+  const DataElement& class_id_list = record.GetAttribute(kServiceClassIdList);
   if (class_id_list.type() != DataElement::Type::kSequence) {
     bt_log(SPEW, "sdp", "class ID list isn't a sequence");
-    return false;
+    return 0;
   }
   size_t idx;
   const DataElement* elem;
   for (idx = 0; nullptr != (elem = class_id_list.At(idx)); idx++) {
     if (elem->type() != DataElement::Type::kUuid) {
       bt_log(SPEW, "sdp", "class ID list elements are not all UUIDs");
-      return false;
+      return 0;
     }
   }
   if (idx == 0) {
     bt_log(SPEW, "sdp", "no elements in the Class ID list (need at least 1)");
-    return false;
+    return 0;
   }
-  failed_validation.cancel();
+  auto placement = records_.emplace(next, std::move(record));
+  ZX_DEBUG_ASSERT(placement.second);
   bt_log(SPEW, "sdp", "registered service %#.8x, classes: %s", next,
-         record->GetAttribute(kServiceClassIdList).Describe().c_str());
-  return true;
+         placement.first->second.GetAttribute(kServiceClassIdList)
+             .ToString()
+             .c_str());
+  return next;
 }
 
 bool Server::UnregisterService(ServiceHandle handle) {
@@ -152,16 +158,6 @@ bool Server::UnregisterService(ServiceHandle handle) {
   bt_log(TRACE, "sdp", "unregistering service (handle: %#.8x)", handle);
   records_.erase(handle);
   return true;
-}
-
-ServiceRecord* Server::MakeNewRecord(ServiceHandle handle) {
-  if (records_.find(handle) != records_.end()) {
-    return nullptr;
-  }
-
-  records_.emplace(std::piecewise_construct, std::forward_as_tuple(handle),
-                   std::forward_as_tuple(handle));
-  return &records_.at(handle);
 }
 
 ServiceHandle Server::GetNextHandle() {
@@ -183,7 +179,7 @@ ServiceHandle Server::GetNextHandle() {
 }
 
 ServiceSearchResponse Server::SearchServices(
-    const std::unordered_set<common::UUID>& pattern) const {
+    const std::unordered_set<UUID>& pattern) const {
   ServiceSearchResponse resp;
   std::vector<ServiceHandle> matched;
   for (const auto& it : records_) {
@@ -212,7 +208,7 @@ ServiceAttributeResponse Server::GetServiceAttributes(
 }
 
 ServiceSearchAttributeResponse Server::SearchAllServiceAttributes(
-    const std::unordered_set<common::UUID>& search_pattern,
+    const std::unordered_set<UUID>& search_pattern,
     const std::list<AttributeRange>& attribute_ranges) const {
   ServiceSearchAttributeResponse resp;
   for (const auto& it : records_) {
@@ -232,18 +228,19 @@ ServiceSearchAttributeResponse Server::SearchAllServiceAttributes(
   return resp;
 }
 
-void Server::OnChannelClosed(const std::string& peer_id) {
-  channels_.erase(peer_id);
+void Server::OnChannelClosed(const hci::ConnectionHandle& handle) {
+  channels_.erase(handle);
 }
 
-void Server::OnRxBFrame(const std::string& peer_id, const l2cap::SDU& sdu) {
+void Server::OnRxBFrame(const hci::ConnectionHandle& handle,
+                        const l2cap::SDU& sdu) {
   uint16_t length = sdu.length();
   if (length < sizeof(Header)) {
     bt_log(TRACE, "sdp", "PDU too short; dropping");
     return;
   }
 
-  auto it = channels_.find(peer_id);
+  auto it = channels_.find(handle);
   if (it == channels_.end()) {
     bt_log(TRACE, "sdp", "can't find peer to respond to; dropping");
     return;
@@ -260,8 +257,7 @@ void Server::OnRxBFrame(const std::string& peer_id, const l2cap::SDU& sdu) {
     if (param_length != (pdu.size() - sizeof(Header))) {
       bt_log(SPEW, "sdp", "request isn't the correct size (%d != %d)",
              param_length, pdu.size() - sizeof(Header));
-      ErrorResponse response(ErrorCode::kInvalidSize);
-      chan->Send(response.GetPDU(0 /* ignored */, tid, common::BufferView()));
+      SendErrorResponse(chan, tid, ErrorCode::kInvalidSize);
       return;
     }
 
@@ -276,8 +272,8 @@ void Server::OnRxBFrame(const std::string& peer_id, const l2cap::SDU& sdu) {
           return;
         }
         auto resp = SearchServices(request.service_search_pattern());
-        chan->Send(resp.GetPDU(request.max_service_record_count(), tid,
-                               common::BufferView()));
+        chan->Send(
+            resp.GetPDU(request.max_service_record_count(), tid, BufferView()));
         return;
       }
       case kServiceAttributeRequest: {

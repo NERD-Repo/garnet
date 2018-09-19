@@ -17,7 +17,7 @@
     <project name="external/github.com/catapult-project/catapult"
              path="third_party/catapult"
              remote="https://chromium.googlesource.com/catapult"
-             revision="c869f29dcef06183f043f26997e9f158f1974a48"/>
+             revision="c80faf456d4ca70b4782073e999f90a47c0598c9"/>
     <project name="libc-tests"
              path="third_party/libc-tests"
              remote="https://fuchsia.googlesource.com/libc-tests"
@@ -61,7 +61,7 @@
     <project name="cobalt_config"
              path="third_party/cobalt_config"
              remote="https://cobalt-analytics.googlesource.com/config"
-             revision="aaf873360f07465c84493807f99074c3b939f406"
+             revision="ff9898979ed6aa15d92a884c102738e9d45d35d8"
              gerrithost="https://cobalt-analytics-review.googlesource.com"/>
     <project name="third_party/crashpad"
              path="third_party/crashpad"
@@ -115,7 +115,7 @@
     <project name="third_party/go"
              remote="https://fuchsia.googlesource.com/third_party/go"
              gerrithost="https://fuchsia-review.googlesource.com"
-             revision="24a2483ad1fb3ee0af0cbf655a278881a04c53aa"
+             revision="79052950e50d6ba92cef3c76cd91d1d014f4aaba"
              path="third_party/go"/>
     <project name="third_party/golibs/golang.org/x/crypto"
              path="third_party/golibs/golang.org/x/crypto"
