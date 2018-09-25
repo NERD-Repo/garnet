@@ -91,6 +91,7 @@
         "garnet/packages/prod/wlanphy",
         "garnet/packages/prod/wlanstack",
         "garnet/packages/prod/wlantap",
-        "garnet/packages/prod/xi_core"
+        "garnet/packages/prod/xi_core",
+        "garnet/packages/prod/tennis"
     ]
 }
