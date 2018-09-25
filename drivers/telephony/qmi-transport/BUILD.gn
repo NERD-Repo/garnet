@@ -21,7 +21,7 @@ driver_module("qmi_driver") {
   output_name = "qmi-transport"
 
   sources = [
-    "qmi.c",
+    "qmi-usb-transport.c",
     "qmi.h",
   ]
 
