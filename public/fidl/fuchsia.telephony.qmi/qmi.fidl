@@ -22,18 +22,36 @@ struct QmiResult {
   ErrorCode error;
 };
 
-/// Interface to request QMI Standard services from.
-interface QmiModem {
-  // No interface to CTL service is exposed
-
-//  /// Fulfill a request for the Wireless Data |service| interface
-//  1001: RequestWirelessDataService(request<WirelessData> service);
-
+interface QmiClient {
   /// Fulfill a request for the Device Management |service| interface
-  1002: RequestDataManagementService(request<DeviceManagement> service) -> (QmiResult res);
+  //1002: RequestDataManagementService(request<DeviceManagement> service) -> (QmiResult res);
+  1002: RequestDataManagementService(request<DeviceManagement> service) -> (bool res);
 
-//  /// Fulfill a request for the Loctaion |service| interface
-//  1003: RequestLocationService(request<Location> location);
-
-  // A bunch more services. Messaging, User Identity, Phonebook, etc...
 };
+
+/// Interface to request QMI Standard services from. Manages modem client ID
+/// allocation automatically after a transport mechanism has been connected.
+interface QmiModem {
+  /// Connect to the underlying transport |channel|. Start watching for QMI
+  /// messages to demultiplex/translate to their respective FIDL interface for
+  /// each connected client. Called per-modem, not per client connection.
+  100: ConnectTransport(handle<channel> channel) -> (bool success);
+
+  // No methods to the global CTL service is exposed, in the future we may want to expose a subset
+
+  /// Connect to the modem, allocating the client ID and exposing a set of QMI services over
+  /// the new |QmiClient| interface
+  200: ConnectClient(request<QmiClient> channel) -> (bool success);
+};
+
+
+//
+//  /// Fulfill a request for the Wireless Data |service| interface
+//  // 1001: RequestWirelessDataService(request<WirelessData> service);
+//
+//
+//  /// Fulfill a request for the Loctaion |service| interface
+//  // 1003: RequestLocationService(request<Location> location);
+//
+//  // A bunch more services. Messaging, User Identity, Phonebook, etc...
+//};

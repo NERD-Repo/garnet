@@ -10,6 +10,8 @@
 //
 //
 
+use fuchsia_app::{server::ServicesServer, client::Launcher};
+use fidl_fuchsia_telephony_qmi::{QmiModemMarker, QmiModemProxy};
 use fdio::{fdio_sys, ioctl_raw, make_ioctl};
 use std::os::unix::io::AsRawFd;
 use std::os::raw;
@@ -59,14 +61,25 @@ pub fn connect_qmi_transport(path: PathBuf) -> Result<fasync::Channel, zx::Statu
     Ok(fasync::Channel::from_channel(chan)?)
 }
 
+pub async fn start_qmi_modem(chan: fasync::Channel) -> Result<QmiModemProxy, Error> {
+    let launcher = Launcher::new()
+        .context("Failed to open launcher service")?;
+    let qmi = launcher
+        .launch(String::from("qmi-modem"), None)
+        .context("Failed to launch qmi-modem service")?;
+    let app = qmi.connect_to_service(QmiModemMarker)?;
+    let success = await!(app.connect_transport(chan.into()))?;
+    Ok(app)
+}
+
 pub struct Manager {
-    channel: Option<fasync::Channel>,
+    proxies: Vec<QmiModemProxy>
 }
 
 impl Manager {
     pub fn new() -> Self {
         Manager {
-            channel: None
+            proxies: vec![],
         }
     }
 
@@ -75,32 +88,34 @@ impl Manager {
         let path: &Path = Path::new(QMI_TRANSPORT);
         let dir = File::open(QMI_TRANSPORT).unwrap();
         let mut watcher = Watcher::new(&dir).unwrap();
-//        let mut channel = None;
         while let Some(msg) = await!(watcher.try_next())? {
             match msg.event {
                 WatchEvent::EXISTING | WatchEvent::ADD_FILE => {
                     let qmi_path = path.join(msg.filename);
                     fx_log_info!("Found QMI device at {:?}", qmi_path);
                     let channel = connect_qmi_transport(qmi_path)?;
-                    fx_log_info!("Connected a channel to the device");
-                    channel.write(&[0x01,
-                                  0x0F, 0x00,  // length
-                                  0x00,         // control flag
-                                  0x00,         // service type
-                                  0x00,         // client id
-                                // SDU below
-                                  0x00, // control flag
-                                  0x00, // tx id
-                                  0x20, 0x00, // message id
-                                  0x04, 0x00, // Length
-                                  0x01, // type
-                                  0x01, 0x00, // length
-                                  0x48, // value
-                    ], &mut Vec::new()); // TODO Remove
-                    let mut buffer = zx::MessageBuf::new();
-                    await!(channel.repeat_server(|_chan, buf| {
-                        println!("{:X?}", buf.bytes());
-                    }));
+                    let svc = await!(start_qmi_modem(channel))?;
+                    self.proxies.push(svc);
+
+                    //fx_log_info!("Connected a channel to the device");
+                    //channel.write(&[0x01,
+                    //              0x0F, 0x00,  // length
+                    //              0x00,         // control flag
+                    //              0x00,         // service type
+                    //              0x00,         // client id
+                    //            // SDU below
+                    //              0x00, // control flag
+                    //              0x00, // tx id
+                    //              0x20, 0x00, // message id
+                    //              0x04, 0x00, // Length
+                    //              0x01, // type
+                    //              0x01, 0x00, // length
+                    //              0x48, // value
+                    //], &mut Vec::new()); // TODO Remove
+                    //let mut buffer = zx::MessageBuf::new();
+                    //await!(channel.repeat_server(|_chan, buf| {
+                    //    println!("{:X?}", buf.bytes());
+                    //}));
                     //}
                     //self.channel = Some(channel);
                 }
