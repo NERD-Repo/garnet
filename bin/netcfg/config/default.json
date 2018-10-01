@@ -3,10 +3,5 @@
     "servers": [
       "8.8.8.8"
     ]
-  },
-  "eth_config":{
-    "interfaces":[
-
-    ]
   }
 }
