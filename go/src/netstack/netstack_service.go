@@ -413,6 +413,6 @@ func (dns *dnsImpl) GetNameServers() ([]netstack.NetAddress, error) {
 	return out, nil
 }
 
-func (ns *netstackImpl) AddEthernetDevice(topo string, device ethernet.DeviceInterface) error {
-	return ns.ns.addEth(topo, device)
+func (ns *netstackImpl) AddEthernetDevice(interfaceConfig netstack.InterfaceConfig, device ethernet.DeviceInterface) error {
+	return ns.ns.addEth(interfaceConfig, device)
 }

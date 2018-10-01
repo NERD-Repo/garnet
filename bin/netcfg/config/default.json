@@ -1,5 +1,12 @@
 {
   "dns_config": {
-    "servers": ["8.8.8.8"]
+    "servers": [
+      "8.8.8.8"
+    ]
+  },
+  "eth_config":{
+    "interfaces":[
+
+    ]
   }
 }

@@ -4,36 +4,46 @@
 
 #![deny(warnings)]
 #![feature(async_await, await_macro)]
-
-use std::borrow::Cow;
-use std::fs;
-use std::net::IpAddr;
-use std::os::unix::io::AsRawFd;
-use std::path;
-
-use failure::{self, ResultExt};
-use futures::{self, StreamExt, TryFutureExt, TryStreamExt};
-use serde_derive::Deserialize;
-
-use fidl_fuchsia_devicesettings::DeviceSettingsManagerMarker;
-use fidl_fuchsia_netstack::{Ipv4Address, Ipv6Address, NetAddress, NetAddressFamily, NetInterface,
-                            NetstackEvent, NetstackMarker};
-use fidl_zircon_ethernet::{DeviceMarker, DeviceProxy, INFO_FEATURE_LOOPBACK, INFO_FEATURE_SYNTH};
-
 mod device_id;
+mod interface_naming;
+use {crate::interface_naming::{get_cur_config, get_stable_interface_name},
+     failure::{self, ResultExt},
+     fidl_fuchsia_devicesettings::DeviceSettingsManagerMarker,
+     fidl_fuchsia_netstack::{InterfaceConfig, Ipv4Address, Ipv6Address, NetAddress,
+                             NetAddressFamily, NetInterface, NetstackEvent, NetstackMarker},
+     fidl_zircon_ethernet::{DeviceMarker, DeviceProxy, INFO_FEATURE_LOOPBACK, INFO_FEATURE_SYNTH,
+                            INFO_FEATURE_WLAN},
+     futures::{self, StreamExt, TryFutureExt, TryStreamExt},
+     serde_derive::{Deserialize, Serialize},
+     std::{borrow::Cow, fs, net::IpAddr, os::unix::io::AsRawFd, path}};
 
-const DEFAULT_CONFIG_FILE: &str = "/pkg/data/default.json";
+const DEFAULT_CONFIG_FILE: &str = "/pkg/data/default.json"; // Read only
+const CUR_CONFIG_PATH: &str = "/data";
+
 const ETHDIR: &str = "/dev/class/ethernet";
 
-#[derive(Debug, Deserialize)]
-struct Config {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Config {
     pub device_name: Option<String>,
     pub dns_config: DnsConfig,
+    pub eth_config: EthConfig,
 }
 
-#[derive(Debug, Deserialize)]
-struct DnsConfig {
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DnsConfig {
     pub servers: Vec<IpAddr>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct EthConfig {
+    pub interfaces: Vec<Interface>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Interface {
+    pub name: String,
+    pub topo: String,
+    pub mac: String,
 }
 
 fn is_physical(features: u32) -> bool {
@@ -56,6 +66,8 @@ fn main() -> Result<(), failure::Error> {
         .with_context(|_| format!("could not open config file {}", DEFAULT_CONFIG_FILE))?;
     let default_config: Config = serde_json::from_reader(default_config_file)
         .with_context(|_| format!("could not deserialize config file {}", DEFAULT_CONFIG_FILE))?;
+    let mut cur_config = get_cur_config(&default_config, &path::Path::new(CUR_CONFIG_PATH))
+        .with_context(|_| format!("could not get the current config"))?;
     let mut executor = fuchsia_async::Executor::new().context("could not create executor")?;
     let netstack = fuchsia_app::client::connect_to_service::<NetstackMarker>()
         .context("could not connect to netstack")?;
@@ -117,7 +129,7 @@ fn main() -> Result<(), failure::Error> {
                     let filename = path::Path::new(ETHDIR).join(filename);
                     let device = fs::File::open(&filename)
                         .with_context(|_| format!("could not open {}", filename.display()))?;
-                    let topological_path =
+                    let mut topological_path =
                         fdio::device_get_topo_path(&device).with_context(|_| {
                             format!("fdio::device_get_topo_path({})", filename.display())
                         })?;
@@ -149,9 +161,17 @@ fn main() -> Result<(), failure::Error> {
                             .map_err(|DeviceProxy { .. }| {
                                 failure::err_msg("failed to convert device proxy into channel")
                             })?.into_zx_channel();
+                        let name = get_stable_interface_name(
+                            &mut cur_config,
+                            &mut topological_path,
+                            &device_info.mac.octets,
+                            device_info.features & INFO_FEATURE_WLAN == 1,
+                            &path::Path::new(CUR_CONFIG_PATH),
+                        );
+
                         let () = netstack
                             .add_ethernet_device(
-                                &topological_path,
+                                &mut InterfaceConfig { name: name },
                                 fidl::endpoints::ClientEnd::<DeviceMarker>::new(client),
                             ).with_context(|_| {
                                 format!(
