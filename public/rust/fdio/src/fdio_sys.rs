@@ -167,6 +167,7 @@ pub const IOCTL_FAMILY_CAMERA: raw::c_int = 50;
 pub const IOCTL_FAMILY_BT_HOST: raw::c_int = 51;
 pub const IOCTL_FAMILY_WLANPHY: raw::c_int = 52;
 pub const IOCTL_FAMILY_WLANTAP: raw::c_int = 0x36;
+pub const IOCTL_FAMILY_QMI: raw::c_int = 0x41;
 pub const IOCTL_FAMILY_DISPLAY_CONTROLLER: raw::c_int = 0x37;
 pub const IOCTL_FAMILY_QMI: raw::c_int = 0x41;
 pub const ZXRIO_SOCKET_DIR_NONE: &'static [u8; 5usize] = b"none\x00";
