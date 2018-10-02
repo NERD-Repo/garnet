@@ -1,0 +1,40 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/rust/rustc_binary.gni")
+import("//build/package.gni")
+
+rustc_binary("bin") {
+  name = "qmi_ctl"
+  edition = "2018"
+
+  deps = [
+    "//garnet/public/fidl/fuchsia.telephony.manager:fuchsia.telephony.manager-rustc",
+    "//garnet/public/fidl/fuchsia.telephony.qmi:fuchsia.telephony.qmi-rustc",
+    "//garnet/lib/rust/crates/qmi",
+    "//garnet/public/lib/fidl/rust/fidl",
+    "//garnet/public/rust/crates/fuchsia-app",
+    "//garnet/public/rust/crates/fuchsia-async",
+    "//garnet/public/rust/crates/fuchsia-zircon",
+    "//third_party/rust-crates/rustc_deps:failure",
+    "//third_party/rust-crates/rustc_deps:futures-preview",
+    "//third_party/rust-crates/rustc_deps:log",
+    "//third_party/rust-mirrors/rustyline",
+  ]
+}
+
+package("qmi-ctl") {
+  deps = [
+    ":bin",
+  ]
+
+  binary = "rust_crates/qmi_ctl"
+
+  meta = [
+    {
+      path = rebase_path("meta/qmi-ctl.cmx")
+      dest = "qmi-ctl.cmx"
+    },
+  ]
+}
