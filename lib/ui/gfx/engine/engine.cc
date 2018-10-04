@@ -244,6 +244,7 @@ void Engine::UpdateAndDeliverMetrics(uint64_t presentation_time) {
       event.set_metrics(::fuchsia::ui::gfx::MetricsEvent());
       event.metrics().node_id = node->id();
       event.metrics().metrics = node->reported_metrics();
+      event.metrics().metrics = {2.15625, 2.15625, 1};
       node->session()->EnqueueEvent(std::move(event));
     }
   }
@@ -263,6 +264,7 @@ void Engine::UpdateMetrics(Node* node,
   local_metrics.scale_x = parent_metrics.scale_x * node->scale().x;
   local_metrics.scale_y = parent_metrics.scale_y * node->scale().y;
   local_metrics.scale_z = parent_metrics.scale_z * node->scale().z;
+  local_metrics = {2.15625, 2.15625, 1};
 
   if ((node->event_mask() & ::fuchsia::ui::gfx::kMetricsEventMask) &&
       !MetricsEquals(node->reported_metrics(), local_metrics)) {
