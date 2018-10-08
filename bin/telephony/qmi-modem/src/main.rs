@@ -11,10 +11,8 @@
     arbitrary_self_types
 )]
 
-use failure::{format_err, Error, ResultExt};
-use fidl::endpoints::RequestStream;
-use fidl::endpoints::ServerEnd;
-use fidl::endpoints::ServiceMarker;
+use failure::{Error, ResultExt};
+use fidl::endpoints::{RequestStream, ServerEnd, ServiceMarker};
 use fidl_fuchsia_telephony_qmi::{QmiClientMarker, QmiClientRequest};
 use fidl_fuchsia_telephony_qmi::{QmiModemMarker, QmiModemRequest, QmiModemRequestStream};
 use fuchsia_app::server::ServicesServer;
@@ -22,16 +20,18 @@ use fuchsia_async as fasync;
 use fuchsia_syslog::{self as syslog, macros::*};
 use fuchsia_zircon as zx;
 use futures::{TryFutureExt, TryStreamExt};
-use qmi;
-use std::io::Cursor;
+use qmi_protocol::QmiResult;
 
 use parking_lot::{Mutex, RwLock};
 use std::sync::Arc;
 
 use crate::client::QmiClient;
 use crate::transport::QmiTransport;
+use crate::errors::QmuxError;
+use qmi_protocol::CTL::*;
 
 mod client;
+mod errors;
 mod service;
 mod transport;
 
@@ -79,54 +79,13 @@ impl QmiModem {
         if let Some(ref inner) = self.inner {
             let transport_inner = inner.clone();
             let client = QmiClient::new(transport_inner);
-            let resp = await!(client.send_raw_msg(
-                0x00,
-                0x00,
-                &[
-                    0x01, 0x0F, 0x00, // length
-                    0x00, // control flag
-                    0x00, // service type
-                    0x00, // client id
-                    // SDU below
-                    0x00, // control flag
-                    0x00, // tx id
-                    0x20, 0x00, // message id
-                    0x04, 0x00, // Length
-                    0x01, // type
-                    0x01, 0x00, // length
-                    0x48  // value
-                ]
-            ))?;
-            let mut buf = Cursor::new(resp.bytes());
-            let (resp, _) = qmi::parse_set_instance_id_resp(buf);
+            let resp: QmiResult<SetInstanceIdResp> = await!(client.send_msg(SetInstanceIdReq::new(42)))?;
             fx_log_info!("Instance Id Response: {:?}", resp);
-
-            let resp = await!(client.send_raw_msg(
-                0x00,
-                0x00,
-                &[
-                    0x01, 0x0F, 0x00, // length
-                    0x00, // control flag
-                    0x00, // service type
-                    0x00, // client id
-                    // SDU below
-                    0x00, // control flag
-                    0x00, // tx id
-                    0x22, 0x00, // message id
-                    0x04, 0x00, // Length
-                    0x01, // type
-                    0x01, 0x00, // length
-                    0x02  // value
-                ]
-            ))?;
-            buf = Cursor::new(resp.bytes());
-            let (resp, _) = qmi::parse_get_client_id(buf);
-            fx_log_info!("Client Id Allocation: {:?}", resp);
 
             // TODO set the ID here
             Ok(Arc::new(RwLock::new(client)))
         } else {
-            Err(format_err!("no client connected!"))
+            Err(QmuxError::NoClient.into())
         }
     }
 }

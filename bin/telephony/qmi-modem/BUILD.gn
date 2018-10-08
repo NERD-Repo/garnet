@@ -11,6 +11,7 @@ rustc_binary("bin") {
 
   deps = [
     "//garnet/lib/rust/crates/qmi",
+    "//garnet/lib/telephony/qmi-protocol",
     "//garnet/public/fidl/fuchsia.telephony.qmi:fuchsia.telephony.qmi-rustc",
     "//garnet/public/lib/fidl/rust/fidl",
     "//garnet/public/rust/crates/fuchsia-app",

@@ -1,0 +1,50 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/package.gni")
+import("//build/compiled_action.gni")
+import("//build/rust/rustc_library.gni")
+import("//build/rust/rustc_binary.gni")
+
+# Generate the rust sources using the gen.
+compiled_action("gen_qmi_protocol_source") {
+  tool = "//garnet/lib/telephony/qmi-protocol:qmigen"
+  sources = [
+    "protocol/ctl.json"
+  ]
+  outputs = [
+    "$target_gen_dir/qmi-protocol.rs"
+  ]
+  args = [
+    "-i",
+    rebase_path("protocol/ctl.json"),
+    # rebase_path("protocol/dms.json"),
+    "-o",
+    rebase_path("$target_gen_dir/qmi-protocol.rs"),
+  ]
+}
+
+# Build the library.
+rustc_library("qmi-protocol") {
+  edition = "2018"
+  non_rust_deps = [ ":gen_qmi_protocol_source" ]
+  deps = [
+    "//garnet/public/rust/crates/fuchsia-zircon",
+    "//third_party/rust-crates/rustc_deps:bytes",
+    "//third_party/rust-crates/rustc_deps:failure",
+  ]
+  source_root = "$target_gen_dir/qmi-protocol.rs"
+}
+
+if (host_toolchain == current_toolchain) {
+  rustc_binary("qmigen") {
+    edition = "2018"
+    deps = [
+      "//third_party/rust-crates/rustc_deps:serde",
+      "//third_party/rust-crates/rustc_deps:serde_derive",
+      "//third_party/rust-crates/rustc_deps:serde_json",
+      "//third_party/rust-crates/rustc_deps:failure",
+    ]
+  }
+}
