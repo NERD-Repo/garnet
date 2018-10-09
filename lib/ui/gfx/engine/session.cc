@@ -356,6 +356,9 @@ bool Session::ApplyTakeSnapshotCmdHACK(
       async_get_default_dispatcher(), [weak = weak_factory_.GetWeakPtr(),
                                        command = std::move(command)]() mutable {
         if (!weak) {
+          if (auto callback = command.callback.Bind()) {
+            callback->OnData(fuchsia::mem::Buffer{});
+          }
           return;
         }
         auto engine = weak->engine_;
@@ -371,6 +374,10 @@ bool Session::ApplyTakeSnapshotCmdHACK(
                                        fuchsia::mem::Buffer snapshot) {
                                      callback->OnData(std::move(snapshot));
                                    });
+        } else {
+          if (auto callback = command.callback.Bind()) {
+            callback->OnData(fuchsia::mem::Buffer{});
+          }
         }
       });
   return true;
