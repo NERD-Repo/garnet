@@ -180,7 +180,7 @@ impl Game {
         self.player_2.as_mut().map(|player| {
             *player.state.lock() = PlayerState::Stop;
         });
-        match self.state.game_num % 5 {
+        match self.state.game_num % 4 {
             0 => {
                 self.ball_dx = 0.5;
                 self.ball_dy = 0.5;

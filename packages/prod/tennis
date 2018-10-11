@@ -3,6 +3,7 @@
         "//garnet/bin/tennis:tennis_service",
         "//garnet/bin/tennis:tennis_viewer",
         "//garnet/bin/tennis:tennis_example_ai",
+        "//garnet/bin/tennis:tennis_manual_player",
         "//garnet/bin/tennis:tennis_sysmgr_config",
         "//garnet/examples/rust101/hello"
     ]

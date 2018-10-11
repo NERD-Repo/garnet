@@ -106,6 +106,40 @@ rustc_binary("tennis_example_ai_bin") {
   ]
 }
 
+package("tennis_manual_player") {
+  deps = [
+    ":tennis_manual_player_bin",
+  ]
+
+  binary = "rust_crates/tennis_manual_player"
+
+  meta = [
+    {
+      path = rebase_path("meta/tennis_manual_player.cmx")
+      dest = "tennis_manual_player.cmx"
+    },
+  ]
+}
+
+rustc_binary("tennis_manual_player_bin") {
+  name = "tennis_manual_player"
+  edition = "2018"
+
+  source_root = "manual_player/main.rs"
+
+  deps = [
+    "//garnet/public/fidl/fuchsia.game.tennis:fuchsia.game.tennis-rustc",
+    "//garnet/public/lib/fidl/rust/fidl",
+    "//garnet/public/rust/crates/fuchsia-app",
+    "//garnet/public/rust/crates/fuchsia-async",
+    "//garnet/public/rust/crates/fuchsia-syslog",
+    "//garnet/public/rust/crates/fuchsia-zircon",
+    "//third_party/rust-crates/rustc_deps:failure",
+    "//third_party/rust-crates/rustc_deps:futures-preview",
+    "//third_party/rust-crates/rustc_deps:parking_lot",
+  ]
+}
+
 package("tennis_sysmgr_config") {
     deprecated_system_image = true
     resources = [
