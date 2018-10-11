@@ -1,0 +1,18 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fuchsia.telephony.ril;
+
+/// The Standard Fuchsia RIL (FRIL)
+interface RadioInterfaceLayer {
+  /// Connect to the underlying transport |channel|. Most modems will require this
+  /// to be the first method called to set up the transport layer. Called per-modem,
+  /// not per client connection.
+  100: ConnectTransport(handle<channel> channel) -> (bool success);
+
+  // TODO more complex identity type
+  /// Retrieve the identity of the modem (currently |imei| only)
+  200: GetDeviceIdentity() -> (uint64 imei);
+};
+

@@ -399,7 +399,7 @@ pub trait Decodable {{
                 writeln_indent!(self, "{} => QmiError::{},", code, name);
             }
         }
-        writeln_indent!(self, "_c => panic!(\"Unknown code: {{}}\", _c),");
+        writeln_indent!(self, "_c => panic!(\"Unknown Error Code: {{}}\", _c),");
         dedent!(self);
         writeln_indent!(self, "}}");
         dedent!(self);

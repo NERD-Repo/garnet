@@ -6,38 +6,34 @@ import("//build/rust/rustc_binary.gni")
 import("//build/package.gni")
 
 rustc_binary("bin") {
-  name = "qmi_modem"
+  name = "ril_ctl"
   edition = "2018"
 
   deps = [
+    "//garnet/public/fidl/fuchsia.telephony.ril:fuchsia.telephony.ril-rustc",
     "//garnet/lib/rust/crates/qmi",
-    "//garnet/lib/telephony/qmi-protocol",
-    "//garnet/public/fidl/fuchsia.telephony.qmi:fuchsia.telephony.qmi-rustc",
     "//garnet/public/lib/fidl/rust/fidl",
     "//garnet/public/rust/crates/fuchsia-app",
     "//garnet/public/rust/crates/fuchsia-async",
-    "//garnet/public/rust/crates/fuchsia-syslog",
     "//garnet/public/rust/crates/fuchsia-zircon",
-    "//third_party/rust-crates/rustc_deps:bytes",
     "//third_party/rust-crates/rustc_deps:failure",
     "//third_party/rust-crates/rustc_deps:futures-preview",
     "//third_party/rust-crates/rustc_deps:log",
-    "//third_party/rust-crates/rustc_deps:parking_lot",
-    "//third_party/rust-crates/rustc_deps:slab",
+    "//third_party/rust-mirrors/rustyline",
   ]
 }
 
-package("qmi-modem") {
+package("ril-ctl") {
   deps = [
     ":bin",
   ]
 
-  binary = "rust_crates/qmi_modem"
+  binary = "rust_crates/ril_ctl"
 
   meta = [
     {
-      path = rebase_path("meta/qmi-modem.cmx")
-      dest = "qmi-modem.cmx"
+      path = rebase_path("meta/ril-ctl.cmx")
+      dest = "ril-ctl.cmx"
     },
   ]
 }

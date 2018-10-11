@@ -1,0 +1,44 @@
+# Copyright 2018 The Fuchsia Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("//build/rust/rustc_binary.gni")
+import("//build/package.gni")
+
+rustc_binary("bin") {
+  name = "ril_qmi"
+  edition = "2018"
+
+  deps = [
+    "//garnet/lib/rust/crates/qmi",
+    "//garnet/lib/telephony/qmi-protocol",
+    "//garnet/public/fidl/fuchsia.telephony.ril:fuchsia.telephony.ril-rustc",
+    "//garnet/public/fidl/fuchsia.telephony.qmi:fuchsia.telephony.qmi-rustc",
+    "//garnet/public/lib/fidl/rust/fidl",
+    "//garnet/public/rust/crates/fuchsia-app",
+    "//garnet/public/rust/crates/fuchsia-async",
+    "//garnet/public/rust/crates/fuchsia-syslog",
+    "//garnet/public/rust/crates/fuchsia-zircon",
+    "//third_party/rust-crates/rustc_deps:bytes",
+    "//third_party/rust-crates/rustc_deps:failure",
+    "//third_party/rust-crates/rustc_deps:futures-preview",
+    "//third_party/rust-crates/rustc_deps:log",
+    "//third_party/rust-crates/rustc_deps:parking_lot",
+    "//third_party/rust-crates/rustc_deps:slab",
+  ]
+}
+
+package("ril-qmi") {
+  deps = [
+    ":bin",
+  ]
+
+  binary = "rust_crates/ril_qmi"
+
+  meta = [
+    {
+      path = rebase_path("meta/ril-qmi.cmx")
+      dest = "ril-qmi.cmx"
+    },
+  ]
+}

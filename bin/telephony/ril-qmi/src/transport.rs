@@ -168,6 +168,7 @@ impl QmiTransport {
                     Poll::Ready(Err(e)) => return Err(QmuxError::ClientRead(e)),
                     Poll::Pending => return Ok(false),
                 }
+                eprintln!("recieved msg: {:X?}", buf.bytes());
                 let buf = Cursor::new(buf.bytes());
                 let (header, buf) = qmi::parse_qmux_header(buf);
 

@@ -1,0 +1,9 @@
+{
+    "program": {
+        "binary": "bin/app"
+    },
+    "sandbox": {
+        "dev": [ "class/qmi-transport" ],
+        "features": [ "deprecated-all-services", "persistent-storage" ]
+    }
+}

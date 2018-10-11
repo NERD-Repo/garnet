@@ -33,4 +33,8 @@ pub enum QmuxError {
     /// No Client.
     #[fail(display = "Failed to negotatiate creating a client with the modem")]
     NoClient,
+
+    /// No Transport.
+    #[fail(display = "No channel to communicate with transport layer")]
+    NoTransport,
 }
