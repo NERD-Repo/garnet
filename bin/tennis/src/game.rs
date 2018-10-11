@@ -180,8 +180,29 @@ impl Game {
         self.player_2.as_mut().map(|player| {
             *player.state.lock() = PlayerState::Stop;
         });
-        self.ball_dx = 0.5; // TODO randomize?
-        self.ball_dy = 0.5; // TODO randomize?
+        match self.state.game_num % 5 {
+            0 => {
+                self.ball_dx = 0.5;
+                self.ball_dy = 0.5;
+            },
+            1 => {
+                self.ball_dx = 0.5;
+                self.ball_dy = -0.5;
+            },
+            2 => {
+                self.ball_dx = -0.5;
+                self.ball_dy = -0.5;
+            },
+            3 => {
+                self.ball_dx = -0.5;
+                self.ball_dy = 0.5;
+            },
+            weird_num => {
+                panic!(format!("WTF game num: {}?", weird_num));
+            },
+        }
+        //self.ball_dx = 0.5; // TODO randomize?
+        //self.ball_dy = 0.5; // TODO randomize?
         self.state.ball_x = BOARD_WIDTH / 2.0;
         self.state.ball_y = BOARD_HEIGHT / 2.0;
         self.state.game_num += 1;
