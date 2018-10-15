@@ -139,8 +139,7 @@ fn responds_with_same_tx_id() {
 
     let respond_res = match next_request(&mut stream, &mut exec) {
         Request::Discover { responder } => responder.send(&[]),
-        // TODO: enabled when there's another request impemented
-        //_ => panic!("should have received a Discover"),
+        _ => panic!("should have received a Discover"),
     };
 
     assert!(respond_res.is_ok());
@@ -194,13 +193,11 @@ fn discover_event_returns_results_correctly() {
 
     let respond_res = match next_request(&mut stream, &mut exec) {
         Request::Discover { responder } => {
-           let s = StreamInformation::new(0x0A, false,
-                MediaType::Video, EndpointType::Source);
-           assert!(s.is_ok());
-           responder.send(&[s.unwrap()])
-        },
-        // TODO: enable when we add the next request type
-        //_ => panic!("should have received a Discover"),
+            let s = StreamInformation::new(0x0A, false, MediaType::Video, EndpointType::Source);
+            assert!(s.is_ok());
+            responder.send(&[s.unwrap()])
+        }
+        _ => panic!("should have received a Discover"),
     };
 
     assert!(respond_res.is_ok());

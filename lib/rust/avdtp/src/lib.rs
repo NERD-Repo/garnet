@@ -22,6 +22,7 @@ use futures::task::{LocalWaker, Poll, Waker};
 use parking_lot::Mutex;
 use slab::Slab;
 use std::collections::VecDeque;
+use std::io::{Cursor, Write};
 use std::mem;
 use std::pin::{Pin, Unpin};
 use std::sync::Arc;
@@ -121,7 +122,17 @@ impl Peer {
 ///  - reject(ErrorCode) will send an reject response with the given error code.
 #[derive(Debug)]
 pub enum Request {
-    Discover { responder: DiscoverResponder },
+    Discover {
+        responder: DiscoverResponder,
+    },
+    GetCapabilities {
+        stream_id: StreamEndpointId,
+        responder: GetCapabilitiesResponder,
+    },
+    GetAllCapabilities {
+        stream_id: StreamEndpointId,
+        responder: GetCapabilitiesResponder,
+    },
     // TODO(jamuraa): add the rest of the requests
 }
 
@@ -136,6 +147,32 @@ impl Request {
                 }
                 Ok(Request::Discover {
                     responder: DiscoverResponder { peer: peer, id: id },
+                })
+            }
+            SignalIdentifier::GetCapabilities => {
+                if body.len() != 1 {
+                    return Err(Error::BadLength);
+                }
+                Ok(Request::GetCapabilities {
+                    stream_id: StreamEndpointId(body[0] >> 2),
+                    responder: GetCapabilitiesResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
+                })
+            }
+            SignalIdentifier::GetAllCapabilities => {
+                if body.len() != 1 {
+                    return Err(Error::BadLength);
+                }
+                Ok(Request::GetAllCapabilities {
+                    stream_id: StreamEndpointId(body[0] >> 2),
+                    responder: GetCapabilitiesResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
                 })
             }
             _ => Err(Error::UnimplementedMessage),
@@ -266,6 +303,213 @@ impl Decodable for StreamInformation {
     }
 }
 
+/// The type of the codec in the MediaCodec Service Capability
+/// Valid values are defined in the Bluetooth Assigned Numbers and are
+/// interpreted differently for different Media Types, so we do not interpret
+/// them here.
+/// See https://www.bluetooth.com/specifications/assigned-numbers/audio-video
+#[derive(Debug)]
+pub struct MediaCodecType(u8);
+
+impl MediaCodecType {
+    pub fn new(num: u8) -> MediaCodecType {
+        MediaCodecType(num)
+    }
+}
+
+/// The type of content protection used in the Content Protection Service Capability.
+/// Defined in the Bluetooth Assigned Numbers
+/// https://www.bluetooth.com/specifications/assigned-numbers/audio-video
+#[derive(Debug)]
+pub enum ContentProtectionType {
+    DigitalTransmissionContentProtection, // DTCP, 0x0001
+    SerialCopyManagementSystem,           // SCMS-T, 0x0002
+}
+
+impl ContentProtectionType {
+    fn to_le_bytes(&self) -> [u8; 2] {
+        match self {
+            ContentProtectionType::DigitalTransmissionContentProtection => [0x01, 0x00],
+            ContentProtectionType::SerialCopyManagementSystem => [0x02, 0x00],
+        }
+    }
+}
+
+impl TryFrom<u16> for ContentProtectionType {
+    type Error = Error;
+
+    fn try_from(val: u16) -> Result<Self, Self::Error> {
+        match val {
+            1 => Ok(ContentProtectionType::DigitalTransmissionContentProtection),
+            2 => Ok(ContentProtectionType::SerialCopyManagementSystem),
+            _ => Err(Error::OutOfRange),
+        }
+    }
+}
+
+/// Service Capabilities indicate possible services that can be provided by
+/// each stream endpoint.  See AVDTP Spec section 8.21.
+#[derive(Debug)]
+pub enum ServiceCapability {
+    /// Indicates that the end point can provide at least basic media transport
+    /// service as defined by RFC 3550 and outlined in section 7.2.
+    /// Defined in section 8.21.2
+    MediaTransport,
+    /// Indicates that the end point can provide reporting service as outlined in section 7.3
+    /// Defined in section 8.21.3
+    Reporting,
+    /// Indicates the end point can provide recovery service as outlined in section 7.4
+    /// Defined in section 8.21.4
+    Recovery {
+        recovery_type: u8,
+        max_recovery_window_size: u8,
+        max_number_media_packets: u8,
+    },
+    /// Indicates the codec which is supported by this end point. |codec_extra| is defined within
+    /// the relevant profiles (A2DP for Audio, etc).
+    /// Defined in section 8.21.5
+    MediaCodec {
+        media_type: MediaType,
+        codec_type: MediaCodecType,
+        codec_extra: Vec<u8>, // TODO: Media codec specific information elements
+    },
+    /// Present when the device has content protection capability.
+    /// |extra| is defined elsewhere.
+    /// Defined in section 8.21.6
+    ContentProtection {
+        protection_type: ContentProtectionType,
+        extra: Vec<u8>, // Protection speciifc parameters
+    },
+    /// Indicates that delay reporting is offered by this end point.
+    /// Defined in section 8.21.9
+    DelayReporting,
+}
+
+impl ServiceCapability {
+    fn to_category_byte(&self) -> u8 {
+        match self {
+            ServiceCapability::MediaTransport => 1,
+            ServiceCapability::Reporting => 2,
+            ServiceCapability::Recovery { .. } => 3,
+            ServiceCapability::ContentProtection { .. } => 4,
+            ServiceCapability::MediaCodec { .. } => 7,
+            ServiceCapability::DelayReporting => 8,
+        }
+    }
+
+    fn length_of_service_capabilities(&self) -> u8 {
+        match self {
+            ServiceCapability::MediaTransport => 0,
+            ServiceCapability::Reporting => 0,
+            ServiceCapability::Recovery { .. } => 3,
+            ServiceCapability::MediaCodec { codec_extra, .. } => 2 + codec_extra.len() as u8,
+            ServiceCapability::ContentProtection { extra, .. } => 2 + extra.len() as u8,
+            ServiceCapability::DelayReporting => 0,
+        }
+    }
+
+    fn encoded_size(&self) -> usize {
+        2 + self.length_of_service_capabilities() as usize
+    }
+
+    fn encode(&self, into: &mut [u8]) -> Result<(), Error> {
+        if into.len() < self.encoded_size() {
+            return Err(Error::Encoding);
+        }
+        let mut cursor = Cursor::new(into);
+        cursor
+            .write(&[
+                self.to_category_byte(),
+                self.length_of_service_capabilities(),
+            ])
+            .map_err(|_| Error::Encoding)?;
+        match self {
+            ServiceCapability::Recovery {
+                recovery_type: t,
+                max_recovery_window_size: max_size,
+                max_number_media_packets: max_packets,
+            } => {
+                cursor
+                    .write(&[*t, *max_size, *max_packets])
+                    .map_err(|_| Error::Encoding)?;
+            }
+            ServiceCapability::MediaCodec {
+                media_type,
+                codec_type,
+                codec_extra,
+            } => {
+                cursor
+                    .write(&[u8::from(media_type) << 4, codec_type.0])
+                    .map_err(|_| Error::Encoding)?;
+                cursor
+                    .write(codec_extra.as_slice())
+                    .map_err(|_| Error::Encoding)?;
+            }
+            ServiceCapability::ContentProtection {
+                protection_type,
+                extra,
+            } => {
+                cursor
+                    .write(&protection_type.to_le_bytes())
+                    .map_err(|_| Error::Encoding)?;
+                cursor
+                    .write(extra.as_slice())
+                    .map_err(|_| Error::Encoding)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+impl Decodable for ServiceCapability {
+    fn decode(from: &[u8]) -> Result<ServiceCapability, Error> {
+        if from.len() < 2 {
+            return Err(Error::Encoding);
+        }
+        let d = match from[0] {
+            1 => ServiceCapability::MediaTransport,
+            2 => ServiceCapability::Reporting,
+            3 => {
+                if from.len() < 5 {
+                    return Err(Error::Encoding);
+                }
+                ServiceCapability::Recovery {
+                    recovery_type: from[2],
+                    max_recovery_window_size: from[3],
+                    max_number_media_packets: from[4],
+                }
+            }
+            4 => {
+                let prot =
+                    ContentProtectionType::try_from(((from[3] as u16) << 8) + from[2] as u16)?;
+                let mut extra = vec![0; from.len() - 4];
+                extra.copy_from_slice(&from[4..]);
+                ServiceCapability::ContentProtection {
+                    protection_type: prot,
+                    extra: extra,
+                }
+            }
+            7 => {
+                let media = MediaType::try_from(from[3] >> 4)?;
+                let codec_type = MediaCodecType::new(from[4]);
+                let mut codec_extra = vec![0; from.len() - 4];
+                codec_extra.copy_from_slice(&from[4..]);
+                ServiceCapability::MediaCodec {
+                    media_type: media,
+                    codec_type: codec_type,
+                    codec_extra: codec_extra,
+                }
+            }
+            8 => ServiceCapability::DelayReporting,
+            _ => {
+                return Err(Error::Encoding);
+            }
+        };
+        Ok(d)
+    }
+}
+
 #[derive(Debug)]
 pub struct DiscoverResponse {
     endpoints: Vec<StreamInformation>,
@@ -314,6 +558,39 @@ impl DiscoverResponder {
     pub fn reject(self, error_code: ErrorCode) -> Result<(), Error> {
         self.peer
             .send_reject(self.id, SignalIdentifier::Discover, error_code)
+    }
+}
+
+#[derive(Debug)]
+pub struct GetCapabilitiesResponder {
+    peer: Arc<PeerInner>,
+    signal: SignalIdentifier,
+    id: TxId,
+}
+
+impl GetCapabilitiesResponder {
+    pub fn send(self, capabilities: &[ServiceCapability]) -> Result<(), Error> {
+        let header = SignalingHeader {
+            txid: self.id,
+            signal_id: self.signal,
+            message_type: SignalingMessageType::ResponseAccept,
+            packet_type: SignalingPacketType::Single,
+            num_packets: 1,
+        };
+        let mut reply = vec![
+            0 as u8;
+            capabilities
+                .iter()
+                .fold(header.size(), |a, b| a + b.encoded_size())
+        ];
+        header.encode(&mut reply[0..header.size()])?;
+        let mut pos = header.size();
+        for capability in capabilities {
+            let size = capability.encoded_size();
+            capability.encode(&mut reply[pos..pos + size])?;
+            pos += size;
+        }
+        self.peer.send_signal(reply.as_slice())
     }
 }
 

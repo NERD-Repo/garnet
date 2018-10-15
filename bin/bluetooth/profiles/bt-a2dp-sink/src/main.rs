@@ -27,6 +27,21 @@ fn get_available_stream_info() -> Result<Vec<avdtp::StreamInformation>, avdtp::E
     Ok(vec![s])
 }
 
+fn get_stream_capabilities(
+    _: avdtp::StreamEndpointId,
+) -> Result<Vec<avdtp::ServiceCapability>, avdtp::Error> {
+    // TODO(jamuraa): get the capabilities of the available stream
+    // This is SBC with minimal requirements for a sink.
+    Ok(vec![
+        avdtp::ServiceCapability::MediaTransport,
+        avdtp::ServiceCapability::MediaCodec {
+            media_type: avdtp::MediaType::Audio,
+            codec_type: avdtp::MediaCodecType::new(0),
+            codec_extra: vec![0x3F, 0xFF, 2, 250],
+        },
+    ])
+}
+
 fn start_media_stream(sock: zx::Socket) -> Result<(), zx::Status> {
     let mut stream_sock = fasync::Socket::from_socket(sock)?;
     fuchsia_async::spawn((async move {
@@ -59,7 +74,17 @@ fn handle_request(r: avdtp::Request) -> Result<(), avdtp::Error> {
             let streams = get_available_stream_info()?;
             responder.send(&streams)
         }
-        //_ => Ok(()),
+        avdtp::Request::GetCapabilities {
+            responder,
+            stream_id,
+        }
+        | avdtp::Request::GetAllCapabilities {
+            responder,
+            stream_id,
+        } => {
+            let caps = get_stream_capabilities(stream_id)?;
+            responder.send(&caps)
+        }
     }
 }
 
