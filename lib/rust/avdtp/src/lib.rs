@@ -139,6 +139,22 @@ pub enum Request {
         capabilities: Vec<ServiceCapability>,
         responder: SimpleResponder,
     },
+    Open {
+        stream_id: StreamEndpointId,
+        responder: SimpleResponder,
+    },
+    Close {
+        stream_id: StreamEndpointId,
+        responder: SimpleResponder,
+    },
+    Start {
+        stream_ids: Vec<StreamEndpointId>,
+        responder: SimpleResponder,
+    },
+    Suspend {
+        stream_ids: Vec<StreamEndpointId>,
+        responder: SimpleResponder,
+    },
     // TODO(jamuraa): add the rest of the requests
 }
 
@@ -196,6 +212,70 @@ impl Request {
                     local_stream_id: StreamEndpointId(body[0] >> 2),
                     remote_stream_id: StreamEndpointId(body[1] >> 2),
                     capabilities: caps,
+                    responder: SimpleResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
+                })
+            }
+            SignalIdentifier::Open => {
+                if body.len() > 1 {
+                    return Err(Error::BadLength);
+                }
+                Ok(Request::Open {
+                    stream_id: StreamEndpointId(body[0] >> 2),
+                    responder: SimpleResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
+                })
+            }
+            SignalIdentifier::Close => {
+                if body.len() > 1 {
+                    return Err(Error::BadLength);
+                }
+                Ok(Request::Close {
+                    stream_id: StreamEndpointId(body[0] >> 2),
+                    responder: SimpleResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
+                })
+            }
+            SignalIdentifier::Start => {
+                if body.len() > 1 {
+                    return Err(Error::BadLength);
+                }
+                let mut streams = Vec::<StreamEndpointId>::new();
+                let mut loc = 0;
+                while loc < body.len() {
+                    streams.push(StreamEndpointId(body[loc] >> 2));
+                    loc += 1;
+                }
+                Ok(Request::Start {
+                    stream_ids: streams,
+                    responder: SimpleResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
+                })
+            }
+            SignalIdentifier::Suspend => {
+                if body.len() > 1 {
+                    return Err(Error::BadLength);
+                }
+                let mut streams = Vec::<StreamEndpointId>::new();
+                let mut loc = 0;
+                while loc < body.len() {
+                    streams.push(StreamEndpointId(body[loc] >> 2));
+                    loc += 1;
+                }
+                Ok(Request::Suspend {
+                    stream_ids: streams,
                     responder: SimpleResponder {
                         signal: signal_id,
                         peer: peer,

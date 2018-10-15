@@ -85,7 +85,12 @@ fn handle_request(r: avdtp::Request) -> Result<(), avdtp::Error> {
             let caps = get_stream_capabilities(stream_id)?;
             responder.send(&caps)
         }
-        avdtp::Request::SetConfiguration { responder, .. } => responder.send(),
+        // Positively respond to everything else.
+        avdtp::Request::SetConfiguration { responder, .. }
+        | avdtp::Request::Open { responder, .. }
+        | avdtp::Request::Close { responder, .. }
+        | avdtp::Request::Start { responder, .. }
+        | avdtp::Request::Suspend { responder, .. } => responder.send(),
     }
 }
 
