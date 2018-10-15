@@ -13,6 +13,12 @@ use std::io::Read;
 use serde::de::{self, Deserialize, Deserializer};
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct SubParam {
+    pub param: String,
+    pub size: u16,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct TLV {
     pub param: String,
     #[serde(deserialize_with = "from_hex_str")]
@@ -20,6 +26,14 @@ pub struct TLV {
     pub size: Option<u16>,
     #[serde(default)]
     pub optional: bool,
+    #[serde(default, rename = "subparams")]
+    pub sub_params: Vec<SubParam>,
+}
+
+impl TLV {
+    pub fn has_sub_params(&self) -> bool {
+        !self.sub_params.is_empty()
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -10,9 +10,13 @@ use std::io::Read;
 
 use failure::Error;
 use crate::ast::ServiceSet;
+#[cfg(test)]
+use crate::tests;
 
 mod codegen;
 mod ast;
+#[cfg(test)]
+mod tests;
 
 fn usage(exe: &str) {
     println!("usage: -i {} <qmi json defs> -o <protocol.rs>", exe);

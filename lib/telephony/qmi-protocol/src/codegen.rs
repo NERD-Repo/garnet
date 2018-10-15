@@ -4,7 +4,7 @@
 
 use std::io;
 use failure::Error;
-use crate::ast::{TLV, Service, Message, Structure, ServiceSet};
+use crate::ast::{TLV, Service, Message, Structure, ServiceSet, SubParam};
 
 pub struct Codegen<W: io::Write> {
     w: W,
@@ -98,6 +98,74 @@ impl<W: io::Write> Codegen<W> {
         Ok(())
     }
 
+    pub fn codegen_svc_decode_subfield(&mut self, field: &SubParam) -> Result<(), Error> {
+        match field.size {
+            1 => {
+                writeln_indent!(self, "{} = buf.get_u8();", field.param);
+            }
+            2 => {
+                writeln_indent!(self, "{} = buf.get_u16_le();", field.param);
+            }
+            4 => {
+                writeln_indent!(self, "{} = buf.get_u32_le();", field.param);
+            }
+            _ => panic!("invalid field size: {}", field.size),
+        }
+        Ok(())
+    }
+
+    pub fn codegen_svc_decode_field(&mut self, field: &TLV) -> Result<(), Error> {
+        match field.size {
+            None => {
+                writeln_indent!(self, "let mut dst = Vec::with_capacity(tlv_len as usize);");
+                writeln_indent!(self, "buf.copy_to_slice(&mut dst.as_mut_slice());");
+                writeln_indent!(self, "total_len -= tlv_len;");
+                if field.optional {
+                    writeln_indent!(self, "let {} = Some(String::from_utf8(dst).unwrap());", field.param);
+                } else {
+                    writeln_indent!(self, "let {} = String::from_utf8(dst).unwrap();", field.param);
+                }
+            },
+            Some(size) => {
+                match size {
+                    1 => {
+                        if field.optional {
+                            writeln_indent!(self, "{} = Some(buf.get_u8());", field.param);
+                        } else {
+                            writeln_indent!(self, "{} = buf.get_u8();", field.param);
+                        }
+                        writeln_indent!(self, "total_len -= 1;");
+                    }
+                    2 => {
+                        if field.has_sub_params() {
+                            // TODO check the subparam size is equal to the whole type
+                            for param in field.sub_params.iter() {
+                                self.codegen_svc_decode_subfield(param);
+                            }
+                        } else {
+                            if field.optional {
+                                writeln_indent!(self, "{} = Some(buf.get_u16_le());", field.param);
+                            } else {
+                                writeln_indent!(self, "{} = buf.get_u16_le();", field.param);
+                            }
+                        }
+                        writeln_indent!(self, "total_len -= 2;");
+                    }
+                    4 => {
+                        if field.optional {
+                            writeln_indent!(self, "{} = Some(buf.get_u32_le());", field.param);
+                        } else {
+                            writeln_indent!(self, "{} = buf.get_u32_le();", field.param);
+                        }
+                        writeln_indent!(self, "total_len -= 4;");
+                    }
+                    _ => panic!("invalid field size: {}", size),
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn codegen_svc_decode(&mut self, svc_id: u16, msg: &Message, structure: &Structure) -> Result<(), Error> {
         // define the request struct
         writeln_indent!(self, "impl Decodable for {}Resp {{", msg.name);
@@ -127,7 +195,13 @@ impl<W: io::Write> Codegen<W> {
         writeln_indent!(self, "}}");
 
         for field in msg.get_response_fields() {
-            writeln_indent!(self, "let mut {} = Default::default();", field.param);
+            if field.has_sub_params() {
+                for param in field.sub_params.iter() {
+                    writeln_indent!(self, "let mut {} = Default::default();", param.param);
+                }
+            } else {
+                writeln_indent!(self, "let mut {} = Default::default();", field.param);
+            }
         }
         writeln_indent!(self, "while total_len > 0 {{");
         indent!(self);
@@ -140,47 +214,7 @@ impl<W: io::Write> Codegen<W> {
         for field in msg.get_response_fields() {
             writeln_indent!(self, "{} => {{", field.id);
             indent!(self);
-            match field.size {
-                None => {
-                    writeln_indent!(self, "let mut dst = Vec::with_capacity(tlv_len as usize);");
-                    writeln_indent!(self, "buf.copy_to_slice(&mut dst.as_mut_slice());");
-                    writeln_indent!(self, "total_len -= tlv_len;");
-                    if field.optional {
-                        writeln_indent!(self, "let {} = Some(String::from_utf8(dst).unwrap());", field.param);
-                    } else {
-                        writeln_indent!(self, "let {} = String::from_utf8(dst).unwrap();", field.param);
-                    }
-                },
-                Some(size) => {
-                    match size {
-                        1 => {
-                            if field.optional {
-                                writeln_indent!(self, "{} = Some(buf.get_u8());", field.param);
-                            } else {
-                                writeln_indent!(self, "{} = buf.get_u8();", field.param);
-                            }
-                            writeln_indent!(self, "total_len -= 1;");
-                        }
-                        2 => {
-                            if field.optional {
-                                writeln_indent!(self, "{} = Some(buf.get_u16_le());", field.param);
-                            } else {
-                                writeln_indent!(self, "{} = buf.get_u16_le();", field.param);
-                            }
-                            writeln_indent!(self, "total_len -= 2;");
-                        }
-                        4 => {
-                            if field.optional {
-                                writeln_indent!(self, "{} = Some(buf.get_u32_le());", field.param);
-                            } else {
-                                writeln_indent!(self, "{} = buf.get_u32_le();", field.param);
-                            }
-                            writeln_indent!(self, "total_len -= 4;");
-                        }
-                        _ => panic!("invalid field size: {}", size),
-                    }
-                }
-            }
+            self.codegen_svc_decode_field(field);
             dedent!(self);
             writeln_indent!(self, "}}");
         }
@@ -193,7 +227,13 @@ impl<W: io::Write> Codegen<W> {
         writeln_indent!(self, "Ok({}Resp {{", msg.name);
         for field in msg.get_response_fields() {
             indent!(self);
-            writeln_indent!(self, "{},", field.param);
+            if field.has_sub_params() {
+                for param in field.sub_params.iter() {
+                    writeln_indent!(self, "{},", param.param);
+                }
+            } else {
+                writeln_indent!(self, "{},", field.param);
+            }
             dedent!(self);
         }
         writeln_indent!(self, "}})");
@@ -319,10 +359,19 @@ impl<W: io::Write> Codegen<W> {
         writeln_indent!(self, "pub struct {}Resp {{", msg.name);
         indent!(self);
         for field in msg.get_response_fields() {
-            writeln_indent!(self,
-                            "pub {param}: {ty},",
-                            param = field.param,
-                            ty    = type_fmt(field.size, field.optional));
+            if field.has_sub_params() {
+                for param in field.sub_params.iter() {
+                    writeln_indent!(self,
+                                "pub {param}: {ty},",
+                                param = param.param,
+                                ty    = type_fmt(Some(param.size), false));
+                }
+            } else {
+                writeln_indent!(self,
+                                "pub {param}: {ty},",
+                                param = field.param,
+                                ty    = type_fmt(field.size, field.optional));
+            }
         }
         dedent!(self);
         writeln_indent!(self, "}}");
