@@ -133,6 +133,12 @@ pub enum Request {
         stream_id: StreamEndpointId,
         responder: GetCapabilitiesResponder,
     },
+    SetConfiguration {
+        local_stream_id: StreamEndpointId,
+        remote_stream_id: StreamEndpointId,
+        capabilities: Vec<ServiceCapability>,
+        responder: SimpleResponder,
+    },
     // TODO(jamuraa): add the rest of the requests
 }
 
@@ -169,6 +175,28 @@ impl Request {
                 Ok(Request::GetAllCapabilities {
                     stream_id: StreamEndpointId(body[0] >> 2),
                     responder: GetCapabilitiesResponder {
+                        signal: signal_id,
+                        peer: peer,
+                        id: id,
+                    },
+                })
+            }
+            SignalIdentifier::SetConfiguration => {
+                if body.len() < 4 {
+                    return Err(Error::BadLength);
+                }
+                let mut caps = Vec::<ServiceCapability>::new();
+                let mut loc = 2;
+                while loc < body.len() {
+                    let cap = ServiceCapability::decode(&body[loc..])?;
+                    loc += cap.encoded_size();
+                    caps.push(cap);
+                }
+                Ok(Request::SetConfiguration {
+                    local_stream_id: StreamEndpointId(body[0] >> 2),
+                    remote_stream_id: StreamEndpointId(body[1] >> 2),
+                    capabilities: caps,
+                    responder: SimpleResponder {
                         signal: signal_id,
                         peer: peer,
                         id: id,
@@ -527,6 +555,28 @@ impl Decodable for DiscoverResponse {
         Ok(DiscoverResponse {
             endpoints: endpoints,
         })
+    }
+}
+
+#[derive(Debug)]
+pub struct SimpleResponder {
+    peer: Arc<PeerInner>,
+    signal: SignalIdentifier,
+    id: TxId,
+}
+
+impl SimpleResponder {
+    pub fn send(self) -> Result<(), Error> {
+        let header = SignalingHeader {
+            txid: self.id,
+            signal_id: self.signal,
+            message_type: SignalingMessageType::ResponseAccept,
+            packet_type: SignalingPacketType::Single,
+            num_packets: 1,
+        };
+        let mut reply = vec![0 as u8; header.size()];
+        header.encode(reply.as_mut_slice())?;
+        self.peer.send_signal(reply.as_slice())
     }
 }
 
