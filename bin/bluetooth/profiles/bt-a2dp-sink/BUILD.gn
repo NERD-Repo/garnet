@@ -10,6 +10,7 @@ rustc_binary("bin") {
   edition = "2018"
 
   deps = [
+    "//garnet/lib/rust/avdtp",
     "//garnet/lib/rust/fuchsia-bluetooth",
     "//garnet/public/fidl/fuchsia.bluetooth:fuchsia.bluetooth-rustc",
     "//garnet/public/fidl/fuchsia.bluetooth.bredr:fuchsia.bluetooth.bredr-rustc",
