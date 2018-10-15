@@ -85,6 +85,7 @@ fn handle_request(r: avdtp::Request) -> Result<(), avdtp::Error> {
             let caps = get_stream_capabilities(stream_id)?;
             responder.send(&caps)
         }
+        avdtp::Request::SetConfiguration { responder, .. } => responder.send(),
     }
 }
 
