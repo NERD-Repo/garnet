@@ -3,9 +3,10 @@
 // found in the LICENSE file.
 
 use std::fmt;
-use futures::{Poll, task::LocalWaker, try_ready};
+use futures::{Poll, stream::Stream, task::LocalWaker, try_ready};
 use futures::io::{self, AsyncRead, AsyncWrite, Initializer};
 use fuchsia_zircon::{self as zx, AsHandleRef};
+use std::pin::Pin;
 
 use crate::RWHandle;
 
@@ -83,6 +84,31 @@ impl Socket {
             Poll::Ready(res)
         }
     }
+
+    /// Polls for the next data on the socket, appending it to the end of |out| if it has arrived.
+    /// Not very useful for a non-datagram socket as it will return all available data
+    /// on the socket.
+    pub fn poll_datagram(&self, out: &mut Vec<u8>, lw: &LocalWaker) -> Poll<Result<usize, zx::Status>> {
+        try_ready!(self.0.poll_read(lw));
+        let avail = self.0.get_ref().outstanding_read_bytes()?;
+        let len = out.len();
+        out.resize(len + avail, 0);
+        let (_, mut tail) = out.split_at_mut(len);
+        match self.0.get_ref().read(&mut tail) {
+            Err(zx::Status::SHOULD_WAIT) => {
+                self.0.need_read(lw)?;
+                Poll::Pending
+            },
+            Err(e) => Poll::Ready(Err(e)),
+            Ok(bytes) => {
+                if bytes == avail {
+                    Poll::Ready(Ok(bytes))
+                } else {
+                    Poll::Ready(Err(zx::Status::BAD_STATE))
+                }
+            }
+        }
+    }
 }
 
 impl fmt::Debug for Socket {
@@ -152,6 +178,21 @@ impl<'a> AsyncWrite for &'a Socket {
 
     fn poll_close(&mut self, _: &LocalWaker) -> Poll<io::Result<()>> {
         Poll::Ready(Ok(()))
+    }
+}
+
+/// Note: It's probably a good idea to split the socket into read/write halves
+/// before using this so you can still write on this socket.
+impl Stream for Socket {
+    type Item = Result<Vec<u8>, zx::Status>;
+
+    fn poll_next(self: Pin<&mut Self>, lw: &LocalWaker) -> Poll<Option<Self::Item>> {
+        let mut res = Vec::<u8>::new();
+        match self.poll_datagram(&mut res, lw) {
+            Poll::Ready(Ok(_size)) => Poll::Ready(Some(Ok(res))),
+            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 
