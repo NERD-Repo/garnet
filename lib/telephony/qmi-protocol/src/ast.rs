@@ -54,10 +54,10 @@ pub struct ResultCode {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Ast {
-    #[serde(deserialize_with = "structure_map")]
+    #[serde(default, deserialize_with = "structure_map")]
     pub structures: HashMap<String, Structure>,
     pub services: Vec<Service>,
-    #[serde(deserialize_with = "result_map")]
+    #[serde(default, deserialize_with = "result_map")]
     pub results: HashMap<String, HashMap<String, u16>>,
 }
 
@@ -120,7 +120,7 @@ impl ServiceSet {
     }
 
 
-    pub fn parse_service_file(&mut self, mut svc_file: std::fs::File) -> Result<(), Error> {
+    pub fn parse_service_file<W: std::io::Read>(&mut self, mut svc_file: W) -> Result<(), Error> {
         let mut contents = String::new();
         svc_file.read_to_string(&mut contents)?;
         let ast: Ast = serde_json::from_str(contents.as_str())?;

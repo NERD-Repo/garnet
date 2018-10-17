@@ -67,9 +67,11 @@ impl QmiClient {
         if request_id {
             use qmi_protocol::CTL::{GetClientIdReq, GetClientIdResp};
             let resp: QmiResult<GetClientIdResp> = await!(self.send_msg_actual(GetClientIdReq::new(0)))?;
+            eprintln!("res: {:?}", resp);
             let client_id_resp = resp.unwrap(); // TODO from trait for QmiError to QmuxError
             let mut map = self.clients.write();
-            map.insert(svc_id, ClientId((client_id_resp.client_id >> 8) as u8));
+            assert_eq!(client_id_resp.svc_type, svc_id.0);
+            map.insert(svc_id, ClientId(client_id_resp.client_id));
         }
         Ok(await!(self.send_msg_actual(msg))?)
     }

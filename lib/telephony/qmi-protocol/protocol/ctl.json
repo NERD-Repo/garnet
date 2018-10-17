@@ -61,43 +61,17 @@
           {
             "param": "client_id",
             "id": "0x01",
-            "size": 2
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "name": "DMS",
-    "type": "0x02",
-    "message_structure": "standard",
-    "result_structure": "standard",
-    "messages": [
-      {
-        "name": "GetDeviceSerialNumbers",
-        "type": "0x0025",
-        "version": "1.0",
-        "request": [ ],
-        "response": [
-          {
-            "param": "esn",
-            "id": "0x10",
-            "optional": true
-          },
-          {
-            "param": "imei",
-            "id": "0x11",
-            "optional": true
-          },
-          {
-            "param": "meid",
-            "id": "0x12",
-            "optional": true
-          },
-          {
-            "param": "imei_svn",
-            "id": "0x10",
-            "optional": true
+            "size": 2,
+            "subparams": [
+              {
+                "size": 1,
+                "param": "svc_type"
+              },
+              {
+                "size": 1,
+                "param": "client_id"
+              }
+            ]
           }
         ]
       }

@@ -127,9 +127,12 @@ impl FrilService {
 
                 if let Some(ref client) = *client_lock {
                     fx_log_info!("send serial request!");
-                    let resp: Result<QmiResult<DMS::GetDeviceSerialNumbersResp>, QmuxError>
-                        = await!(client.send_msg(DMS::GetDeviceSerialNumbersReq::new()));
-                    fx_log_info!("Device serial numbers resp: {:?}", resp);
+                    //let resp: Result<QmiResult<DMS::GetDeviceSerialNumbersResp>, QmuxError>
+                    //    = await!(client.send_msg(DMS::GetDeviceSerialNumbersReq::new()));
+                    //fx_log_info!("Device serial numbers resp: {:?}", resp);
+                    //let resp: Result<QmiResult<CTL::GetVersionInfoResp>, QmuxError>
+                    //    = await!(client.send_msg(CTL::GetVersionInfoReq::new()));
+                    //fx_log_info!("Device version info {:?}", resp);
                 }
 
             //    if client.is_ok() {

@@ -1,0 +1,17 @@
+// Copyright 2018 The Fuchsia Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+library fuchsia.telephony.manager;
+
+using fuchsia.telephony.qmi; // TODO RIL rename
+
+/// Primary Telephony management interface
+[Discoverable]
+interface Manager {
+  /// Returns whether or not a modem is currently available on the system.
+  1: IsAvailable() -> (bool available);
+
+  // Temporary interface, will return the Fuchsia RIL in the long run
+  2: GetModemHandle(request<fuchsia.telephony.qmi.QmiModem> ril) -> (bool success);
+};

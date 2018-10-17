@@ -10,15 +10,15 @@ rustc_binary("bin") {
   edition = "2018"
 
   deps = [
-    "//garnet/lib/rust/crates/qmi",
+    "//garnet/lib/rust/qmi",
     "//garnet/lib/telephony/qmi-protocol",
     "//garnet/public/fidl/fuchsia.telephony.ril:fuchsia.telephony.ril-rustc",
     "//garnet/public/fidl/fuchsia.telephony.qmi:fuchsia.telephony.qmi-rustc",
     "//garnet/public/lib/fidl/rust/fidl",
-    "//garnet/public/rust/crates/fuchsia-app",
-    "//garnet/public/rust/crates/fuchsia-async",
-    "//garnet/public/rust/crates/fuchsia-syslog",
-    "//garnet/public/rust/crates/fuchsia-zircon",
+    "//garnet/public/rust/fuchsia-app",
+    "//garnet/public/rust/fuchsia-async",
+    "//garnet/public/rust/fuchsia-syslog",
+    "//garnet/public/rust/fuchsia-zircon",
     "//third_party/rust-crates/rustc_deps:bytes",
     "//third_party/rust-crates/rustc_deps:failure",
     "//third_party/rust-crates/rustc_deps:futures-preview",

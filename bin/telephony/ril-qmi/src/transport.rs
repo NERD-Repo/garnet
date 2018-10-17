@@ -97,6 +97,41 @@ impl MessageInterest {
     }
 }
 
+#[derive(Debug)]
+pub struct QmuxHeader {
+    pub length: u16,
+    pub ctrl_flags: u8,
+    pub svc_type: u8,
+    pub client_id: u8,
+    // general service header
+    pub svc_ctrl_flags: u8,
+    pub transaction_id: u16, // TODO this needs to be u16 for anything not a CTL
+}
+
+pub fn parse_qmux_header<T: Buf>(mut buf: T) -> (QmuxHeader, T) {
+    assert_eq!(0x01, buf.get_u8()); // QMUX headers start with 0x01
+    let length = buf.get_u16_le();
+    let ctrl_flags = buf.get_u8();
+    let svc_type = buf.get_u8();
+    let client_id = buf.get_u8();
+    let svc_ctrl_flags = buf.get_u8();
+    let transaction_id;
+    if (svc_type == 0x00) {
+        // ctl service is one byte
+        transaction_id = buf.get_u8() as u16;
+    } else {
+        transaction_id = buf.get_u16_le();
+    }
+    (QmuxHeader {
+        length,
+        ctrl_flags,
+        svc_type,
+        client_id,
+        svc_ctrl_flags,
+        transaction_id,
+    }, buf)
+}
+
 /// Shared transport channel
 #[derive(Debug)]
 pub struct QmiTransport {
@@ -170,7 +205,7 @@ impl QmiTransport {
                 }
                 eprintln!("recieved msg: {:X?}", buf.bytes());
                 let buf = Cursor::new(buf.bytes());
-                let (header, buf) = qmi::parse_qmux_header(buf);
+                let (header, buf) = parse_qmux_header(buf);
 
                 // TODO add indication support here, only handles responses for now
                 // This is a response for ONLY the CTL interface, will need indication support

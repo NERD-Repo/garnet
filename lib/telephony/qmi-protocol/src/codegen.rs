@@ -6,8 +6,8 @@ use std::io;
 use failure::Error;
 use crate::ast::{TLV, Service, Message, Structure, ServiceSet, SubParam};
 
-pub struct Codegen<W: io::Write> {
-    w: W,
+pub struct Codegen<'a, W: io::Write> {
+    w: &'a mut W,
     depth: usize,
 }
 
@@ -51,8 +51,8 @@ macro_rules! writeln_indent {
     )
 }
 
-impl<W: io::Write> Codegen<W> {
-    pub fn new(w: W) -> Codegen<W> {
+impl<'a, W: io::Write> Codegen<'a, W> {
+    pub fn new(w: &'a mut W) -> Codegen<'a, W> {
         Codegen {
             w,
             depth: 0,
@@ -381,10 +381,10 @@ impl<W: io::Write> Codegen<W> {
 
     pub fn codegen_service(&mut self, svc: &Service, structure: &Structure) -> Result<(), Error> {
         writeln!(self.w, "pub mod {} {{", svc.name);
+        indent!(self);
         writeln_indent!(self, "use crate::{{Decodable, Encodable}};");
         writeln_indent!(self, "use crate::QmiError;");
         writeln_indent!(self, "use bytes::{{Bytes, Buf, BufMut, BytesMut}};");
-        indent!(self);
         for msg in svc.get_messages() {
             self.codegen_svc_msg(msg)?;
             self.codegen_svc_encode(svc.ty, msg, &structure)?;
@@ -424,8 +424,8 @@ pub trait Decodable {{
         // codegen error types
         writeln_indent!(self, "#[derive(Debug, Fail)]");
         writeln_indent!(self, "pub enum QmiError {{");
+        indent!(self);
         for (error_type, error_set) in &svc_set.results {
-            indent!(self);
             writeln_indent!(self, "// {} error types", error_type);
             for (name, code) in error_set {
                 writeln_indent!(self, "#[fail(display = \"Qmi Result Error Code: {:#X}\")]", code);

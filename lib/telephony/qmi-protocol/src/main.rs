@@ -39,8 +39,8 @@ fn main() -> Result<(), Error> {
 
     let mut svc_set = ServiceSet::new();
 
-    let file = fs::File::create(&args[4])?;
-    let mut c = codegen::Codegen::new(file);
+    let mut file = fs::File::create(&args[4])?;
+    let mut c = codegen::Codegen::new(&mut file);
 
     // for each input
     let mut svc_file = fs::File::open(&args[2])?;
