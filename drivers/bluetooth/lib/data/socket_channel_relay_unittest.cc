@@ -20,6 +20,9 @@ namespace btlib {
 namespace data {
 namespace {
 
+using RelayT =
+    internal::SocketChannelRelay<l2cap::Channel, l2cap::ChannelId, l2cap::SDU>;
+
 class DATA_SocketChannelRelayTest : public ::testing::Test {
  public:
   DATA_SocketChannelRelayTest() : loop_(&kAsyncLoopConfigAttachToThread) {
@@ -127,7 +130,7 @@ class DATA_SocketChannelRelayLifetimeTest : public DATA_SocketChannelRelayTest {
  public:
   DATA_SocketChannelRelayLifetimeTest()
       : was_deactivation_callback_invoked_(false),
-        relay_(std::make_unique<internal::SocketChannelRelay>(
+        relay_(std::make_unique<RelayT>(
             ConsumeLocalSocket(), channel(), [this](l2cap::ChannelId) {
               was_deactivation_callback_invoked_ = true;
             })) {}
@@ -136,7 +139,7 @@ class DATA_SocketChannelRelayLifetimeTest : public DATA_SocketChannelRelayTest {
   bool was_deactivation_callback_invoked() {
     return was_deactivation_callback_invoked_;
   }
-  internal::SocketChannelRelay* relay() {
+  RelayT* relay() {
     ZX_DEBUG_ASSERT(relay_);
     return relay_.get();
   }
@@ -144,7 +147,7 @@ class DATA_SocketChannelRelayLifetimeTest : public DATA_SocketChannelRelayTest {
 
  private:
   bool was_deactivation_callback_invoked_;
-  std::unique_ptr<internal::SocketChannelRelay> relay_;
+  std::unique_ptr<RelayT> relay_;
 };
 
 TEST_F(DATA_SocketChannelRelayLifetimeTest,
@@ -284,11 +287,11 @@ class DATA_SocketChannelRelayDataPathTest : public DATA_SocketChannelRelayTest {
   }
 
  protected:
-  internal::SocketChannelRelay* relay() { return &relay_; }
+  RelayT* relay() { return &relay_; }
   auto& sent_to_channel() { return sent_to_channel_; }
 
  private:
-  internal::SocketChannelRelay relay_;
+  RelayT relay_;
   std::vector<common::ByteBufferPtr> sent_to_channel_;
 };
 

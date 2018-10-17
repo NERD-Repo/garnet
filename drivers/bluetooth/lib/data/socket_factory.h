@@ -16,7 +16,7 @@
 #include "lib/fxl/memory/weak_ptr.h"
 #include "lib/fxl/synchronization/thread_checker.h"
 
-#include "garnet/drivers/bluetooth/lib/data/socket_channel_relay.h"
+#include "garnet/drivers/bluetooth/lib/data/l2cap_socket_channel_relay.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/channel.h"
 
 namespace btlib {
@@ -61,7 +61,7 @@ class SocketFactory {
   // TODO(NET-1535): Figure out what we need to do handle the possibility that a
   // channel id is recycled. (See comment in LogicalLink::HandleRxPacket.)
   std::unordered_map<l2cap::ChannelId,
-                     std::unique_ptr<internal::SocketChannelRelay>>
+                     std::unique_ptr<internal::L2capSocketChannelRelay>>
       channel_to_relay_;
 
   fxl::WeakPtrFactory<SocketFactory> weak_ptr_factory_;  // Keep last.
