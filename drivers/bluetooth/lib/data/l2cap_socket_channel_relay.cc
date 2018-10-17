@@ -6,12 +6,19 @@
 
 #include "garnet/drivers/bluetooth/lib/data/socket_channel_relay.cc"
 
-namespace btlib {
-namespace data {
-namespace internal {
+// The functions below must be in |btlib::l2cap|, so that they can be found via
+// argument-dependent lookup (ADL). The functions are |static|, to
+// avoid conflicting with any other definition of those names in |btlib::l2cap|.
+namespace btlib::l2cap {
+static bool ValidateRxData(const SDU& sdu) { return sdu.is_valid(); }
+static size_t GetRxDataLen(const SDU& sdu) { return sdu.length(); }
+static bool InvokeWithRxData(
+    fit::function<void(const common::ByteBuffer& data)> callback,
+    const SDU& sdu) {
+  return SDU::Reader(&sdu).ReadNext(sdu.length(), callback);
+}
+}  // namespace btlib::l2cap
 
+namespace btlib::data::internal {
 template class SocketChannelRelay<l2cap::Channel, l2cap::ChannelId, l2cap::SDU>;
-
-}  // namespace internal
-}  // namespace data
-}  // namespace btlib
+}  // namespace btlib::data::internal
