@@ -241,6 +241,69 @@ fn write_without_response(client: &GattClientPtr, id: u64, value: Vec<u8>)
         .map_err(|_| BTError::new("Failed to send message").into())
 }
 
+async fn read_descriptor(client: &GattClientPtr, id: u64)
+    -> Result<(), Error>
+{
+    let read_descriptor = client
+        .read()
+        .active_proxy
+        .as_ref()
+        .unwrap()
+        .read_descriptor(id);
+
+    let (status, value) = await!(read_descriptor)
+        .map_err(|_| BTError::new("Failed to send message"))?;
+
+    match status.error {
+        Some(e) => println!("Failed to read descriptor: {}", BTError::from(*e)),
+        None => println!("(id = {}) value: {:X?}", id, value),
+    }
+
+    Ok(())
+}
+
+async fn read_long_descriptor(client: &GattClientPtr, id: u64, offset: u16, max_bytes: u16)
+    -> Result<(), Error>
+{
+    let read_long_descriptor = client
+        .read()
+        .active_proxy
+        .as_ref()
+        .unwrap()
+        .read_long_descriptor(id, offset, max_bytes);
+
+    let (status, value) = await!(read_long_descriptor)
+        .map_err(|_| BTError::new("Failed to send message"))?;
+
+    match status.error {
+        Some(e) => println!("Failed to read long descriptor: {}", BTError::from(*e)),
+        None => println!("(id = {}, offset = {}) value: {:X?}", id, offset, value),
+    }
+
+    Ok(())
+}
+
+async fn write_descriptor(
+    client: &GattClientPtr, id: u64, value: Vec<u8>,
+) -> Result<(), Error> {
+    let write_descriptor = client
+        .read()
+        .active_proxy
+        .as_ref()
+        .unwrap()
+        .write_descriptor(id, &mut value.into_iter());
+
+    let status = await!(write_descriptor)
+        .map_err(|_| BTError::new("Failed to send message"))?;
+
+    match status.error {
+        Some(e) => println!("Failed to write to descriptor: {}", BTError::from(*e)),
+        None => println!("(id = {}]) done", id),
+    }
+
+    Ok(())
+}
+
 // ===== REPL =====
 
 fn do_help() {
@@ -251,6 +314,9 @@ fn do_help() {
     println!("    read-chr <id>                    Read a characteristic");
     println!("    read-long <id> <offset> <max>    Read a long characteristic");
     println!("    write-chr <id> <value>           Write to a characteristic");
+    println!("    read-desc <id>                   Read a characteristic descriptor");
+    println!("    read-desc <id> <offset> <max>    Read a long characteristic descriptor");
+    println!("    write-desc <id> <value>          Write to a characteristic descriptor");
     println!("    enable-notify <id>               Enable characteristic notifications");
     println!("    disable-notify <id>              Disable characteristic notifications");
     println!("    exit                             Quit and disconnect the peripheral");
@@ -409,6 +475,104 @@ async fn do_write_chr<'a>(mut args: Vec<&'a str>, client: &'a GattClientPtr)
     }
 }
 
+async fn do_read_desc<'a>(args: &'a [&'a str], client: &'a GattClientPtr)
+    -> Result<(), Error>
+{
+    if args.len() != 1 {
+        println!("usage: read-desc <id>");
+        return Ok(());
+    }
+
+    if client.read().active_proxy.is_none() {
+        println!("no service connected");
+        return Ok(());
+    }
+
+    let id: u64 = match args[0].parse() {
+        Err(_) => {
+            println!("invalid id: {}", args[0]);
+            return Ok(());
+        }
+        Ok(i) => i,
+    };
+
+    await!(read_descriptor(client, id))
+}
+
+async fn do_read_long_desc<'a>(args: &'a [&'a str], client: &'a GattClientPtr)
+    -> Result<(), Error>
+{
+    if args.len() != 3 {
+        println!("usage: read-long-desc <id> <offset> <max bytes>");
+        return Ok(());
+    }
+
+    if client.read().active_proxy.is_none() {
+        println!("no service connected");
+        return Ok(());
+    }
+
+    let id: u64 = match args[0].parse() {
+        Err(_) => {
+            println!("invalid id: {}", args[0]);
+            return Ok(());
+        }
+        Ok(i) => i,
+    };
+
+    let offset: u16 = match args[1].parse() {
+        Err(_) => {
+            println!("invalid offset: {}", args[1]);
+            return Ok(());
+        }
+        Ok(i) => i,
+    };
+
+    let max_bytes: u16 = match args[2].parse() {
+        Err(_) => {
+            println!("invalid max bytes: {}", args[2]);
+            return Ok(());
+        }
+        Ok(i) => i,
+    };
+
+    await!(read_long_descriptor(client, id, offset, max_bytes))
+}
+
+async fn do_write_desc<'a>(mut args: Vec<&'a str>, client: &'a GattClientPtr)
+    -> Result<(), Error>
+{
+    if args.len() < 1 {
+        println!("usage: write-desc <id> <value>");
+        return Ok(());
+    }
+
+    if client.read().active_proxy.is_none() {
+        println!("no service connected");
+        return Ok(());
+    }
+
+    let id: u64 = match args[0].parse() {
+        Err(_) => {
+            println!("invalid id: {}", args[0]);
+            return Ok(());
+        }
+        Ok(i) => i,
+    };
+
+    let value: Result<Vec<u8>, _> = args[1..].iter().map(|arg| arg.parse()).collect();
+
+    match value {
+        Err(_) => {
+            println!("invalid value");
+            Ok(())
+        }
+        Ok(v) => {
+            await!(write_descriptor(client, id, v))
+        },
+    }
+}
+
 async fn do_enable_notify<'a>(
     args: &'a [&'a str], client: &'a GattClientPtr,
 ) -> Result<(), Error> {
@@ -510,6 +674,9 @@ async fn handle_cmd<'a>(line: String, client: &'a GattClientPtr)
         Some("read-chr") => await!(do_read_chr(&args, client)),
         Some("read-long") => await!(do_read_long(&args, client)),
         Some("write-chr") => await!(do_write_chr(args, client)),
+        Some("read-desc") => await!(do_read_desc(&args, client)),
+        Some("read-long-desc") => await!(do_read_long_desc(&args, client)),
+        Some("write-desc") => await!(do_write_desc(args, client)),
         Some("enable-notify") => await!(do_enable_notify(&args, client)),
         Some("disable-notify") => await!(do_disable_notify(&args, client)),
         Some(cmd) => {

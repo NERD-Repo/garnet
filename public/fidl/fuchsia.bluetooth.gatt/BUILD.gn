@@ -8,6 +8,7 @@ fidl("fuchsia.bluetooth.gatt") {
   sources = [
     "client.fidl",
     "server.fidl",
+    "types.fidl",
   ]
 
   public_deps = [
