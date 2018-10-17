@@ -11,17 +11,25 @@ use fidl_fuchsia_bluetooth_control::{ControlRequest, ControlRequestStream};
 use fuchsia_async as fasync;
 use fuchsia_bluetooth::bt_fidl_status;
 use futures::prelude::*;
+use std::sync::Arc;
+use parking_lot::RwLock;
+
+struct ControlSession {
+    discovery_token: Option<Arc<DiscoveryRequestToken>>,
+    discoverable_token: Option<Arc<DiscoverableRequestToken>>
+}
 
 /// Build the ControlImpl to interact with fidl messages
 /// State is stored in the HostDispatcher object
 pub async fn start_control_service(mut hd: HostDispatcher, chan: fasync::Channel) -> Result<(), Error> {
     let stream = ControlRequestStream::from_channel(chan);
     hd.add_event_listener(stream.control_handle());
-    await!(stream.try_for_each(move |event| handler(hd.clone(), event))).map_err(|e| e.into())
+    let session = Arc::new(RwLock::new(ControlSession { discovery_token: None, discoverable_token: None }));
+    await!(stream.try_for_each(move |event| handler(hd.clone(), session.clone(), event))).map_err(|e| e.into())
 }
 
 async fn handler(
-    mut hd: HostDispatcher, event: ControlRequest,
+    mut hd: HostDispatcher, session: Arc<RwLock<ControlSession>>, event: ControlRequest,
 ) -> Result<(), fidl::Error> {
     match event {
         ControlRequest::Connect { device_id, responder } => {
@@ -29,11 +37,12 @@ async fn handler(
             responder.send(&mut status)
         }
         ControlRequest::SetDiscoverable { discoverable, responder } => {
-            let (mut resp, _) = if discoverable {
+            let (mut resp, token) = if discoverable {
                 await!(hd.set_discoverable())?
             } else {
                 (bt_fidl_status!(), None)
             };
+            session.write().discoverable_token = token;
             responder.send(&mut resp)
         }
         ControlRequest::SetIoCapabilities { input, output, control_handle: _ } => {
@@ -79,14 +88,13 @@ async fn handler(
             Ok(())
         }
         ControlRequest::RequestDiscovery { discovery, responder } => {
-            if discovery {
-                if let Ok((mut resp, _)) = await!(hd.start_discovery()) {
-                    let _ = responder.send(&mut resp);
-                }
-                Ok(())
+            let (mut resp, token) = if discovery {
+                await!(hd.start_discovery())?
             } else {
-                responder.send(&mut bt_fidl_status!())
-            }
+                (bt_fidl_status!(), None)
+            };
+            session.write().discovery_token = token;
+            responder.send(&mut resp)
         }
         ControlRequest::SetName { name, responder } => {
             let mut resp = await!(hd.set_name(name))?;
