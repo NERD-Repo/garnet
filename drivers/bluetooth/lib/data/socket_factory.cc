@@ -12,15 +12,21 @@
 
 namespace btlib {
 namespace data {
+namespace internal {
 
-SocketFactory::SocketFactory() : weak_ptr_factory_(this) {}
+template <typename ChannelT, typename ChannelIdT, typename ChannelRxDataT>
+SocketFactory<ChannelT, ChannelIdT, ChannelRxDataT>::SocketFactory()
+    : weak_ptr_factory_(this) {}
 
-SocketFactory::~SocketFactory() {
+template <typename ChannelT, typename ChannelIdT, typename ChannelRxDataT>
+SocketFactory<ChannelT, ChannelIdT, ChannelRxDataT>::~SocketFactory() {
   ZX_DEBUG_ASSERT(thread_checker_.IsCreationThreadCurrent());
 }
 
-zx::socket SocketFactory::MakeSocketForChannel(
-    fbl::RefPtr<l2cap::Channel> channel) {
+template <typename ChannelT, typename ChannelIdT, typename ChannelRxDataT>
+zx::socket
+SocketFactory<ChannelT, ChannelIdT, ChannelRxDataT>::MakeSocketForChannel(
+    fbl::RefPtr<ChannelT> channel) {
   ZX_DEBUG_ASSERT(thread_checker_.IsCreationThreadCurrent());
   ZX_DEBUG_ASSERT(channel);
 
@@ -39,19 +45,19 @@ zx::socket SocketFactory::MakeSocketForChannel(
     return {};
   }
 
-  auto relay = std::make_unique<internal::L2capSocketChannelRelay>(
+  auto relay = std::make_unique<RelayT>(
       std::move(local_socket), channel,
-      internal::L2capSocketChannelRelay::DeactivationCallback(
-          [self = weak_ptr_factory_.GetWeakPtr()](
-              l2cap::ChannelId channel_id) mutable {
+      typename RelayT::DeactivationCallback(
+          [self =
+               weak_ptr_factory_.GetWeakPtr()](ChannelIdT channel_id) mutable {
             ZX_DEBUG_ASSERT_MSG(self, "(channel_id=%u)", channel_id);
             size_t n_erased = self->channel_to_relay_.erase(channel_id);
             ZX_DEBUG_ASSERT_MSG(n_erased == 1, "(n_erased=%zu, channel_id=%u)",
                                 n_erased, channel_id);
           }));
 
-  // Note: Activate() may abort, if |channel| has been Activated() without going
-  // through this SocketFactory.
+  // Note: Activate() may abort, if |channel| has been Activated() without
+  // going through this SocketFactory.
   if (!relay->Activate()) {
     bt_log(ERROR, "l2cap", "Failed to Activate() relay for channel %u",
            channel->id());
@@ -62,5 +68,6 @@ zx::socket SocketFactory::MakeSocketForChannel(
   return remote_socket;
 }
 
+}  // namespace internal
 }  // namespace data
 }  // namespace btlib

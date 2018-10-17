@@ -10,11 +10,17 @@
 
 #include "gtest/gtest.h"
 
+#include "garnet/drivers/bluetooth/lib/l2cap/channel.h"
 #include "garnet/drivers/bluetooth/lib/l2cap/fake_channel.h"
+#include "garnet/drivers/bluetooth/lib/l2cap/l2cap.h"
+#include "garnet/drivers/bluetooth/lib/l2cap/sdu.h"
 
 namespace btlib {
 namespace data {
 namespace {
+
+using FactoryT =
+    internal::SocketFactory<l2cap::Channel, l2cap::ChannelId, l2cap::SDU>;
 
 constexpr l2cap::ChannelId kDynamicChannelIdMin = 0x0040;
 constexpr l2cap::ChannelId kRemoteChannelId = 0x0050;
@@ -46,12 +52,12 @@ class DATA_SocketFactoryTest : public ::testing::Test {
 };
 
 TEST_F(DATA_SocketFactoryTest, CanCreateSocket) {
-  SocketFactory socket_factory;
+  FactoryT socket_factory;
   EXPECT_TRUE(socket_factory.MakeSocketForChannel(channel()));
 }
 
 TEST_F(DATA_SocketFactoryTest, SocketCreationFailsIfChannelAlreadyHasASocket) {
-  SocketFactory socket_factory;
+  FactoryT socket_factory;
   zx::socket socket = socket_factory.MakeSocketForChannel(channel());
   ASSERT_TRUE(socket);
 
@@ -60,11 +66,11 @@ TEST_F(DATA_SocketFactoryTest, SocketCreationFailsIfChannelAlreadyHasASocket) {
 
 TEST_F(DATA_SocketFactoryTest, SocketCreationFailsIfChannelActivationFails) {
   channel()->set_activate_fails(true);
-  EXPECT_FALSE(SocketFactory().MakeSocketForChannel(channel()));
+  EXPECT_FALSE(FactoryT().MakeSocketForChannel(channel()));
 }
 
 TEST_F(DATA_SocketFactoryTest, CanCreateSocketForNewChannelWithRecycledId) {
-  SocketFactory socket_factory;
+  FactoryT socket_factory;
   auto original_channel = fbl::MakeRefCounted<l2cap::testing::FakeChannel>(
       kDynamicChannelIdMin + 1, kRemoteChannelId, kDefaultConnectionHandle,
       hci::Connection::LinkType::kACL);
@@ -80,14 +86,14 @@ TEST_F(DATA_SocketFactoryTest, CanCreateSocketForNewChannelWithRecycledId) {
 }
 
 TEST_F(DATA_SocketFactoryTest, DestructionWithActiveRelayDoesNotCrash) {
-  SocketFactory socket_factory;
+  FactoryT socket_factory;
   zx::socket socket = socket_factory.MakeSocketForChannel(channel());
   ASSERT_TRUE(socket);
   // |socket_factory| is destroyed implicitly.
 }
 
 TEST_F(DATA_SocketFactoryTest, DestructionAfterDeactivatingRelayDoesNotCrash) {
-  SocketFactory socket_factory;
+  FactoryT socket_factory;
   zx::socket socket = socket_factory.MakeSocketForChannel(channel());
   ASSERT_TRUE(socket);
   channel()->Close();
