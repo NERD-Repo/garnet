@@ -11,15 +11,18 @@ import("//build/rust/rustc_binary.gni")
 compiled_action("gen_qmi_protocol_source") {
   tool = "//garnet/lib/telephony/qmi-protocol:qmigen"
   sources = [
-    "protocol/ctl.json"
+    "protocol/common.json",
+    "protocol/ctl.json",
+    "protocol/dms.json"
   ]
   outputs = [
     "$target_gen_dir/qmi-protocol.rs"
   ]
   args = [
     "-i",
+    rebase_path("protocol/common.json"),
     rebase_path("protocol/ctl.json"),
-    # rebase_path("protocol/dms.json"),
+    rebase_path("protocol/dms.json"),
     "-o",
     rebase_path("$target_gen_dir/qmi-protocol.rs"),
   ]
@@ -66,7 +69,7 @@ if (host_toolchain == current_toolchain) {
 
     deps = [
       ":qmigen",
-      "//third_party/rust-crates/rustc_deps:itertools",
+      "//third_party/rust-crates/rustc_deps:pretty_assertions",
       ":qmigen_lib($host_toolchain)",
     ]
     source_root = "tests/codegen_tests.rs"

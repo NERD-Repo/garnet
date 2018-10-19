@@ -117,13 +117,12 @@ impl<'a, W: io::Write> Codegen<'a, W> {
     pub fn codegen_svc_decode_field(&mut self, field: &TLV) -> Result<(), Error> {
         match field.size {
             None => {
-                writeln_indent!(self, "let mut dst = Vec::with_capacity(tlv_len as usize);");
-                writeln_indent!(self, "buf.copy_to_slice(&mut dst.as_mut_slice());");
+                writeln_indent!(self, "let dst = buf.by_ref().take(tlv_len as usize).collect();");
                 writeln_indent!(self, "total_len -= tlv_len;");
                 if field.optional {
-                    writeln_indent!(self, "let {} = Some(String::from_utf8(dst).unwrap());", field.param);
+                    writeln_indent!(self, "{} = Some(String::from_utf8(dst).unwrap());", field.param);
                 } else {
-                    writeln_indent!(self, "let {} = String::from_utf8(dst).unwrap();", field.param);
+                    writeln_indent!(self, "{} = String::from_utf8(dst).unwrap();", field.param);
                 }
             },
             Some(size) => {

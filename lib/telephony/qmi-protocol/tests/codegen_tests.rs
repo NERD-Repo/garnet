@@ -7,7 +7,7 @@ use std::fs;
 use std::io::BufRead;
 use std::io::Read;
 use qmigen_lib::{ast, codegen};
-use itertools::assert_equal;
+use pretty_assertions::assert_eq;
 
 use crate::macros::*;
 mod macros;

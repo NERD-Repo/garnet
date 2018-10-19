@@ -56,6 +56,7 @@ pub struct ResultCode {
 pub struct Ast {
     #[serde(default, deserialize_with = "structure_map")]
     pub structures: HashMap<String, Structure>,
+    #[serde(default)]
     pub services: Vec<Service>,
     #[serde(default, deserialize_with = "result_map")]
     pub results: HashMap<String, HashMap<String, u16>>,

@@ -18,33 +18,37 @@ mod ast;
 #[cfg(test)]
 mod tests;
 
-fn usage(exe: &str) {
-    println!("usage: -i {} <qmi json defs> -o <protocol.rs>", exe);
+fn usage() {
+    println!("usage: qmigen -i <qmi json defs> -o <protocol.rs>");
     println!("");
-    println!("Generates bindings for QMI");
+    println!("Generates type-safe rust bindings for QMI off of a set of");
+    println!("custom protocol definitions in JSON");
     ::std::process::exit(1);
 }
 
 fn main() -> Result<(), Error> {
-    let args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = env::args().collect();
     if args.len() < 3 {
-        usage(&args[0]);
+        usage();
     }
 
     if !args.contains(&String::from("-i")) && !args.contains(&String::from("-o")) {
-        usage(&args[0]);
+        usage();
     }
+    // extract subsets of the args
+    let i_offset = args.clone().into_iter().position(|s| s == "-i").unwrap();
+    let o_offset = args.clone().into_iter().position(|s| s == "-o").unwrap();
+    let mut inputs = args.split_off(i_offset + 1);
+    let outputs = inputs.split_off(o_offset - i_offset);
 
-    println!("{:?}", args);
-
+    // for each input, add to the Service Set code generator
     let mut svc_set = ServiceSet::new();
-
-    let mut file = fs::File::create(&args[4])?;
+    let mut file = fs::File::create(&outputs[0])?;
     let mut c = codegen::Codegen::new(&mut file);
-
-    // for each input
-    let mut svc_file = fs::File::open(&args[2])?;
-    svc_set.parse_service_file(svc_file)?;
+    for file in inputs.into_iter().take_while(|s| s != "-o") {
+        let mut svc_file = fs::File::open(&file)?;
+        svc_set.parse_service_file(svc_file)?;
+    }
 
     c.codegen(svc_set)
 }
