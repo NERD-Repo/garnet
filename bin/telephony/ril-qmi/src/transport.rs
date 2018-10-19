@@ -114,13 +114,18 @@ pub fn parse_qmux_header<T: Buf>(mut buf: T) -> (QmuxHeader, T) {
     let ctrl_flags = buf.get_u8();
     let svc_type = buf.get_u8();
     let client_id = buf.get_u8();
-    let svc_ctrl_flags = buf.get_u8();
+    let svc_ctrl_flags;
     let transaction_id;
+    // TODO(bwb): Consider passing these paramaters in from the Decodable trait'd object,
+    // more generic than a hardcode for CTL interfaces
     if (svc_type == 0x00) {
+        svc_ctrl_flags = buf.get_u8();
         // ctl service is one byte
         transaction_id = buf.get_u8() as u16;
     } else {
+        svc_ctrl_flags = buf.get_u8() >> 1;
         transaction_id = buf.get_u16_le();
+        // The bits for the ctrl flags are shifted by one in non CTL messages
     }
     (QmuxHeader {
         length,
@@ -203,10 +208,10 @@ impl QmiTransport {
                     Poll::Ready(Err(e)) => return Err(QmuxError::ClientRead(e)),
                     Poll::Pending => return Ok(false),
                 }
-                eprintln!("recieved msg: {:X?}", buf.bytes());
                 let buf = Cursor::new(buf.bytes());
                 let (header, buf) = parse_qmux_header(buf);
 
+                eprintln!("recieved msg: {:#?}", header);
                 // TODO add indication support here, only handles responses for now
                 // This is a response for ONLY the CTL interface, will need indication support
                 // just throw them away for now

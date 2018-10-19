@@ -14,6 +14,7 @@
 use failure::{Error, ResultExt};
 use fidl::endpoints::{RequestStream, ServerEnd, ServiceMarker};
 use fidl_fuchsia_telephony_ril::{RadioInterfaceLayerMarker, RadioInterfaceLayerRequest, RadioInterfaceLayerRequestStream};
+use fidl_fuchsia_telephony_ril::RadioPowerState;
 use fuchsia_app::server::ServicesServer;
 use fuchsia_async as fasync;
 use fuchsia_syslog::{self as syslog, macros::*};
@@ -79,7 +80,7 @@ impl QmiModem {
         if let Some(ref inner) = self.inner {
             let transport_inner = inner.clone();
             let client = QmiClient::new(transport_inner);
-            Ok(client) // Arc::new(RwLock::new(client)))
+            Ok(client)
         } else {
             Err(QmuxError::NoClient.into())
         }
@@ -113,34 +114,41 @@ impl FrilService {
 
                 if client_lock.is_none() {
                     fx_log_info!("Requested client connect.");
-                    eprintln!("strong count: {}", Arc::strong_count(&client));
-                    let modem_lock = modem.lock();
-
                     // TODO RIL Error type
-                    //if !lock.connected() {
-                    //    return responder.send(false);
-                    //}
-                    //let client = client.lock();
+                    let modem_lock = modem.lock();
+                    let alloced_client = await!(modem_lock.create_client()).unwrap();
+                    *client_lock = Some(alloced_client);
+                }
+
+                if let Some(ref client) = *client_lock {
+                    let resp: QmiResult<DMS::GetDeviceSerialNumbersResp> =
+                        await!(client.send_msg(DMS::GetDeviceSerialNumbersReq::new())).unwrap();
+                    return responder.send(&resp.unwrap().imei);
+                }
+                responder.send("none")
+            }
+            RadioInterfaceLayerRequest::RadioPowerStatus { responder } => {
+                let mut client_lock = client.lock();
+
+                if client_lock.is_none() {
+                    fx_log_info!("Requested client connect.");
+                    // TODO RIL Error type
+                    let modem_lock = modem.lock();
                     let alloced_client = await!(modem_lock.create_client()).unwrap();
                     *client_lock = Some(alloced_client);
                 }
 
                 if let Some(ref client) = *client_lock {
                     fx_log_info!("send serial request!");
-                    //let resp: Result<QmiResult<DMS::GetDeviceSerialNumbersResp>, QmuxError>
-                    //    = await!(client.send_msg(DMS::GetDeviceSerialNumbersReq::new()));
-                    //fx_log_info!("Device serial numbers resp: {:?}", resp);
-                    //let resp: Result<QmiResult<CTL::GetVersionInfoResp>, QmuxError>
-                    //    = await!(client.send_msg(CTL::GetVersionInfoReq::new()));
-                    //fx_log_info!("Device version info {:?}", resp);
+                    let resp: DMS::GetOperatingModeResp =
+                        await!(client.send_msg(DMS::GetOperatingModeReq::new())).unwrap().unwrap();
+                    if (resp.operating_mode == 0x00) {
+                        return responder.send(RadioPowerState::On);
+                    } else {
+                        return responder.send(RadioPowerState::Off);
+                    }
                 }
-
-            //    if client.is_ok() {
-            //        QmiClientService::spawn(channel, client.unwrap());
-            //        responder.send(true)
-            //    } else {
-                    responder.send(3)
-            //    }
+                responder.send(RadioPowerState::Off)
             }
         }
     }

@@ -4,6 +4,12 @@
 
 library fuchsia.telephony.ril;
 
+/// Power State of the radio
+enum RadioPowerState: uint8 {
+  OFF = 0x00;
+  ON  = 0x01;
+};
+
 /// The Standard Fuchsia RIL (FRIL)
 interface RadioInterfaceLayer {
   /// Connect to the underlying transport |channel|. Most modems will require this
@@ -11,8 +17,10 @@ interface RadioInterfaceLayer {
   /// not per client connection.
   100: ConnectTransport(handle<channel> channel) -> (bool success);
 
-  // TODO more complex identity type
+  // TODO more complete identity type
   /// Retrieve the identity of the modem (currently |imei| only)
-  200: GetDeviceIdentity() -> (uint64 imei);
+  200: GetDeviceIdentity() -> (string imei);
+
+  201: RadioPowerStatus() -> (RadioPowerState state);
 };
 

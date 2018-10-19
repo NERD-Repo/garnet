@@ -66,8 +66,8 @@ impl QmiClient {
         }
         if request_id {
             use qmi_protocol::CTL::{GetClientIdReq, GetClientIdResp};
-            let resp: QmiResult<GetClientIdResp> = await!(self.send_msg_actual(GetClientIdReq::new(0)))?;
-            eprintln!("res: {:?}", resp);
+            fx_log_info!("allocating a client ID for service: {}", svc_id.0);
+            let resp: QmiResult<GetClientIdResp> = await!(self.send_msg_actual(GetClientIdReq::new(svc_id.0)))?;
             let client_id_resp = resp.unwrap(); // TODO from trait for QmiError to QmuxError
             let mut map = self.clients.write();
             assert_eq!(client_id_resp.svc_type, svc_id.0);
@@ -135,7 +135,7 @@ impl QmiClient {
         msg_buf.extend(payload_bytes);
 
         let bytes = msg_buf.freeze();
-        eprintln!("byte payload {:X?}", bytes.as_ref());
+        // eprintln!("byte payload {:X?}", bytes.as_ref());
 
         if let Some(ref transport) = self.inner.transport_channel {
             if transport.is_closed() {
@@ -151,7 +151,7 @@ impl QmiClient {
             transport: Some(self.inner.clone())
         })?;
 
-        eprintln!("response {:?}", resp);
+        // eprintln!("response {:?}", resp);
 
         let buf = std::io::Cursor::new(resp.bytes());
         let decoded = D::from_bytes(buf);
