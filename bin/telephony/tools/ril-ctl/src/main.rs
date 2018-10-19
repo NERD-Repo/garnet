@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-//! ril-ctl is used for interacting with devices that expose a QMI RIL over
-//! FIDL on Fuchsia.
+//! ril-ctl is used for interacting with devices that expose the standard
+//! Fuchsia RIL (FRIL)
 //!
 //! Ex: run ril-ctl -d /dev/class/ril-transport/000
 //!
@@ -11,22 +11,65 @@
 //! modem service is planned. A REPL is also planned as the FIDL interfaces
 //! evolve.
 
-#![feature(async_await, await_macro, futures_api)]
-//#![deny(warnings)]
+#![feature(async_await, await_macro, futures_api, pin)]
+#![deny(warnings)]
 
-use failure::{format_err, Error, ResultExt};
-use fidl::endpoints::create_proxy;
-use fidl_fuchsia_telephony_ril::RadioInterfaceLayerMarker;
-use fuchsia_app::client::Launcher;
-use fuchsia_async as fasync;
-use qmi;
-use std::env;
-use std::fs::File;
+use {
+    crate::commands::{Cmd, ReplControl},
+    failure::{Error, ResultExt},
+    fidl_fuchsia_telephony_ril::{RadioInterfaceLayerMarker, RadioInterfaceLayerProxy, RadioPowerState},
+    fuchsia_app::client::Launcher,
+    fuchsia_async::{self as fasync, futures::select},
+    futures::TryFutureExt,
+    pin_utils::pin_mut,
+    qmi,
+    std::{env, fs::File},
+};
+
+mod commands;
+mod repl;
+
+static PROMPT: &str = "\x1b[35mril>\x1b[0m ";
+
+async fn get_imei<'a>(
+    _args: &'a [&'a str], ril_modem: &'a RadioInterfaceLayerProxy,
+) -> Result<String, Error> {
+    let resp = await!(ril_modem.get_device_identity())?;
+    Ok(resp)
+}
+
+async fn get_power<'a>(
+    _args: &'a [&'a str], ril_modem: &'a RadioInterfaceLayerProxy,
+) -> Result<String, Error> {
+    match await!(ril_modem.radio_power_status())? {
+        RadioPowerState::On => Ok(String::from("radio on")),
+        RadioPowerState::Off => Ok(String::from("radio off")),
+    }
+}
+
+async fn handle_cmd(
+    ril_modem: &RadioInterfaceLayerProxy, line: String,
+) -> Result<ReplControl, Error> {
+    let components: Vec<_> = line.trim().split_whitespace().collect();
+    if let Some((raw_cmd, args)) = components.split_first() {
+        let cmd = raw_cmd.parse();
+        let res = match cmd {
+            Ok(Cmd::PowerStatus) => await!(get_power(args, &ril_modem)),
+            Ok(Cmd::Imei) => await!(get_imei(args, &ril_modem)),
+            Ok(Cmd::Help) => Ok(Cmd::help_msg().to_string()),
+            Ok(Cmd::Exit) | Ok(Cmd::Quit) => return Ok(ReplControl::Break),
+            Err(_) => Ok(format!("\"{}\" is not a valid command", raw_cmd)),
+        }?;
+        if res != "" {
+            println!("{}", res);
+        }
+    }
+
+    Ok(ReplControl::Continue)
+}
 
 pub fn main() -> Result<(), Error> {
     let mut exec = fasync::Executor::new().context("error creating event loop")?;
-//    let (_client_proxy, client_server) = create_proxy()?;
-
     let args: Vec<String> = env::args().collect();
 
     // TODO more advanced arg parsing
@@ -43,18 +86,19 @@ pub fn main() -> Result<(), Error> {
     let ril_modem = app.connect_to_service(RadioInterfaceLayerMarker)?;
 
     let path = &args[2];
-
     let file = File::open(&path)?;
     let chan = qmi::connect_transport_device(&file)?;
 
     let client_fut = async {
-        let connected_transport = await!(ril_modem.connect_transport(chan))?;
-        if connected_transport {
-            let client_res = await!(ril_modem.get_device_identity())?;
-            eprintln!("resp: {:?}", client_res);
-            return Ok(());
+        await!(ril_modem.connect_transport(chan))?;
+        let repl =
+            repl::run(ril_modem).unwrap_or_else(|e| eprintln!("REPL failed unexpectedly {:?}", e));
+        pin_mut!(repl);
+        select! {
+            repl => Ok(()),
+            // TODO(bwb): events loop future
         }
-        Err(format_err!("Failed to request modem or client"))
     };
+
     exec.run_singlethreaded(client_fut)
 }
