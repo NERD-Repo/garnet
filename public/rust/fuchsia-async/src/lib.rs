@@ -4,7 +4,13 @@
 
 //! A futures-rs executor design specifically for Fuchsia OS.
 
-#![feature(async_await, await_macro, futures_api, pin, arbitrary_self_types)]
+#![feature(
+    async_await,
+    await_macro,
+    futures_api,
+    pin,
+    arbitrary_self_types
+)]
 #![deny(warnings)]
 #![deny(missing_docs)]
 
@@ -23,9 +29,9 @@ pub use self::rwhandle::RWHandle;
 mod socket;
 pub use self::socket::Socket;
 mod timer;
-pub use self::timer::{Interval, Timer, TimeoutExt, OnTimeout};
+pub use self::timer::{Interval, OnTimeout, TimeoutExt, Timer};
 mod executor;
-pub use self::executor::{Executor, EHandle, spawn, spawn_local};
+pub use self::executor::{spawn, spawn_local, EHandle, Executor};
 mod fifo;
 pub use self::fifo::{Fifo, FifoEntry, FifoReadable, FifoWritable, ReadEntry, WriteEntry};
 pub mod net;
