@@ -222,7 +222,10 @@ impl HostDispatcherState {
         self.get_active_host().map(|host| util::clone_host_info(host.read().get_info()))
     }
 
-    pub fn notify_event_listeners<F>(&mut self, f: F) where F: FnMut(&ControlControlHandle) -> () {
+    pub fn notify_event_listeners<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&ControlControlHandle) -> ()
+    {
         self.event_listeners.retain(|listener| {
             match listener.upgrade() {
                 Some(listener_) => {
