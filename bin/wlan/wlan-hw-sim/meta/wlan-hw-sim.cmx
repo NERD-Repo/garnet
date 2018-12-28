@@ -1,9 +1,0 @@
-{
-    "program": {
-        "binary": "bin/app"
-    },
-    "sandbox": {
-        "dev": [ "test/wlantapctl" ],
-        "services": [ "fuchsia.wlan.service.Wlan" ]
-    }
-}

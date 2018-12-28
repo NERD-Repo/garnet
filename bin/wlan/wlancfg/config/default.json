@@ -1,6 +1,0 @@
-{
-    "phy": {
-        "/dev/test/test/wlan/wlanphy-test": [ "Client", "Ap" ],
-        "*": [ "Client" ]
-    }
-}

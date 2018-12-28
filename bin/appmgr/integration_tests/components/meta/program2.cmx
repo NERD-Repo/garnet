@@ -1,9 +1,0 @@
-{
-    "program": {
-        "binary": "bin/app2",
-        "args": [ "helloworld" ]
-    },
-    "sandbox": {
-        "services": []
-    }
-}

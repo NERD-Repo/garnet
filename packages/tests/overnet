@@ -1,8 +1,0 @@
-{
-    "packages": [
-        "//garnet/lib/overnet:overnet_tests"
-    ],
-    "host_tests": [
-        "//garnet/lib/overnet:overnet_unittests"
-    ]
-}

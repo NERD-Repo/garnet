@@ -1,5 +1,0 @@
-{
-    "packages": [
-        "//garnet/lib/cmx:cmx_unittests"
-    ]
-}

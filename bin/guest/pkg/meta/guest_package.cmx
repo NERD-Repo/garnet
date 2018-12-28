@@ -1,9 +1,0 @@
-{
-    "program": {
-        "binary": "bin/app"
-    },
-    "runner": "guest_runner",
-    "sandbox": {
-        "services": []
-    }
-}

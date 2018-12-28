@@ -1,7 +1,0 @@
-{
-    "imports": [
-        "garnet/packages/prod/appmgr",
-        "garnet/packages/prod/pkgsvr",
-        "garnet/packages/prod/sysmgr"
-    ]
-}

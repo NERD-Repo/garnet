@@ -1,9 +1,0 @@
-{
-    "program": {
-        "binary": "bin/app"
-    },
-    "sandbox": {
-        "services": [ "fuchsia.sys.Launcher" ],
-        "dev": [ "class/thermal", "misc/sysinfo" ]
-    }
-}

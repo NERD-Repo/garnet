@@ -1,6 +1,0 @@
-{
-    "program": {
-        "binary": "bin/virtio_rng_test_util"
-    },
-    "sandbox": {}
-}

@@ -1,9 +1,0 @@
-{
-    "imports": [
-        "garnet/packages/prod/auth"
-    ],
-    "packages": [
-        "//garnet/bin/auth:tests",
-        "//garnet/bin/auth:rust_tests"
-    ]
-}

@@ -1,8 +1,0 @@
-{
-    "imports": [
-        "garnet/packages/prod/listen"
-    ],
-    "packages": [
-        "//third_party/openssh-portable"
-    ]
-}

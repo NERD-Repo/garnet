@@ -1,5 +1,0 @@
-{
-    "packages": [
-        "//garnet/lib/pkg_url:pkg_url_unittests"
-    ]
-}
